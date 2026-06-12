@@ -38,3 +38,5 @@ workflow.add_edge("validator", "security_verifier")
 workflow.add_edge("security_verifier", "pr_author")
 workflow.add_edge("pr_author", END)
 
+# Compile the graph
+app = workflow.compile()
