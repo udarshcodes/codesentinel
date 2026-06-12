@@ -13,3 +13,6 @@ pydantic
 python-dotenv
 httpx
 semgrep
+bandit
+pylint
+flake8
