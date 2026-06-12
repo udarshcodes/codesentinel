@@ -24,3 +24,16 @@ async def agent_bug_investigator(state: PipelineState):
         file_path = finding.get("file", "")
         
         file_content = ""
+        if file_path and repo_local_path:
+            full_path = os.path.join(repo_local_path, file_path)
+            if os.path.exists(full_path):
+                try:
+                    with open(full_path, "r") as f:
+                        file_content = f.read()
+                except:
+                    pass
+                    
+        # RAG - Query past fixes
+        past_context = query_past_fixes(issue_desc)
+        past_context_str = "\n".join(past_context) if past_context else "None"
+        
