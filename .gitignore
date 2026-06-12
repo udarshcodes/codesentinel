@@ -8,3 +8,5 @@ node_modules/
 .vite/
 
 # Database
+chroma_data/
+temp.patch
