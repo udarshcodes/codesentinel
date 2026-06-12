@@ -7,3 +7,6 @@ langchain-google-genai
 groq
 PyGithub
 gitpython
+chromadb
+sentence-transformers
+pydantic
