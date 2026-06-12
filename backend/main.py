@@ -8,3 +8,8 @@ app = FastAPI(title="Multi-Agent Bug Detection System")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # Allow Vite local dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
