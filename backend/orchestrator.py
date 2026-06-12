@@ -14,3 +14,11 @@ from agents.pr_author import agent_pr_author
 # --- Graph Definition ---
 
 workflow = StateGraph(PipelineState)
+
+# Add nodes
+workflow.add_node("repo_mapper", agent_repo_mapper)
+workflow.add_node("dependency_analyzer", agent_dependency_analyzer)
+workflow.add_node("static_analysis", agent_static_analysis)
+workflow.add_node("bug_investigator", agent_bug_investigator)
+workflow.add_node("repair_planner", agent_repair_planner)
+workflow.add_node("code_generator", agent_code_generator)
