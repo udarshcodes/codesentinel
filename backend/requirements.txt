@@ -1,3 +1,6 @@
 fastapi
 sse-starlette
 uvicorn[standard]
+langchain
+langgraph
+langchain-google-genai
