@@ -1,0 +1,211 @@
+import os
+import json
+import time
+from models.pipeline_state import PipelineState
+from config import GROQ_API_KEYS
+from tools.llm_router import invoke_llm
+from github import Github
+from git import Repo
+from tools.prompt_cache import PR_AUTHOR_SYSTEM
+
+async def agent_pr_author(state: PipelineState):
+    GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+    repo_url = state.get("repo_url", "")
+    repair_plan = state.get("repair_plan", [])
+    security_verified = state.get("security_verified", False)
+    
+    if not GROQ_API_KEYS:
+        return {"pr_url": "", "confidence_score": 95.0, "pr_error": "No GROQ_API_KEY set."}
+
+    patches = state.get("patches", [])
+    if not patches:
+        existing_error = state.get("pr_error")
+        error_msg = existing_error if existing_error else "No bugs were found or no patches were generated, so no PR is needed."
+        return {"pr_url": "", "confidence_score": _calculate_confidence(state, security_verified), "pr_error": error_msg}
+
+    # Tier 1 — PR title/description is simple text generation, not reasoning.
+    prompt = f"""{PR_AUTHOR_SYSTEM}
+
+Write a professional GitHub Pull Request title and description for these applied fixes:
+{json.dumps(repair_plan)}
+Return JSON: {{"title": "...", "description": "..."}}"""
+    
+    try:
+        pr_data = invoke_llm(
+            prompt,
+            agent_name="pr_author",
+            tier=1,
+            expect_json=True,
+        )
+        if pr_data.get("error"):
+            pr_data = {"title": "Automated Security Fixes", "description": "Fixed vulnerabilities."}
+    except Exception:
+        pr_data = {"title": "Automated Security Fixes", "description": "Fixed vulnerabilities."}
+        
+    pr_url = ""
+    pr_error = ""
+    
+    if GITHUB_TOKEN and "github.com" in repo_url:
+        try:
+            # 1. Fork the repo first so we always have push access
+            g = Github(GITHUB_TOKEN)
+            parts = repo_url.split("github.com/")[-1].split("/")
+            repo_name = f"{parts[0]}/{parts[1].removesuffix('.git')}"
+            
+            source_repo = g.get_repo(repo_name)
+            user = g.get_user()
+            
+            # Check if we own the repo — if so, push directly
+            is_owner = source_repo.owner.login == user.login
+            
+            if is_owner:
+                target_repo = source_repo
+                push_repo_url = repo_url
+            else:
+                # Fork the repo to push to our fork
+                print(f"Forking {repo_name} to {user.login}...")
+                target_repo = user.create_fork(source_repo)
+                push_repo_url = target_repo.clone_url
+                # Give GitHub a moment to prepare the fork
+                time.sleep(3)
+            
+            repo_local_path = state.get("repo_local_path", "")
+            if repo_local_path and os.path.exists(repo_local_path):
+                # 2. Commit and push changes
+                git_repo = Repo(repo_local_path)
+                branch_name = f"codesentinel-fixes-{int(time.time())}"
+                new_branch = git_repo.create_head(branch_name)
+                new_branch.checkout()
+                
+                # Configure git user to prevent commit failures
+                with git_repo.config_writer() as cw:
+                    cw.set_value("user", "name", "CodeSentinel AI")
+                    cw.set_value("user", "email", "codesentinel@ai.local")
+                
+                # Clean up temp files before committing
+                for junk in ["temp.patch", ".pytest_cache"]:
+                    junk_path = os.path.join(repo_local_path, junk)
+                    if os.path.exists(junk_path):
+                        if os.path.isdir(junk_path):
+                            import shutil
+                            shutil.rmtree(junk_path, ignore_errors=True)
+                        else:
+                            os.remove(junk_path)
+                
+                # Remove __pycache__ dirs
+                for root, dirs, files in os.walk(repo_local_path):
+                    for d in dirs:
+                        if d == "__pycache__":
+                            import shutil
+                            shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+                
+                # Only add files that were explicitly modified by the patches
+                for patch in patches:
+                    if patch.get("applied") and patch.get("file"):
+                        try:
+                            git_repo.git.add(patch["file"])
+                        except Exception as e:
+                            print(f"[PR Author] Failed to git add {patch['file']}: {e}")
+                
+                # Check if there are actually changes to commit
+                if not git_repo.is_dirty() and not git_repo.untracked_files:
+                    pr_error = "No bugs were detected, or no valid code changes were generated by the AI."
+                    return {"pr_url": "", "confidence_score": _calculate_confidence(state, security_verified), "pr_error": pr_error}
+                
+                git_repo.index.commit(pr_data.get("title", "Automated Security Fixes"))
+                
+                auth_push_url = push_repo_url.replace("https://", f"https://oauth2:{GITHUB_TOKEN}@")
+                
+                # Check if auth_origin already exists (in case of retries)
+                if "auth_origin" in [r.name for r in git_repo.remotes]:
+                    git_repo.delete_remote("auth_origin")
+                remote = git_repo.create_remote("auth_origin", auth_push_url)
+                    
+                remote.push(branch_name)
+                
+                # 3. Open Pull Request via PyGithub
+                if is_owner:
+                    head_ref = branch_name
+                else:
+                    head_ref = f"{user.login}:{branch_name}"
+                    
+                desc = pr_data.get("description", "Fixed vulnerabilities.")
+                if isinstance(desc, list):
+                    desc = "- " + "\n- ".join(desc) if desc else "Fixed vulnerabilities."
+                elif not isinstance(desc, str):
+                    desc = str(desc)
+                    
+                pr = source_repo.create_pull(
+                    title=pr_data.get("title", "Automated Security Fixes"),
+                    body=desc,
+                    head=head_ref,
+                    base=source_repo.default_branch
+                )
+                pr_url = pr.html_url
+            else:
+                pr_error = "No local repo path found to commit changes from."
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            pr_error = str(e)
+            print(f"GitHub API Error: {e}")
+    else:
+        if not GITHUB_TOKEN:
+            pr_error = "GITHUB_TOKEN not set in .env"
+        else:
+            pr_error = "Not a GitHub URL"
+            
+    # Dynamic confidence score based on pipeline results
+    confidence_score = _calculate_confidence(state, security_verified)
+    
+    result = {
+        "pr_url": pr_url,
+        "confidence_score": confidence_score
+    }
+    if pr_error:
+        result["pr_error"] = pr_error
+    return result
+
+
+def _calculate_confidence(state, security_verified):
+    """
+    Calculate a dynamic confidence score (0-100) based on:
+    - How many issues were found and fixed
+    - Whether patches applied successfully 
+    - Whether validation passed
+    - Whether security re-verification passed
+    """
+    score = 0.0
+    
+    investigated_issues = state.get("investigated_issues", [])
+    repair_plan = state.get("repair_plan", [])
+    patches = state.get("patches", [])
+    validation_results = state.get("validation_results", [])
+    
+    # Base: 30 points for having a complete pipeline run
+    if repair_plan:
+        score += 30.0
+    
+    # Coverage: up to 25 points based on how many issues got patches
+    if investigated_issues:
+        coverage = len(patches) / max(len(investigated_issues), 1)
+        score += min(coverage, 1.0) * 25.0
+    
+    # Validation: up to 25 points based on validation results
+    if validation_results:
+        latest = validation_results[-1]
+        if latest.get("passed"):
+            score += 25.0
+        else:
+            # Partial credit if some files passed
+            files_passed = latest.get("files_passed", 0)
+            files_total = latest.get("files_validated", 1)
+            score += (files_passed / max(files_total, 1)) * 15.0
+    
+    # Security: 20 points if security re-verification passed
+    if security_verified:
+        score += 20.0
+    else:
+        score += 5.0  # Small credit for completing the step
+    
+    return round(min(score, 100.0), 1)
