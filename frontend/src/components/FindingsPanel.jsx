@@ -1,0 +1,70 @@
+import React from 'react'
+
+export default function FindingsPanel({ events }) {
+  // Extract findings from the bug_investigator or static_analysis events
+  let investigatedIssues = []
+  
+  events.forEach(e => {
+    if (e.event === 'agent_complete' && e.data?.agent === 'bug_investigator') {
+      investigatedIssues = e.data.data.investigated_issues || []
+    }
+  })
+
+  if (investigatedIssues.length === 0) return null
+
+  const getSeverityBadge = (severity) => {
+    const s = severity?.toLowerCase() || 'low'
+    switch (s) {
+      case 'critical':
+        return <span className="bg-red-500/20 text-red-400 border border-red-500/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-[0_0_10px_rgba(239,68,68,0.3)]">Critical</span>
+      case 'high':
+        return <span className="bg-orange-500/20 text-orange-400 border border-orange-500/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-[0_0_10px_rgba(249,115,22,0.3)]">High</span>
+      case 'medium':
+        return <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Medium</span>
+      default:
+        return <span className="bg-blue-500/20 text-blue-400 border border-blue-500/50 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest">Low</span>
+    }
+  }
+
+  return (
+    <div className="glass-panel p-6 sm:p-8 w-full max-w-6xl mx-auto mb-8 animate-fade-in-up !rounded-[2.5rem]">
+      <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
+        <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        Investigated Findings
+      </h2>
+
+      <div className="grid gap-4">
+        {investigatedIssues.map((issue, idx) => (
+          <div key={idx} className="bg-white hover:bg-slate-50 transition-colors border border-slate-200 rounded-[1.5rem] p-5 shadow-lg shadow-slate-200/50 group">
+            <div className="flex justify-between items-start mb-3">
+              <h3 className="text-lg font-bold text-slate-900 transition-colors">{issue.title || `Issue #${idx + 1}`}</h3>
+              <div>{getSeverityBadge(issue.severity)}</div>
+            </div>
+            
+            <p className="text-slate-600 text-sm mb-4 leading-relaxed">
+              {issue.root_cause || issue.description || 'No description provided.'}
+            </p>
+
+            {issue.affected_files && issue.affected_files.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Affected Files</p>
+                <div className="flex flex-wrap gap-2">
+                  {issue.affected_files.map((file, i) => (
+                    <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-xs font-mono text-slate-700">
+                      <svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      {file}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
