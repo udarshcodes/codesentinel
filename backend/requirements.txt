@@ -2,13 +2,13 @@ fastapi
 sse-starlette
 uvicorn[standard]
 langchain
-langgraph
-langchain-google-genai
-groq
+langchain-core
+langchain-groq
+langchain-huggingface
+sentence-transformers
 PyGithub
 gitpython
 chromadb
-sentence-transformers
 pydantic
 python-dotenv
 httpx
@@ -16,3 +16,5 @@ semgrep
 bandit
 pylint
 flake8
+tiktoken
+langgraph
