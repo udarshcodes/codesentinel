@@ -1,6 +1,15 @@
 import asyncio
 from langgraph.graph import StateGraph, END
 from models.pipeline_state import PipelineState
+
+# --- Global State for Approvals and SSE ---
+approval_events: dict[str, dict] = {}
+sse_queues: dict[str, asyncio.Queue] = {}
+
+async def broadcast_sse(task_id: str, payload: dict):
+    if task_id in sse_queues:
+        await sse_queues[task_id].put(payload)
+
 from agents.repo_mapper import agent_repo_mapper
 from agents.dependency_analyzer import agent_dependency_analyzer
 from agents.static_analysis import agent_static_analysis
@@ -35,7 +44,17 @@ workflow.add_edge("bug_investigator", "repair_planner")
 workflow.add_edge("repair_planner", "code_generator")
 workflow.add_edge("code_generator", "validator")
 workflow.add_edge("validator", "security_verifier")
-workflow.add_edge("security_verifier", "pr_author")
+
+def route_after_security(state: PipelineState) -> str:
+    if state.get('security_verified'):
+        return 'pr_author'
+    if state.get('retry_count', 0) >= 3:
+        return 'pr_author' # Skip after max retries
+    return 'code_generator' # Loop back
+
+workflow.add_conditional_edges('security_verifier', route_after_security,
+    {'pr_author': 'pr_author', 'code_generator': 'code_generator'})
+    
 workflow.add_edge("pr_author", END)
 
 # Compile the graph

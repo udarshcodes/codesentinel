@@ -1,8 +1,9 @@
-from typing import TypedDict
+from typing import Optional
+from typing_extensions import TypedDict, NotRequired
 
-class PipelineState(TypedDict, total=False):
+class PipelineState(TypedDict):
     repo_url: str
-    repo_local_path: str
+    repo_local_path: NotRequired[str]
     knowledge_graph: dict
     dependency_findings: list
     static_findings: list
@@ -11,9 +12,13 @@ class PipelineState(TypedDict, total=False):
     patches: list
     validation_results: list
     security_verified: bool
-    pr_url: str
-    pr_error: str
+    pr_url: NotRequired[str]
     retry_count: int
     awaiting_approval: bool
     confidence_score: float
-    token_usage: dict
+    security_retry_context: NotRequired[dict]
+    unresolvable_fixes: NotRequired[list]
+    token_usage: NotRequired[dict]
+    approval_payload: NotRequired[dict]
+    approval_decision: NotRequired[str]
+    pr_error: NotRequired[str]
