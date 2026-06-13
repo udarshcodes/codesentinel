@@ -1,1 +1,24 @@
-\n# Updated at 2026-06-12T17:44:49\n\n# Updated at 2026-06-14T11:16:10\n\n# Updated at 2026-06-16T12:58:38\n\n# Updated at 2026-06-16T13:06:35\n\n# Updated at 2026-06-16T21:58:43\n
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    depends_on:
+      - backend
