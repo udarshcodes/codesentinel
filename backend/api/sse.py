@@ -1,7 +1,8 @@
 import json
 from fastapi import APIRouter, Request
+import asyncio
 from sse_starlette.sse import EventSourceResponse
-from orchestrator import app as langgraph_app
+from orchestrator import app as langgraph_app, sse_queues
 
 router = APIRouter()
 
@@ -37,39 +38,58 @@ async def event_generator(repo_url: str):
         "token_usage": {},
     }
     
+    task_id = repo_url.split('/')[-1] # Simplistic task_id for phase 1 mock
+    state["task_id"] = task_id
+    
+    # Initialize the queue for this task
+    q = asyncio.Queue()
+    sse_queues[task_id] = q
+    
     yield {
         "data": json.dumps({"event": "pipeline_started", "data": {"repo_url": repo_url}})
     }
 
-    # Stream from LangGraph
     try:
-        async for output in langgraph_app.astream(state):
-            # output is a dict where key is node name and value is the state update
-            for node_name, state_update in output.items():
-                safe_update = make_serializable(state_update)
-                
-                event_data = {
-                    "agent": node_name,
-                    "status": "success",
-                    "data": safe_update
-                }
-                
-                if state_update.get("awaiting_approval"):
-                    yield {
-                        "data": json.dumps({
-                            "event": "approval_required",
-                            "data": {
-                                "agent": node_name,
-                                "fix": safe_update.get("repair_plan", [])
-                            }
-                        })
-                    }
-                    # We would break here in a real implementation to wait for POST /approve
-                    # For phase 1 mock, we just continue
-                
+        # Create an async generator for the LangGraph pipeline
+        astream_iter = langgraph_app.astream(state)
+        
+        astream_task = asyncio.create_task(anext(astream_iter, None))
+        queue_task = asyncio.create_task(q.get())
+        
+        while True:
+            done, pending = await asyncio.wait(
+                {astream_task, queue_task},
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Handle manual SSE events broadcasted from the queue (e.g. approval_required)
+            if queue_task in done:
+                payload = queue_task.result()
                 yield {
-                    "data": json.dumps({"event": "agent_complete", "data": event_data})
+                    "data": json.dumps(payload)
                 }
+                queue_task = asyncio.create_task(q.get())
+                
+            # Handle LangGraph state yields
+            if astream_task in done:
+                output = astream_task.result()
+                if output is None: # End of stream
+                    break
+                    
+                for node_name, state_update in output.items():
+                    safe_update = make_serializable(state_update)
+                    
+                    event_data = {
+                        "agent": node_name,
+                        "status": "success",
+                        "data": safe_update
+                    }
+                    
+                    yield {
+                        "data": json.dumps({"event": "agent_complete", "data": event_data})
+                    }
+                    
+                astream_task = asyncio.create_task(anext(astream_iter, None))
                 
         yield {
             "data": json.dumps({"event": "pipeline_complete", "data": {"status": "done"}})
@@ -80,6 +100,9 @@ async def event_generator(repo_url: str):
         yield {
             "data": json.dumps({"event": "error", "data": {"error": str(e)}})
         }
+    finally:
+        # Cleanup
+        sse_queues.pop(task_id, None)
 
 @router.get("/stream")
 async def stream_pipeline(repo_url: str, request: Request):

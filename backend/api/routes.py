@@ -33,11 +33,30 @@ async def start_analysis(request: AnalyzeRequest):
 
     return {"status": "accepted", "repo_urls": repos_to_analyze}
 
-class ApproveRequest(BaseModel):
-    patch_id: int
-    approved: bool
+from fastapi import HTTPException
+from orchestrator import approval_events, broadcast_sse
 
-@router.post("/approve")
-async def approve_fix(request: ApproveRequest):
-    # Resume the LangGraph here in a real implementation
-    return {"status": "resumed", "approved": request.approved}
+@router.post("/approve/{task_id}")
+async def submit_approval(task_id: str, body: dict):
+    '''
+    Body: {decision: 'approved' | 'rejected'}
+    Unblocks the pipeline that is paused at awaiting_approval.
+    '''
+    decision = body.get('decision')
+    if decision not in ('approved', 'rejected'):
+        raise HTTPException(400, 'decision must be approved or rejected')
+        
+    event_dict = approval_events.get(task_id)
+    if not event_dict:
+        raise HTTPException(404, 'No pipeline awaiting approval for this task')
+        
+    event_dict['decision'] = decision
+    event_dict['event'].set() # Unblock the waiting coroutine
+    
+    # Broadcast that the pipeline is resuming
+    await broadcast_sse(task_id, {
+        "event": "approval_resolved", 
+        "decision": decision
+    })
+    
+    return {'status': 'ok', 'decision': decision}

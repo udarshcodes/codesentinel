@@ -34,17 +34,16 @@ def token_usage(x_admin_token: str = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return get_usage_report()
 
-# We will mount the static assets once the admin_dashboard is built
+# Mount the entire dist folder for admin dashboard
 try:
-    app.mount("/admin/assets", StaticFiles(directory="admin_dashboard/dist/assets"), name="admin-assets")
-except RuntimeError:
-    print("[Warning] admin_dashboard/dist/assets not found yet. Build the React app first.")
-
-@app.get("/admin")
-def admin_dashboard():
-    if os.path.exists("admin_dashboard/dist/index.html"):
-        return FileResponse("admin_dashboard/dist/index.html")
-    return {"error": "Dashboard not built yet. Run npm run build in admin_dashboard."}
+    if os.path.exists("admin_dashboard/dist"):
+        app.mount("/admin", StaticFiles(directory="admin_dashboard/dist", html=True), name="admin")
+    else:
+        @app.get("/admin")
+        def admin_dashboard():
+            return {"error": "Dashboard not built yet. Run npm run build in admin_dashboard."}
+except Exception as e:
+    print(f"[Warning] Error mounting admin dashboard: {e}")
 
 if __name__ == "__main__":
     import uvicorn
