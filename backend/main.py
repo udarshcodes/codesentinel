@@ -37,6 +37,10 @@ def token_usage(x_admin_token: str = Header(None)):
 # Mount the entire dist folder for admin dashboard
 try:
     if os.path.exists("admin_dashboard/dist"):
+        @app.get("/admin")
+        def admin_dashboard_exact():
+            return FileResponse("admin_dashboard/dist/index.html")
+            
         app.mount("/admin", StaticFiles(directory="admin_dashboard/dist", html=True), name="admin")
     else:
         @app.get("/admin")

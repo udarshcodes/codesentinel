@@ -24,8 +24,14 @@ export function usePipeline(taskId) {
         try {
           const data = JSON.parse(e.data);
           dispatch({ type: 'AGENT_COMPLETE', payload: data });
-          if (data.findings) dispatch({ type: 'FINDINGS_UPDATED', payload: data.findings });
-          if (data.patches) dispatch({ type: 'PATCHES_UPDATED', payload: data.patches });
+          
+          const innerData = data.data || {};
+          if (innerData.static_findings) {
+            dispatch({ type: 'FINDINGS_UPDATED', payload: innerData.static_findings });
+          }
+          if (innerData.patches) {
+            dispatch({ type: 'PATCHES_UPDATED', payload: innerData.patches });
+          }
         } catch (err) {
           console.error('Error parsing agent_complete data', err);
         }

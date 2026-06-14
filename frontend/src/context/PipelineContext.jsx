@@ -28,7 +28,13 @@ function pipelineReducer(state, action) {
     case 'APPROVAL_RESOLVED':
       return { ...state, awaiting_approval: false, current_fix: null };
     case 'PIPELINE_COMPLETE':
-      return { ...state, status: 'complete', confidence_score: action.payload.confidence_score, pr_url: action.payload.pr_url };
+      return { 
+        ...state, 
+        status: 'complete', 
+        confidence_score: action.payload.confidence_score, 
+        pr_url: action.payload.pr_url,
+        pr_error: action.payload.pr_error 
+      };
     case 'VALIDATION_FAILED':
       return { ...state, status: 'validating_failed' };
     case 'RESET':

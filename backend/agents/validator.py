@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import asyncio
 from models.pipeline_state import PipelineState
 from tools.vector_store import query_similar_fixes, store_validated_fix
 
@@ -149,11 +150,11 @@ async def agent_validator(state: PipelineState):
     issue = next((i for i in investigated_issues if i.get("id") == patches[-1].get("patch_id")), {})
     issue_desc = issue.get("description", str(issue))
     
-    def compute_confidence(tests_passed, tests_total, security_clean, issue_desc) -> float:
+    async def compute_confidence(tests_passed, tests_total, security_clean, issue_desc) -> float:
         tests_ratio = tests_passed / tests_total if tests_total > 0 else 0.0
         static_clean = 1.0 if security_clean else 0.0
         
-        similar = query_similar_fixes(issue_desc, n_results=1)
+        similar = await asyncio.to_thread(query_similar_fixes, issue_desc, 1)
         chroma_score = similar[0].get('confidence', 0.0) if similar else 0.0
         
         return round(
@@ -161,11 +162,12 @@ async def agent_validator(state: PipelineState):
             2
         )
         
-    confidence = compute_confidence(files_passed, files_validated, False, issue_desc)
+    confidence = await compute_confidence(files_passed, files_validated, False, issue_desc)
     
     if all_passed:
         for patch in patches:
-            store_validated_fix(
+            await asyncio.to_thread(
+                store_validated_fix,
                 issue_description=issue_desc,
                 patch=patch.get("diff", ""),
                 confidence=confidence

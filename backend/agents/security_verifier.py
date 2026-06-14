@@ -4,8 +4,12 @@ import os
 
 async def agent_security_verifier(state: PipelineState):
     validation_results = state.get("validation_results", [])
+    existing_retries = state.get('retry_count', 0)
     if not validation_results or not validation_results[-1].get("passed"):
-        return {"security_verified": False}
+        return {
+            "security_verified": False,
+            "retry_count": existing_retries + 1
+        }
         
     patches = state.get('patches', [])
     repo_local_path = state.get('repo_local_path', '')
