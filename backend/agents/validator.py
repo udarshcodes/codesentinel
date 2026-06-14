@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 from models.pipeline_state import PipelineState
+from tools.vector_store import query_similar_fixes, store_validated_fix
 
 async def agent_validator(state: PipelineState):
     repo_local_path = state.get("repo_local_path", "")
@@ -87,31 +88,91 @@ async def agent_validator(state: PipelineState):
         else:
             logs_list.append(f"[SKIP] {target_file} - no validator for this file type")
     
-    # Also try running tests if pytest is available
-    test_logs = ""
-    try:
-        res = subprocess.run(
-            [sys.executable, "-m", "pytest", "--tb=short", "-q"],
-            cwd=repo_local_path,
-            capture_output=True, text=True,
-            timeout=30
-        )
-        test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
-        if res.returncode != 0:
-            # Don't fail validation just because there are no tests
-            if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
-                all_passed = False
-    except Exception as e:
-        test_logs = f"No test suite found (pytest not available or timed out): {e}"
+    # Dynamic test suite execution
+    knowledge_graph = state.get("knowledge_graph", {})
+    test_framework = knowledge_graph.get("test_framework", "")
     
-    # Create a new list rather than mutating the state list directly
+    test_logs = ""
+    if test_framework:
+        cmd = test_framework.split(" ")
+        try:
+            res = subprocess.run(
+                cmd,
+                cwd=repo_local_path,
+                capture_output=True, text=True,
+                timeout=60
+            )
+            test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
+            if res.returncode != 0:
+                if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
+                    all_passed = False
+        except Exception as e:
+            test_logs = f"Failed to execute dynamic test suite '{test_framework}': {e}"
+    else:
+        # Fallback to pytest if not specified
+        try:
+            res = subprocess.run(
+                [sys.executable, "-m", "pytest", "--tb=short", "-q"],
+                cwd=repo_local_path,
+                capture_output=True, text=True,
+                timeout=30
+            )
+            test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
+            if res.returncode != 0:
+                if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
+                    all_passed = False
+        except Exception as e:
+            test_logs = f"No test suite found (pytest not available or timed out): {e}"
+    
+    retry_count = state.get("retry_count", 0)
+    unresolvable = False
+    unresolvable_fixes = state.get("unresolvable_fixes", [])
+    
+    if not all_passed and retry_count >= 3:
+        unresolvable = True
+        unresolvable_fixes.append(patches[-1].get("patch_id", 0))
+    
     new_validation_results = list(validation_results)
+    files_validated = len(patches)
+    files_passed = sum(1 for l in logs_list if "[PASS]" in l)
+    
     new_validation_results.append({
         "patch_id": patches[-1].get("patch_id", 0),
         "passed": all_passed,
+        "unresolvable": unresolvable,
         "logs": "\n".join(logs_list) + "\n\nTest Results:\n" + test_logs,
-        "files_validated": len(patches),
-        "files_passed": sum(1 for l in logs_list if "[PASS]" in l)
+        "files_validated": files_validated,
+        "files_passed": files_passed
     })
     
-    return {"validation_results": new_validation_results}
+    investigated_issues = state.get("investigated_issues", [])
+    issue = next((i for i in investigated_issues if i.get("id") == patches[-1].get("patch_id")), {})
+    issue_desc = issue.get("description", str(issue))
+    
+    def compute_confidence(tests_passed, tests_total, security_clean, issue_desc) -> float:
+        tests_ratio = tests_passed / tests_total if tests_total > 0 else 0.0
+        static_clean = 1.0 if security_clean else 0.0
+        
+        similar = query_similar_fixes(issue_desc, n_results=1)
+        chroma_score = similar[0].get('confidence', 0.0) if similar else 0.0
+        
+        return round(
+            (tests_ratio * 0.5) + (static_clean * 0.3) + (chroma_score * 0.2),
+            2
+        )
+        
+    confidence = compute_confidence(files_passed, files_validated, False, issue_desc)
+    
+    if all_passed:
+        for patch in patches:
+            store_validated_fix(
+                issue_description=issue_desc,
+                patch=patch.get("diff", ""),
+                confidence=confidence
+            )
+    
+    return {
+        "validation_results": new_validation_results,
+        "confidence_score": confidence,
+        "unresolvable_fixes": unresolvable_fixes
+    }

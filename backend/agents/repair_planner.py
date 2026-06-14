@@ -1,5 +1,7 @@
 import json
+import asyncio
 from models.pipeline_state import PipelineState
+from orchestrator import approval_events, broadcast_sse
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import REPAIR_PLANNER_SYSTEM
@@ -39,8 +41,46 @@ Return ONLY valid JSON array:
         print(f"Error planning repairs: {e}")
         repair_plan = []
         
+    HIGH_RISK_KEYWORDS = [
+        'jwt', 'token', 'auth', 'password', 'secret', 'crypto', 'encrypt',
+        'schema', 'migration', 'database', 'drop table', 'alter table'
+    ]
+
+    def classify_risk(fix: dict) -> str:
+        description = (fix.get('description', '') + fix.get('files_to_change', '') + fix.get('reasoning', '') + fix.get('action', '')).lower()
+        for kw in HIGH_RISK_KEYWORDS:
+            if kw in description:
+                return 'high-risk'
+        return 'low-risk'
+        
+    for fix in repair_plan:
+        if fix.get('risk') != 'high-risk':
+            fix['risk'] = classify_risk(fix)
+            
     # Check if any fix is high-risk to pause pipeline
     awaiting_approval = any(item.get("risk") == "high-risk" for item in repair_plan)
+    task_id = state.get("task_id", "")
+    
+    if awaiting_approval and task_id:
+        event = asyncio.Event()
+        approval_events[task_id] = {'event': event, 'decision': None}
+        
+        await broadcast_sse(task_id, {
+            'event': 'approval_required',
+            'data': {
+                'agent': 'repair_planner',
+                'fix': repair_plan
+            }
+        })
+        
+        await event.wait()
+        decision = approval_events.pop(task_id).get('decision')
+        
+        return {
+            "repair_plan": repair_plan,
+            "awaiting_approval": False, # Consumed
+            "approval_decision": decision
+        }
     
     result = {
         "repair_plan": repair_plan,
