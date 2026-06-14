@@ -15,9 +15,12 @@ async def agent_code_generator(state: PipelineState):
     retry_count = state.get("retry_count", 0)
     
     validation_results = state.get("validation_results", [])
+    security_retry_context = state.get("security_retry_context", [])
     failure_context = ""
     if validation_results and not validation_results[-1].get("passed"):
-        failure_context = f"PREVIOUS PATCH FAILED. Logs: {validation_results[-1].get('logs')}"
+        failure_context = f"PREVIOUS PATCH FAILED TESTS. Logs: {validation_results[-1].get('logs')}"
+    elif security_retry_context:
+        failure_context = f"PREVIOUS PATCH FAILED SECURITY VERIFICATION. Remaining vulnerability details: {json.dumps(security_retry_context)}"
 
     if not repair_plan or not GROQ_API_KEYS:
         return {"patches": patches}
@@ -83,26 +86,19 @@ Current file content:
             if file_content and repo_local_path:
                 full_path = os.path.join(repo_local_path, target_file)
                 
-                # Write the unified diff to a temporary file
-                patch_path = os.path.join(repo_local_path, "temp.patch")
-                with open(patch_path, "w") as f:
-                    f.write(fixed_content)
-                    
-                # Apply the patch using the patch command
-                try:
-                    subprocess.run(["patch", "-p1", "-i", "temp.patch"], cwd=repo_local_path, check=True, capture_output=True)
+                from tools.patch_applier import apply_patch
+                patch_result = apply_patch(fixed_content, repo_local_path)
+                
+                if patch_result["success"]:
                     print(f"[CodeGenerator] Successfully applied patch to {target_file}")
                     
                     # Read back the modified content to create a diff for the UI
                     with open(full_path, "r", errors="ignore") as f:
                         new_content = f.read()
                     diff = _generate_diff(file_content, new_content, target_file)
-                except subprocess.CalledProcessError as e:
-                    print(f"[CodeGenerator] Patch failed to apply on {target_file}: {e.stderr}")
+                else:
+                    print(f"[CodeGenerator] Patch failed to apply on {target_file}: {patch_result['stderr']}")
                     diff = fixed_content # Show what the LLM generated even if it failed to apply
-                finally:
-                    if os.path.exists(patch_path):
-                        os.remove(patch_path)
             else:
                 diff = fixed_content
             
