@@ -184,7 +184,6 @@ def invoke_llm(
                 # Fallback to offline approximation
                 completion_tokens = count_tokens(raw)
                 
-            set_cached(prompt, current_model, raw)
             break
             
         except Exception as e:
@@ -216,6 +215,8 @@ def invoke_llm(
         _record(agent_name, prompt_tokens, completion_tokens, current_model)
 
         if not expect_json:
+            if res_content is None:
+                set_cached(prompt, current_model, raw)
             return raw
 
         try:
@@ -230,6 +231,11 @@ def invoke_llm(
                 raise ValueError(f"No JSON found in response: {cleaned[:200]}")
 
             parsed = json.loads(match.group(0))
+            
+            # Cache the raw string only if it successfully parses!
+            if res_content is None:
+                set_cached(prompt, current_model, raw)
+                
             return parsed
 
         except Exception as e:

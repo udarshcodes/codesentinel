@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.vector_store import query_similar_fixes
@@ -89,8 +90,8 @@ If no bugs, return: {{"found": false}}"""
         else:
             pruned_content = file_content[:3000]
             
-        # RAG - Query past fixes
-        past_context = query_similar_fixes(issue_desc)
+        # Query ChromaDB for past successful fixes in a background thread to prevent blocking
+        past_context = await asyncio.to_thread(query_similar_fixes, issue_desc)
         past_context_str = "\n".join([f'Past fix for similar issue:\n{f["patch"]}' for f in past_context]) if past_context else "None"
         
         # Use localized graph instead of full knowledge graph
