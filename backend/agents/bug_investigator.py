@@ -2,7 +2,7 @@ import os
 import json
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
-from tools.vector_store import query_past_fixes
+from tools.vector_store import query_similar_fixes
 from tools.llm_router import invoke_llm
 from tools import context_cache
 from tools.prompt_cache import BUG_INVESTIGATOR_SYSTEM
@@ -39,7 +39,7 @@ async def agent_bug_investigator(state: PipelineState):
                 
                 prompt = f"""{BUG_INVESTIGATOR_SYSTEM}
 
-Review the following file for any LOGICAL BUGS, SYNTAX ERRORS, or UNDEFINED VARIABLES.
+Review the following file for any LOGICAL BUGS, SYNTAX ERRORS, UNDEFINED VARIABLES, MEMORY LEAKS, N+1 DATABASE QUERY PATTERNS, or INEFFICIENT LOOPS.
 File: {rel_path}
 
 Content:
@@ -90,8 +90,8 @@ If no bugs, return: {{"found": false}}"""
             pruned_content = file_content[:3000]
             
         # RAG - Query past fixes
-        past_context = query_past_fixes(issue_desc)
-        past_context_str = "\n".join(past_context) if past_context else "None"
+        past_context = query_similar_fixes(issue_desc)
+        past_context_str = "\n".join([f'Past fix for similar issue:\n{f["patch"]}' for f in past_context]) if past_context else "None"
         
         # Use localized graph instead of full knowledge graph
         localized_graph = context_cache.get_localized_graph(repo_url, file_path)
@@ -110,7 +110,7 @@ File Content:
 Repository Context: {json.dumps(localized_graph)}
 Past similar fixes for context: {past_context_str}
 
-Determine the root cause, severity (critical, high, medium, low), and affected files.
+Determine the root cause, severity ("low", "medium", "high"), and affected files.
 Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "...", "severity": "...", "affected_files": ["..."]}}"""
         
         try:

@@ -93,4 +93,68 @@ async def agent_static_analysis(state: PipelineState):
     except Exception as e:
         print(f"ESLint execution skipped or failed: {e}")
 
-    return {"static_findings": findings}
+    # 4. Pylint
+    pylint_path = shutil.which("pylint")
+    if pylint_path:
+        try:
+            result = subprocess.run(
+                [pylint_path, '--disable=all', '--enable=W0611,W0612,R0801,R0401,R0915', '-f', 'json', '.'],
+                cwd=repo_local_path,
+                capture_output=True,
+                text=True
+            )
+            if result.stdout:
+                try:
+                    data = json.loads(result.stdout)
+                    for hit in data:
+                        file_path = hit.get("path", "")
+                        findings.append({
+                            "file": file_path,
+                            "issue": hit.get("message", "Pylint issue"),
+                            "tool": "pylint",
+                            "severity": "MEDIUM",
+                            "line": hit.get("line", 1)
+                        })
+                except json.JSONDecodeError:
+                    pass
+        except Exception as e:
+            print(f"Pylint execution skipped or failed: {e}")
+    else:
+        print("[StaticAnalysis] pylint not found in PATH, skipping.")
+
+    # 5. Flake8
+    flake8_path = shutil.which("flake8")
+    if flake8_path:
+        try:
+            result = subprocess.run(
+                [flake8_path, '.'],
+                cwd=repo_local_path,
+                capture_output=True,
+                text=True
+            )
+            if result.stdout:
+                for line in result.stdout.splitlines():
+                    parts = line.split(":", 3)
+                    if len(parts) >= 4:
+                        findings.append({
+                            "file": parts[0],
+                            "issue": parts[3].strip(),
+                            "tool": "flake8",
+                            "severity": "LOW",
+                            "line": parts[1]
+                        })
+        except Exception as e:
+            print(f"Flake8 execution skipped or failed: {e}")
+    else:
+        print("[StaticAnalysis] flake8 not found in PATH, skipping.")
+
+    # Deduplicate findings by file and line
+    deduped_findings = []
+    seen = set()
+    for f in findings:
+        key = f"{f['file']}:{f['line']}:{f['tool']}"
+        if key not in seen:
+            seen.add(key)
+            deduped_findings.append(f)
+
+    return {"static_findings": deduped_findings}

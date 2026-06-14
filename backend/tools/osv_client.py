@@ -1,0 +1,28 @@
+import httpx
+
+OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch'
+
+async def batch_query_osv(packages: list[dict]) -> dict:
+    """
+    packages: [{'name': str, 'version': str, 'ecosystem': str}, ...]
+    Returns dict keyed by package name with list of CVEs
+    """
+    if not packages:
+        return {}
+        
+    queries = [
+        {'version': p['version'], 'package': {'name': p['name'], 'ecosystem': p['ecosystem']}}
+        for p in packages
+    ]
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(OSV_BATCH_URL, json={'queries': queries}, timeout=15.0)
+            if r.status_code == 200:
+                results = r.json().get('results', [])
+                # The length of results from querybatch matches the length of queries
+                return {packages[i]['name']: results[i].get('vulns', []) for i in range(min(len(packages), len(results)))}
+    except Exception as e:
+        print(f"[OSVClient] Error making batch request: {e}")
+        
+    return {}
