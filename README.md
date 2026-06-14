@@ -1,76 +1,60 @@
 <div align="center">
-  <img src="frontend/public/logo.jpg" alt="CodeSentinel Logo" width="200" height="200" style="border-radius: 50%;" />
-  <h1>CodeSentinel</h1>
-  <p><strong>Autonomous AI Code Review & Remediation</strong></p>
-  <p><em>Don't just find vulnerabilities. Fix them.</em></p>
+  <br />
+  <a href="https://github.com/yourusername/codesentinel" style="display: flex; justify-content: center; align-items: center; gap: 20px; text-decoration: none;">
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=45&pause=1500&color=00D2FF&center=true&vCenter=true&width=1000&height=120&lines=CodeSentinel;Autonomous+AI+Code+Remediation;Stop+drowning+in+alerts;Automate+your+remediation" alt="CodeSentinel Typing SVG" />
+    <img src="frontend/public/logo.jpg" alt="CodeSentinel Logo" width="120" height="120" style="border-radius: 50%;" />
+  </a>
+  <br />
 </div>
 
 ---
 
-## 📖 Overview
+## Problem Statement
 
-**CodeSentinel** is a production-grade, multi-agent AI system that shifts application security from reactive alerting to proactive remediation. Instead of drowning engineering teams in static analysis alerts, CodeSentinel automatically clones repositories, detects bugs via deterministic SAST tools, investigates root causes using LLMs, generates standard unified diffs, runs local test suites to validate patches, and opens a Pull Request with the fix.
+### Alert Fatigue Is Killing Your Codebase
 
-## 🚀 Tech Stack & Justifications
+Today's modern CI/CD pipelines are exceptional at finding problems and almost useless at solving them. Every commit triggers a fresh wave of SAST warnings, dependency CVEs, and lint failures that pile up faster than any team can review them. Developers stop reading the alerts. Security debt compounds quietly in the background until it becomes a breach.
+
+**This leads to:**
+- Backlogs of unresolved vulnerabilities that nobody has time to investigate.
+- Critical fixes delayed for weeks because triage requires deep repo context.
+- Inconsistent patches when different engineers fix the same class of bug differently.
+- Growing distance between detection tooling and the people who can actually act on it.
+
+---
+
+## Solution
+
+> The problem isn't that scanners don't find the bugs.
+> It's that finding a bug and fixing it correctly are two completely different jobs.
+
+**CodeSentinel** is an autonomous agent mesh that closes that gap. It does not just flag issues, it reads your repository like an engineer would, plans a fix, writes the patch, tests it, re-scans it for the original vulnerability, and opens a pull request ready for human review.
+
+Instead of adding another dashboard of red warnings, CodeSentinel turns those warnings into shipped code.
+
+---
+
+## Tech Stack & Architecture
 
 ### Backend
-- **Python 3.10+ & FastAPI:** Chosen for its asynchronous speed, native Pydantic validation, and excellent support for Server-Sent Events (SSE).
-- **LangGraph:** Provides a robust Directed Acyclic Graph (DAG) state machine for orchestrating multiple discrete AI agents, enabling cyclic loops (e.g., test -> fail -> fix -> test).
-- **ChromaDB:** A lightweight embedded vector database used to store and semantically retrieve past validated fixes to improve LLM context via RAG.
-- **Groq API:** Utilized for sub-second LLM inference latency. Multi-tier routing sends simple tasks to smaller models and complex code generation to 70B+ parameter models.
+- **Python 3.10+ & FastAPI:** Asynchronous speed, Pydantic validation, and Server-Sent Events (SSE).
+- **LangGraph:** Robust Directed Acyclic Graph (DAG) state machine orchestrating discrete AI agents, enabling cyclic validation loops (test -> fail -> fix -> test).
+- **ChromaDB:** Lightweight embedded vector database storing and retrieving past validated fixes via RAG.
+- **Groq API:** Multi-tier routing sending simple tasks to rapid models and complex code generation to 70B+ parameters.
 
 ### Frontend
 - **React 18 & Vite:** Lightning-fast HMR and optimized production builds.
 - **Tailwind CSS:** Utility-first CSS for rapid, highly-customizable responsive design.
-- **Context API & Custom Hooks:** Cleanly decouples SSE streaming state and asynchronous HTTP mutations from the component tree.
+- **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners:** Integrates `Semgrep`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` as the deterministic baseline for bug detection.
+- **SAST Runners:** `Semgrep`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
+- **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
 
 ---
 
-## 📂 Folder & File Structure
-
-```text
-codesentinel/
-├── backend/
-│   ├── main.py                  # FastAPI entry point & static asset mounter
-│   ├── orchestrator.py          # LangGraph state machine & event queues
-│   ├── config.py                # Environment & LLM key rotation pool
-│   ├── api/
-│   │   ├── routes.py            # POST endpoints (analysis initiation, approvals)
-│   │   └── sse.py               # SSE streaming endpoint for pipeline observability
-│   ├── agents/                  # LangGraph Node Actors
-│   │   ├── repo_mapper.py       # Builds AST knowledge graph of target repo
-│   │   ├── static_analysis.py   # Subprocess orchestration for SAST tools
-│   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
-│   │   ├── repair_planner.py    # Formulates fixes & requests human approval
-│   │   ├── code_generator.py    # Generates standard unified diffs
-│   │   ├── validator.py         # Dynamic test suite execution & retry loops
-│   │   └── pr_author.py         # Pull Request synthesizer
-│   ├── models/
-│   │   └── pipeline_state.py    # Strictly typed state schema via NotRequired TypedDict
-│   ├── tools/
-│   │   ├── patch_applier.py     # OS-level unified diff validation & application
-│   │   ├── github_client.py     # PyGithub abstraction layer
-│   │   └── prompt_cache.py      # Version-controlled system prompts
-│   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
-└── frontend/
-    ├── src/
-    │   ├── context/
-    │   │   └── PipelineContext.jsx # Global Reducer for SSE event payloads
-    │   ├── hooks/
-    │   │   ├── usePipeline.js   # SSE connection management & auto-retry
-    │   │   └── useApproval.js   # Async mutation hook for human intervention
-    │   ├── components/          # Reusable UI components (DiffViewer, PipelineView)
-    │   └── App.jsx              # Main UI Shell
-    └── vite.config.js           # API proxy configuration
-```
-
----
-
-## ⚙️ Architecture Data Flow
+## Data Flow
 
 ```mermaid
 graph TD
@@ -96,12 +80,12 @@ graph TD
 
 ---
 
-## 🛠️ Local Setup Instructions
+## Local Setup Instructions
 
 ### 1. Prerequisites
 - Python 3.10+
 - Node.js 18+
-- Git, `patch` utility, and standard SAST tools (`semgrep`, `bandit`, `flake8`, `pylint`, `eslint`).
+- Git and standard SAST tools (`semgrep`, `bandit`, `flake8`, `pylint`, `eslint`).
 
 ### 2. Clone & Backend Setup
 ```bash
@@ -140,14 +124,14 @@ ADMIN_SECRET=your_super_secret_password
 ```
 
 ### 6. Run the Application
-Start the Backend (Terminal 1):
+**Start the Backend (Terminal 1):**
 ```bash
 cd backend
 python main.py
 # Runs Uvicorn on http://localhost:8000
 ```
 
-Start the Frontend (Terminal 2):
+**Start the Frontend (Terminal 2):**
 ```bash
 cd frontend
 npm run dev
@@ -158,7 +142,7 @@ Navigate to `http://localhost:5173` to use the app.
 
 ---
 
-## 🔌 API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -170,27 +154,48 @@ Navigate to `http://localhost:5173` to use the app.
 
 ---
 
-## 🔒 Security Considerations
+## Security Considerations
 
-1. **Prompt Injection Prevention:** The `patch_applier.py` strictly validates the presence of `---`, `+++`, and `@@` standard diff markers before passing any LLM output to the system `patch` command.
+1. **Deterministic Patching:** The custom Python patch engine ensures exactly what the AI suggests is applied, bypassing brittle system patch limits while maintaining strict character matching.
 2. **Ephemeral Sandboxing:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit.
 3. **Secret Management:** LLM API keys and GitHub tokens are strictly confined to the backend environment and never exposed via SSE payloads.
 
 ---
 
-## 🚀 Deployment
+## Project Structure
 
-1. **Backend:** Deploy via Docker using `gunicorn` with `uvicorn.workers.UvicornWorker`. Ensure the host has the necessary SAST binaries installed in the `$PATH`.
-2. **Frontend:** Build the frontend (`npm run build`) and serve the `/dist` directory via an Nginx reverse proxy, CDN, or directly via FastAPI's `StaticFiles` mounter.
-3. **Admin Dashboard:** Ensure `backend/admin_dashboard/dist` is built prior to backend startup, as FastAPI mounts this directory at boot.
-
----
-
-## 🤝 Contribution Guide
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/your-feature-name`.
-3. Ensure type safety using `mypy` against the strictly typed `PipelineState` schema.
-4. Submit a Pull Request describing your changes and link any relevant issues.
-
-<div align="center">
-</div>
+```text
+codesentinel/
+├── backend/
+│   ├── main.py                  # FastAPI entry point & static asset mounter
+│   ├── orchestrator.py          # LangGraph state machine & event queues
+│   ├── config.py                # Environment & LLM key rotation pool
+│   ├── api/
+│   │   ├── routes.py            # POST endpoints (analysis initiation, approvals)
+│   │   └── sse.py               # SSE streaming endpoint for pipeline observability
+│   ├── agents/                  # LangGraph Node Actors
+│   │   ├── repo_mapper.py       # Builds AST knowledge graph of target repo
+│   │   ├── static_analysis.py   # Subprocess orchestration for SAST tools
+│   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
+│   │   ├── repair_planner.py    # Formulates fixes & requests human approval
+│   │   ├── code_generator.py    # Generates Search/Replace blocks
+│   │   ├── validator.py         # Dynamic test suite execution & retry loops
+│   │   └── pr_author.py         # Pull Request synthesizer
+│   ├── models/
+│   │   └── pipeline_state.py    # Strictly typed state schema
+│   ├── tools/
+│   │   ├── patch_applier.py     # Pure Python search & replace patch engine
+│   │   ├── github_client.py     # PyGithub abstraction layer
+│   │   └── prompt_cache.py      # Version-controlled system prompts
+│   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
+└── frontend/
+    ├── src/
+    │   ├── context/
+    │   │   └── PipelineContext.jsx # Global Reducer for SSE event payloads
+    │   ├── hooks/
+    │   │   ├── usePipeline.js   # SSE connection management & auto-retry
+    │   │   └── useApproval.js   # Async mutation hook for human intervention
+    │   ├── components/          # Reusable UI components (DiffViewer, PipelineView)
+    │   └── App.jsx              # Main UI Shell
+    └── vite.config.js           # API proxy configuration
+```
