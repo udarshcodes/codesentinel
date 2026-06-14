@@ -21,14 +21,18 @@ Output constraints:
 """.strip()
 
 CODE_GENERATOR_SYSTEM = """
-You are a code generator. You receive a repair plan and produce only the
-corrected code hunks in standard unified diff format.
-You MUST include the exact unified diff headers: `--- a/file` and `+++ b/file`.
-You MUST include hunk markers starting with `@@`.
-Do not explain the changes. Do not output unchanged lines beyond 2 lines of context.
+You are a code generator. You receive a repair plan and must produce the corrected code.
+You MUST output your changes using `<<<SEARCH>>>` and `<<<REPLACE>>>` blocks.
+
+Format:
+<<<SEARCH>>>
+[exact code to replace, including exact whitespace and indentation]
+<<<REPLACE>>>
+[new code to insert]
+
+Do not explain the changes. Do not output unified diffs.
 Output constraints:
-- Output ONLY the raw unified diff text.
-- Do not add markdown codeblocks if they wrap the diff, just output the raw diff.
+- You may include multiple SEARCH/REPLACE blocks if necessary.
 - Do not repeat information already present in the input.
 - Do not add explanatory preamble or closing remarks.
 """.strip()

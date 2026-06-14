@@ -87,7 +87,7 @@ Current file content:
                 full_path = os.path.join(repo_local_path, target_file)
                 
                 from tools.patch_applier import apply_patch
-                patch_result = apply_patch(fixed_content, repo_local_path)
+                patch_result = apply_patch(fixed_content, repo_local_path, target_file)
                 
                 if patch_result["success"]:
                     print(f"[CodeGenerator] Successfully applied patch to {target_file}")
@@ -113,7 +113,11 @@ Current file content:
             import traceback
             traceback.print_exc()
             
-    result = {"patches": patches + new_patches}
+    # Remove previous failed patches for the same issues so we don't accumulate duplicates on retries
+    current_issue_ids = [plan.get("issue_id") for plan in repair_plan]
+    existing_patches = [p for p in patches if p.get("patch_id") not in current_issue_ids]
+            
+    result = {"patches": existing_patches + new_patches}
     if repair_plan and not new_patches:
         result["pr_error"] = state.get("pr_error", "Failed to generate code patches: API Rate Limit Exceeded or LLM failure.")
         
