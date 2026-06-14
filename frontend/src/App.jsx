@@ -17,6 +17,12 @@ function App() {
   const isAnalyzing = pipelineState.status === 'running'
   const isComplete = pipelineState.status === 'complete' || pipelineState.status === 'validating_failed'
 
+  const syntheticEvents = [
+    ...pipelineState.agents.map(a => ({ event: 'agent_complete', data: a })),
+    ...(pipelineState.status === 'awaiting_approval' ? [{ event: 'approval_required' }] : []),
+    ...(pipelineState.status === 'complete' ? [{ event: 'pipeline_complete' }] : [])
+  ];
+
   const startAnalysis = async (e) => {
     e.preventDefault()
     if (!repoUrlInput) return
@@ -112,17 +118,17 @@ function App() {
         {/* Beautiful Dynamic Components */}
         {pipelineState.agents.length > 0 && (
           <>
-            <PipelineView events={pipelineState.agents.map(a => ({ data: a }))} />
-            <FindingsPanel events={pipelineState.agents.map(a => ({ data: a }))} />
-            <DiffViewer events={pipelineState.agents.map(a => ({ data: a }))} />
+            <PipelineView events={syntheticEvents} />
+            <FindingsPanel events={syntheticEvents} />
+            <DiffViewer events={syntheticEvents} />
           </>
         )}
 
-        {isComplete && pipelineState.pr_url && (
+        {isComplete && (pipelineState.pr_url || pipelineState.pr_error) && (
           <PRSummary 
             prUrl={pipelineState.pr_url} 
             confidenceScore={pipelineState.confidence_score}
-            prError={null}
+            prError={pipelineState.pr_error}
           />
         )}
       </main>
