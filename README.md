@@ -193,5 +193,4 @@ Navigate to `http://localhost:5173` to use the app.
 4. Submit a Pull Request describing your changes and link any relevant issues.
 
 <div align="center">
-  <p>Built with ❤️ for autonomous software engineering.</p>
 </div>
