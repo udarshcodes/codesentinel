@@ -4,81 +4,48 @@ import PRSummary from './components/PRSummary'
 import PipelineView from './components/PipelineView'
 import FindingsPanel from './components/FindingsPanel'
 import DiffViewer from './components/DiffViewer'
+import { usePipeline } from './hooks/usePipeline'
+import { useApproval } from './hooks/useApproval'
 
 function App() {
-  const [repoUrl, setRepoUrl] = useState('')
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [events, setEvents] = useState([])
-  const [approvalData, setApprovalData] = useState(null)
-  const [finalData, setFinalData] = useState(null)
+  const [repoUrlInput, setRepoUrlInput] = useState('')
+  const [activeTaskId, setActiveTaskId] = useState(null)
+
+  const pipelineState = usePipeline(activeTaskId)
+  const approval = useApproval(activeTaskId)
+
+  const isAnalyzing = pipelineState.status === 'running'
+  const isComplete = pipelineState.status === 'complete' || pipelineState.status === 'validating_failed'
 
   const startAnalysis = async (e) => {
     e.preventDefault()
-    if (!repoUrl) return
+    if (!repoUrlInput) return
     
-    setIsAnalyzing(true)
-    setEvents([])
-    setApprovalData(null)
-    setFinalData(null)
-
     try {
       await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repoUrl })
+        body: JSON.stringify({ repo_url: repoUrlInput })
       })
-      
-      const sse = new EventSource(`/api/stream?repo_url=${encodeURIComponent(repoUrl)}`)
-      
-      sse.onmessage = (event) => {
-        const parsed = JSON.parse(event.data)
-        
-        if (parsed.event === 'approval_required') {
-          setApprovalData(JSON.parse(parsed.data))
-        } else {
-          setEvents(prev => [...prev, parsed])
-          
-          // Check for final PR data
-          if (parsed.data?.agent === 'pr_author' && parsed.data?.status === 'success') {
-            setFinalData(parsed.data.data)
-          }
-        }
-        
-        if (parsed.event === 'pipeline_complete' || parsed.event === 'error') {
-          sse.close()
-          setIsAnalyzing(false)
-        }
-      }
-
-      sse.onerror = () => {
-        sse.close()
-        setIsAnalyzing(false)
-      }
+      setActiveTaskId(repoUrlInput)
     } catch (error) {
       console.error(error)
-      setIsAnalyzing(false)
     }
   }
 
   const handleApprove = async () => {
-    setApprovalData(null)
-    await fetch('/api/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ patch_id: 1, approved: true })
-    })
+    await approval.approve()
   }
 
   const handleReject = async () => {
-    setApprovalData(null)
-    setIsAnalyzing(false)
+    await approval.reject()
   }
 
   return (
     <div className="container mx-auto px-4 pt-12 pb-4 relative z-10 min-h-screen flex flex-col">
       <ApprovalModal 
-        isOpen={!!approvalData} 
-        agentData={approvalData} 
+        isOpen={approval.awaitingApproval} 
+        agentData={approval.currentFix} 
         onApprove={handleApprove} 
         onReject={handleReject} 
       />
@@ -119,8 +86,8 @@ function App() {
               type="url" 
               placeholder="https://github.com/username/repo"
               className="flex-1 bg-white border border-slate-300 rounded-full px-6 py-4 focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 placeholder-slate-400 text-lg transition-all"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
+              value={repoUrlInput}
+              onChange={(e) => setRepoUrlInput(e.target.value)}
               disabled={isAnalyzing}
               required
             />
@@ -143,19 +110,19 @@ function App() {
         </div>
 
         {/* Beautiful Dynamic Components */}
-        {events.length > 0 && (
+        {pipelineState.agents.length > 0 && (
           <>
-            <PipelineView events={events} />
-            <FindingsPanel events={events} />
-            <DiffViewer events={events} />
+            <PipelineView events={pipelineState.agents.map(a => ({ data: a }))} />
+            <FindingsPanel events={pipelineState.agents.map(a => ({ data: a }))} />
+            <DiffViewer events={pipelineState.agents.map(a => ({ data: a }))} />
           </>
         )}
 
-        {finalData && (
+        {isComplete && pipelineState.pr_url && (
           <PRSummary 
-            prUrl={finalData.pr_url} 
-            confidenceScore={finalData.confidence_score}
-            prError={finalData.pr_error}
+            prUrl={pipelineState.pr_url} 
+            confidenceScore={pipelineState.confidence_score}
+            prError={null}
           />
         )}
       </main>
