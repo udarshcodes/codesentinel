@@ -2,33 +2,62 @@ name: CodeSentinel CI/CD
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    branches:
+      - main
   push:
     branches:
       - main
-      - master
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger CodeSentinel Analysis
+        id: codesentinel
         run: |
-          # Replace CODESENTINEL_URL with the actual deployed URL of your CodeSentinel instance
-          CODESENTINEL_URL="${{ secrets.CODESENTINEL_URL }}"
-          REPO_URL="https://github.com/${{ github.repository }}"
+          API_URL="${{ secrets.CODESENTINEL_API_URL }}"
+          REPO_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          SHA="$GITHUB_SHA"
           
-          if [ -z "$CODESENTINEL_URL" ]; then
-            echo "Error: CODESENTINEL_URL secret is not set."
+          if [ -z "$API_URL" ]; then
+            echo "Error: CODESENTINEL_API_URL secret is not set."
             exit 1
           fi
 
-          echo "Triggering CodeSentinel analysis for $REPO_URL..."
+          echo "Triggering CodeSentinel analysis for $REPO_URL at $SHA..."
           
-          # We call the /api/analyze endpoint to queue the repository.
-          # The system will automatically fetch it, run the agents, and open PRs for any bugs found.
-          curl -X POST "$CODESENTINEL_URL/api/analyze" \
+          # We call the /api/v1/analyze endpoint to queue the repository.
+          RESPONSE=$(curl -s -X POST "$API_URL/api/v1/analyze" \
                -H "Content-Type: application/json" \
-               -d "{\"repo_url\": \"$REPO_URL\"}"
+               -d "{\"repo_url\": \"$REPO_URL\", \"commit_sha\": \"$SHA\"}")
           
-          echo "Analysis triggered successfully."
+          # Extract task_id using jq
+          TASK_ID=$(echo $RESPONSE | jq -r '.task_id')
+          
+          if [ "$TASK_ID" == "null" ] || [ -z "$TASK_ID" ]; then
+             echo "Failed to retrieve task_id from response: $RESPONSE"
+             exit 1
+          fi
+          
+          echo "Analysis triggered successfully. Task ID: $TASK_ID"
+          echo "task_id=$TASK_ID" >> $GITHUB_OUTPUT
+
+      - name: Post PR Comment with Telemetry Link
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TASK_ID="${{ steps.codesentinel.outputs.task_id }}"
+          API_URL="${{ secrets.CODESENTINEL_API_URL }}"
+          STREAM_URL="$API_URL/api/stream"
+          
+          COMMENT="🚀 **CodeSentinel Analysis Started**
+
+          An autonomous AI remediation pipeline has been triggered for this Pull Request.
+          
+          **Task ID:** \`$TASK_ID\`
+          **Live Telemetry Stream:** [View SSE Stream]($STREAM_URL)
+          
+          _CodeSentinel will automatically open a fix PR if vulnerabilities are detected._"
+          
+          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT" --repo $GITHUB_REPOSITORY
