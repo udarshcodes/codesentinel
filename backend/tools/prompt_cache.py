@@ -30,11 +30,11 @@ Format:
 <<<REPLACE>>>
 [new code to insert]
 
-Do not explain the changes. Do not output unified diffs.
-Output constraints:
-- You may include multiple SEARCH/REPLACE blocks if necessary.
-- Do not repeat information already present in the input.
-- Do not add explanatory preamble or closing remarks.
+CRITICAL RULES:
+1. The SEARCH block MUST perfectly match the existing code character-for-character!
+2. NEVER use ellipses (...) or abbreviations to skip code inside a SEARCH block! You must output the entire contiguous block of code you wish to replace.
+3. Do not explain the changes. Do not output unified diffs.
+4. You may include multiple SEARCH/REPLACE blocks if necessary.
 """.strip()
 
 PR_AUTHOR_SYSTEM = """
