@@ -29,6 +29,9 @@ CodeSentinel is built on a modern, decoupled architecture prioritizing extreme f
 
 - **Agent Mesh (`backend/agents/`):** 
   A swarm of stateless, specialized agents. Each agent acts as a distinct node in the LangGraph, modifying a central, immutable state object and yielding control back to the orchestrator.
+  - *Repo Mapper:* Builds a rich knowledge graph containing API endpoint inventories, database interaction mappings, and service boundary detection.
+  - *Static Analysis:* Scans for vulnerabilities across multiple categories including `security`, `quality` (e.g., duplicate code, long methods), and `performance` (e.g., SQLAlchemy N+1 detection).
+  - *Validator:* Executes an automated build verification step followed by dynamic testing and security reverification.
   
 - **Intelligent Tooling & Routing (`backend/tools/`):** 
   The proprietary LLM and operational infrastructure layer. Features a highly optimized `llm_router` capable of dynamic model tiering (fast/cheap vs. slow/reasoning), automatic JSON schema extraction, a highly resilient `key_dispatcher` for token budget load balancing, and a unified `analysis_runner` for executing subprocess scanning tools.
@@ -89,6 +92,14 @@ CodeSentinel optimizes cost and latency by routing tasks to appropriately sized 
 ### Human-in-the-loop Approval Gate
 For maximum safety, `repair_planner.py` uses heuristic `classify_risk` checks. If high-risk changes are detected, execution pauses dynamically via `asyncio.Event`. The FastAPI backend streams an `approval_required` SSE event to the React frontend, displaying an Approval Modal. `asyncio.wait` with `FIRST_COMPLETED` ensures telemetry and incoming webhooks don't cause thread deadlocks while the main graph is sleeping.
 
+### Code Quality & Performance Scans
+Beyond basic security checks, the `static_analysis.py` agent enforces high structural code quality. Findings are tagged with specific categories (`security`, `quality`, `performance`, `functional`).
+- **Quality:** Enforces thresholds for long methods, duplicate code blocks, and detects dead imports utilizing strict Pylint configurations.
+- **Performance:** Executes lightweight Python AST matching to detect N+1 query structures specifically targeting SQLAlchemy ORM patterns (e.g., lazy-loaded relationship access inside for-loops).
+
+### Pre-Test Build Verification
+Before running dynamic test suites, the `validator.py` agent executes a mandatory build verification step. It intelligently detects the project type (`package.json`, `pom.xml`, `pyproject.toml`) and runs the associated build command (`npm run build`, `mvn package`, `python -m build`). If the build fails, the pipeline immediately short-circuits back to the `code_generator`, saving valuable compute time that would otherwise be wasted on fundamentally broken syntax.
+
 ### Targeted Security Retries
 Rather than executing blind fixes, CodeSentinel ensures cryptographic proof of remediation. The `security_verifier.py` isolates newly generated patches and runs `semgrep` and `bandit` strictly on modified files. If the patch fails to clear the initial rule ID, the system injects `security_retry_context` back into the graph, feeding the exact tool failure logs back to the `code_generator` for a secondary attempt.
 
@@ -118,4 +129,5 @@ To provide a massive leap in User Experience (UX), the FastAPI backend streams L
 ## 11. Future Roadmap
 1. **Multi-Repository Analysis:** Expanding the `repo_mapper` to trace vulnerabilities across microservice boundaries via Distributed Tracing integrations (e.g., OpenTelemetry).
 2. **IDE Integration:** Exposing the FastAPI backend via a Language Server Protocol (LSP) to allow the LangGraph pipeline to operate directly within VSCode/JetBrains environments.
-3. **Advanced Self-Healing via Mcripts:** Implementing Monte Carlo Tree Search (MCTS) within the `validator` loop to explore multiple repair pathways simultaneously, testing competing branches and selecting the one with the highest terminal confidence score.
+3. **Advanced Self-Healing via MCTS:** Implementing Monte Carlo Tree Search (MCTS) within the `validator` loop to explore multiple repair pathways simultaneously, testing competing branches and selecting the one with the highest terminal confidence score.
+4. **Expanded ORM Support:** Extend the AST performance checker to detect N+1 querying and inefficient database loads natively in Prisma (TypeScript) and Mongoose (Node.js).

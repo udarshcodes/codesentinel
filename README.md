@@ -68,9 +68,9 @@ graph TD
     F -.->|Query| G[(ChromaDB Vector Store)]
     F --> H[Repair Planner]
     H -->|SSE Pause| I((Human Approval))
-    I -->|POST /api/approve| J[Code Generator]
+    I -->|POST /api/v1/approve| J[Code Generator]
     J --> K[Validator]
-    K -->|If Tests Fail| J
+    K -->|If Build or Tests Fail| J
     K -->|If Tests Pass| L[PR Author]
     end
     
@@ -142,15 +142,31 @@ Navigate to `http://localhost:5173` to use the app.
 
 ---
 
-## API Endpoints
+## 🔌 API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/analyze` | Initiates the pipeline for a given `repo_url`. |
+| `POST` | `/api/v1/analyze` | Initiates the pipeline for a given `repo_url` (and optional `commit_sha`). |
 | `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads. |
-| `POST` | `/api/approve/{task_id}` | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
+| `POST` | `/api/v1/approve/{task_id}` | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
 | `GET`  | `/admin/token-usage` | Protected endpoint returning LLM key rotation stats. Requires `X-Admin-Token` header. |
 | `GET`  | `/admin` | Serves the statically built React Admin Dashboard. |
+
+---
+
+## 🤖 CI/CD Integration (GitHub Actions)
+
+CodeSentinel comes with a pre-configured GitHub Actions workflow template located in `ci-cd-template/.github/workflows/codesentinel.yml`.
+
+By copying this workflow into your target repository, you can automatically trigger the CodeSentinel pipeline whenever a Pull Request is opened or a push lands on `main`.
+
+**Setup Instructions:**
+1. Navigate to your target repository on GitHub.
+2. Go to **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret**.
+3. Name the secret `CODESENTINEL_API_URL` and set the value to the public URL of your deployed CodeSentinel backend (e.g., `https://api.codesentinel.yourdomain.com`).
+4. Copy the `codesentinel.yml` file into your repository's `.github/workflows/` directory.
+
+Once configured, CodeSentinel will automatically analyze incoming code and post a comment directly on your PRs with a link to the live SSE telemetry stream!
 
 ---
 
@@ -188,6 +204,9 @@ codesentinel/
 │   │   ├── github_client.py     # PyGithub abstraction layer
 │   │   └── prompt_cache.py      # Version-controlled system prompts
 │   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
+├── ci-cd-template/              # Drop-in automation scripts for target repos
+│   └── .github/workflows/       
+│       └── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
 └── frontend/
     ├── src/
     │   ├── context/
