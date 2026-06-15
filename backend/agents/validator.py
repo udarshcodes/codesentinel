@@ -89,41 +89,85 @@ async def agent_validator(state: PipelineState):
         else:
             logs_list.append(f"[SKIP] {target_file} - no validator for this file type")
     
-    # Dynamic test suite execution
-    knowledge_graph = state.get("knowledge_graph", {})
-    test_framework = knowledge_graph.get("test_framework", "")
+    # Build verification stage
+    build_passed = True
     
+    if os.path.exists(os.path.join(repo_local_path, "package.json")):
+        try:
+            with open(os.path.join(repo_local_path, "package.json"), "r", encoding="utf-8") as f:
+                import json
+                pkg = json.load(f)
+                if "scripts" in pkg and "build" in pkg["scripts"]:
+                    res = subprocess.run(["npm", "run", "build"], cwd=repo_local_path, capture_output=True, text=True, timeout=60)
+                    if res.returncode != 0:
+                        build_passed = False
+                        logs_list.append(f"[FAIL] Build verification failed (npm run build):\n{res.stderr[:500]}")
+                    else:
+                        logs_list.append("[PASS] Build verification passed (npm run build)")
+        except Exception:
+            pass
+
+    elif os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
+        try:
+            res = subprocess.run([sys.executable, "-m", "build"], cwd=repo_local_path, capture_output=True, text=True, timeout=60)
+            if res.returncode != 0 and "No module named build" not in res.stderr:
+                build_passed = False
+                logs_list.append(f"[FAIL] Build verification failed (python -m build):\n{res.stderr[:500]}")
+            else:
+                logs_list.append("[PASS] Build verification passed (python -m build)")
+        except Exception:
+            pass
+
+    elif os.path.exists(os.path.join(repo_local_path, "pom.xml")):
+        try:
+            res = subprocess.run(["mvn", "package", "-DskipTests"], cwd=repo_local_path, capture_output=True, text=True, timeout=60)
+            if res.returncode != 0:
+                build_passed = False
+                logs_list.append(f"[FAIL] Build verification failed (mvn package):\n{res.stdout[-500:]}")
+            else:
+                logs_list.append("[PASS] Build verification passed (mvn package)")
+        except Exception:
+            pass
+
     test_logs = ""
-    if test_framework:
-        cmd = test_framework.split(" ")
-        try:
-            res = subprocess.run(
-                cmd,
-                cwd=repo_local_path,
-                capture_output=True, text=True,
-                timeout=60
-            )
-            test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
-            if res.returncode != 0:
-                if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
-                    all_passed = False
-        except Exception as e:
-            test_logs = f"Failed to execute dynamic test suite '{test_framework}': {e}"
+    if not build_passed:
+        all_passed = False
+        test_logs = "Tests skipped due to build failure."
     else:
-        # Fallback to pytest if not specified
-        try:
-            res = subprocess.run(
-                [sys.executable, "-m", "pytest", "--tb=short", "-q"],
-                cwd=repo_local_path,
-                capture_output=True, text=True,
-                timeout=30
-            )
-            test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
-            if res.returncode != 0:
-                if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
-                    all_passed = False
-        except Exception as e:
-            test_logs = f"No test suite found (pytest not available or timed out): {e}"
+        # Dynamic test suite execution
+        knowledge_graph = state.get("knowledge_graph", {})
+        test_framework = knowledge_graph.get("test_framework", "")
+        
+        if test_framework:
+            cmd = test_framework.split(" ")
+            try:
+                res = subprocess.run(
+                    cmd,
+                    cwd=repo_local_path,
+                    capture_output=True, text=True,
+                    timeout=60
+                )
+                test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
+                if res.returncode != 0:
+                    if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
+                        all_passed = False
+            except Exception as e:
+                test_logs = f"Failed to execute dynamic test suite '{test_framework}': {e}"
+        else:
+            # Fallback to pytest if not specified
+            try:
+                res = subprocess.run(
+                    [sys.executable, "-m", "pytest", "--tb=short", "-q"],
+                    cwd=repo_local_path,
+                    capture_output=True, text=True,
+                    timeout=30
+                )
+                test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
+                if res.returncode != 0:
+                    if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
+                        all_passed = False
+            except Exception as e:
+                test_logs = f"No test suite found (pytest not available or timed out): {e}"
     
     retry_count = state.get("retry_count", 0)
     unresolvable = False
