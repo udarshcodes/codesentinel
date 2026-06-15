@@ -29,7 +29,8 @@ async def agent_static_analysis(state: PipelineState):
                         "issue": hit.get("extra", {}).get("message", "Semgrep issue"),
                         "tool": "semgrep",
                         "severity": hit.get("extra", {}).get("severity", "WARNING"),
-                        "line": hit.get("start", {}).get("line", 1)
+                        "line": hit.get("start", {}).get("line", 1),
+                        "category": "security"
                     })
         except Exception as e:
             print(f"Semgrep execution skipped or failed: {e}")
@@ -60,7 +61,8 @@ async def agent_static_analysis(state: PipelineState):
                         "issue": hit.get("issue_text", "Bandit issue"),
                         "tool": "bandit",
                         "severity": hit.get("issue_severity", "MEDIUM"),
-                        "line": hit.get("line_number", 1)
+                        "line": hit.get("line_number", 1),
+                        "category": "security"
                     })
         except Exception as e:
             print(f"Bandit execution skipped or failed: {e}")
@@ -88,7 +90,8 @@ async def agent_static_analysis(state: PipelineState):
                         "issue": msg.get("message", "ESLint issue"),
                         "tool": "eslint",
                         "severity": "HIGH" if msg.get("severity") == 2 else "MEDIUM",
-                        "line": msg.get("line", 1)
+                        "line": msg.get("line", 1),
+                        "category": "quality"
                     })
     except Exception as e:
         print(f"ESLint execution skipped or failed: {e}")
@@ -113,7 +116,8 @@ async def agent_static_analysis(state: PipelineState):
                             "issue": hit.get("message", "Pylint issue"),
                             "tool": "pylint",
                             "severity": "MEDIUM",
-                            "line": hit.get("line", 1)
+                            "line": hit.get("line", 1),
+                            "category": "quality"
                         })
                 except json.JSONDecodeError:
                     pass
@@ -141,12 +145,43 @@ async def agent_static_analysis(state: PipelineState):
                             "issue": parts[3].strip(),
                             "tool": "flake8",
                             "severity": "LOW",
-                            "line": parts[1]
+                            "line": parts[1],
+                            "category": "quality"
                         })
         except Exception as e:
             print(f"Flake8 execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] flake8 not found in PATH, skipping.")
+
+    # 6. Performance AST Checker (SQLAlchemy N+1)
+    import ast
+    for root, _, files in os.walk(repo_local_path):
+        if "venv" in root or ".git" in root or "__pycache__" in root:
+            continue
+        for file in files:
+            if file.endswith(".py"):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        tree = ast.parse(f.read(), filename=file)
+                    
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.For):
+                            # Check for attribute access inside the loop (potential lazy load)
+                            for child in ast.walk(node):
+                                if isinstance(child, ast.Attribute) and isinstance(child.value, ast.Name):
+                                    if child.value.id == node.target.id if isinstance(node.target, ast.Name) else "":
+                                        rel_path = os.path.relpath(file_path, repo_local_path)
+                                        findings.append({
+                                            "file": rel_path,
+                                            "issue": f"Potential N+1 query: Accessing '{child.attr}' on '{child.value.id}' inside a loop. Consider using joinedload or selectinload.",
+                                            "tool": "ast_perf_checker",
+                                            "severity": "HIGH",
+                                            "line": child.lineno,
+                                            "category": "performance"
+                                        })
+                except Exception:
+                    pass
 
     # Deduplicate findings by file and line
     deduped_findings = []
