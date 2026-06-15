@@ -11,6 +11,10 @@ async def agent_repair_planner(state: PipelineState):
     
     if not investigated_issues or not GROQ_API_KEYS:
         return {"repair_plan": [], "awaiting_approval": False}
+        
+    # Prevent massive payloads from mangling the LLM prompt
+    while len(json.dumps(investigated_issues)) > 12000 and len(investigated_issues) > 10:
+        investigated_issues.pop()
     
     # Tier 2 — Repair planning requires deep reasoning about fix ordering
     # and risk classification.

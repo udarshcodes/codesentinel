@@ -133,8 +133,10 @@ def invoke_llm(
             f"exceeds budget ({budget['prompt']}). Truncating."
         )
         # Truncate prompt to fit budget (rough heuristic: 1 token ≈ 4 chars)
+        # We truncate the middle so we preserve system instructions (start) and JSON formatting rules (end)
         max_chars = budget["prompt"] * 4
-        prompt = prompt[:max_chars]
+        half = max_chars // 2
+        prompt = prompt[:half] + "\n\n...[TRUNCATED DUE TO TOKEN LIMIT]...\n\n" + prompt[-half:]
         prompt_tokens = budget["prompt"]
 
     # Determine starting model based on tier AND token threshold
@@ -174,6 +176,17 @@ def invoke_llm(
         try:
             res = llm.invoke(prompt)
             raw = res.content.strip()
+            
+            if expect_json:
+                cleaned = raw.replace("```json", "").replace("```", "").strip()
+                if json_array:
+                    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+                else:
+                    match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+                if not match:
+                    raise ValueError("No JSON block found in response")
+                # Ensure it parses successfully
+                json.loads(match.group(0))
             
             # Extract actual token usage from the Groq API response if available
             tokens = getattr(res, "usage_metadata", {}).get("total_tokens", 0)
