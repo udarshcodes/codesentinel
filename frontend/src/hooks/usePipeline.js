@@ -15,7 +15,7 @@ export function usePipeline(taskId) {
         eventSourceRef.current.close();
       }
 
-      const es = new EventSource(`/api/stream?repo_url=${encodeURIComponent(taskId)}`);
+      const es = new EventSource(`/api/stream?task_id=${encodeURIComponent(taskId)}`);
       eventSourceRef.current = es;
 
       dispatch({ type: 'AGENT_START' });

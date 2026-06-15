@@ -28,12 +28,14 @@ function App() {
     if (!repoUrlInput) return
     
     try {
-      await fetch('/api/analyze', {
+      const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_url: repoUrlInput })
       })
-      setActiveTaskId(repoUrlInput)
+      const data = await res.json()
+      // Use the UUID returned by the backend, fallback to URL if missing
+      setActiveTaskId(data.task_id || repoUrlInput)
     } catch (error) {
       console.error(error)
     }
