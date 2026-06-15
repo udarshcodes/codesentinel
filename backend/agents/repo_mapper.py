@@ -13,13 +13,26 @@ async def agent_repo_mapper(state: PipelineState):
     temp_dir = tempfile.mkdtemp(prefix="codesentinel_")
     Repo.clone_from(repo_url, temp_dir)
     
-    # 2. Walk directory to find extensions and dependency files
+    # 2. Walk directory to find extensions, dependency files, and build context
     extensions = {}
     dep_files = []
+    file_tree = []
+    interesting_content = []
+    
+    api_db_keywords = [
+        "app.route", "app.get", "app.post", "router.get", "router.post",
+        "@GetMapping", "@PostMapping", "express()",
+        "SQLAlchemy", "Prisma", "Mongoose", "db.query", "SELECT ", "UPDATE "
+    ]
     
     for root, dirs, files in os.walk(temp_dir):
-        if ".git" in root:
+        if ".git" in root or "node_modules" in root or "venv" in root or "__pycache__" in root:
             continue
+            
+        rel_root = os.path.relpath(root, temp_dir)
+        if rel_root != ".":
+            file_tree.append(rel_root + "/")
+            
         for file in files:
             ext = os.path.splitext(file)[1]
             if ext:
@@ -27,14 +40,39 @@ async def agent_repo_mapper(state: PipelineState):
             if file in ["requirements.txt", "package.json", "pom.xml", "go.mod"]:
                 rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
                 dep_files.append(rel_path)
+            
+            rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
+            file_tree.append("  " + file)
+            
+            # Extract content for API and DB mapping if it's a source file
+            if ext in [".py", ".js", ".ts", ".go", ".java"]:
+                try:
+                    with open(os.path.join(root, file), "r", encoding="utf-8") as f:
+                        content = f.read(5000) # Read up to 5000 chars to save context
+                        if any(k in content for k in api_db_keywords):
+                            interesting_content.append(f"--- File: {rel_path} ---\n{content[:1000]}...")
+                except Exception:
+                    pass
                 
-    # 3. LLM analysis — Tier 1 (simple structural classification)
+    # 3. LLM analysis — Tier 1 (extracting rich knowledge graph)
     if GROQ_API_KEY:
-        prompt = f"""Analyze the following repository structure data to determine the primary language and framework.
-File extensions frequency: {extensions}
-Dependency files found: {dep_files}
+        prompt = f"""Analyze the following repository data to build a rich knowledge graph.
+File extensions: {extensions}
+Dependency files: {dep_files}
 
-Return ONLY valid JSON with keys: 'language', 'framework', 'modules'."""
+Repository Structure:
+{chr(10).join(file_tree[:100])} # Truncated to 100 items
+
+Interesting Source Snippets (for API/DB extraction):
+{chr(10).join(interesting_content[:15])}
+
+Extract the following:
+1. Primary 'language' and 'framework'.
+2. 'modules': Service boundary detection (group files into logical modules like auth, database, api based on structure).
+3. 'api_endpoints': List of objects with 'path', 'method', and 'handler_file'.
+4. 'db_interactions': List of objects mapping files to ORM models or DB tables.
+
+Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpoints', 'db_interactions'."""
 
         try:
             knowledge_graph = invoke_llm(
@@ -44,12 +82,12 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules'."""
                 expect_json=True,
             )
             if not isinstance(knowledge_graph, dict) or knowledge_graph.get("error"):
-                knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": []}
+                knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": [], "api_endpoints": [], "db_interactions": []}
         except Exception as e:
             print(f"[RepoMapper] LLM error: {e}")
-            knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": []}
+            knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": [], "api_endpoints": [], "db_interactions": []}
     else:
-        knowledge_graph = {"language": "Python (Mock - No API Key)", "framework": "FastAPI", "modules": []}
+        knowledge_graph = {"language": "Python (Mock)", "framework": "FastAPI", "modules": [], "api_endpoints": [], "db_interactions": []}
     
     # Cache the knowledge graph for downstream agents
     context_cache.store(repo_url, "knowledge_graph", knowledge_graph)
