@@ -183,6 +183,44 @@ async def agent_static_analysis(state: PipelineState):
                 except Exception:
                     pass
 
+    # 7. JS/TS Performance Checker (Prisma / Mongoose N+1)
+    import re
+    loop_pattern = re.compile(r'\b(for|while)\s*\(|\.forEach\s*\(')
+    db_query_pattern = re.compile(r'await\s+[a-zA-Z0-9_.]+\.(findMany|findUnique|findOne|find|query)\s*\(')
+    
+    for root, _, files in os.walk(repo_local_path):
+        if "node_modules" in root or ".git" in root or "dist" in root or "build" in root:
+            continue
+        for file in files:
+            if file.endswith((".js", ".ts", ".jsx", ".tsx")):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    
+                    in_loop = False
+                    loop_indent = 0
+                    
+                    for i, line in enumerate(lines):
+                        if loop_pattern.search(line):
+                            in_loop = True
+                            loop_indent = len(line) - len(line.lstrip())
+                        elif in_loop and "}" in line and len(line) - len(line.lstrip()) <= loop_indent:
+                            in_loop = False
+                        
+                        if in_loop and db_query_pattern.search(line):
+                            rel_path = os.path.relpath(file_path, repo_local_path)
+                            findings.append({
+                                "file": rel_path,
+                                "issue": f"Potential N+1 query (JS/TS): DB query inside a loop. Consider using Promise.all() or aggregate.",
+                                "tool": "js_perf_checker",
+                                "severity": "HIGH",
+                                "line": i + 1,
+                                "category": "performance"
+                            })
+                except Exception:
+                    pass
+
     # Deduplicate findings by file and line
     deduped_findings = []
     seen = set()
