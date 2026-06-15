@@ -1,16 +1,20 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
+import os
+import httpx
+import uuid
+from api.sse import run_pipeline_worker
+from orchestrator import approval_events, broadcast_sse
 
 router = APIRouter()
 
 class AnalyzeRequest(BaseModel):
     repo_url: str
+    commit_sha: str = None
 
-import os
-import httpx
-
-@router.post("/analyze")
-async def start_analysis(request: AnalyzeRequest):
+@router.post("/v1/analyze")
+@router.post("/analyze") # Backward compatibility
+async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     repo_url = request.repo_url
     repos_to_analyze = [repo_url]
     
@@ -31,11 +35,28 @@ async def start_analysis(request: AnalyzeRequest):
         except Exception as e:
             print(f"Error fetching org repos: {e}")
 
-    return {"status": "accepted", "repo_urls": repos_to_analyze}
+    task_ids = []
+    for r_url in repos_to_analyze:
+        # Generate a stable UUID based on repo name for easy frontend connection
+        # Or just a pure UUID. Let's use pure UUID so we can have multiple runs.
+        task_id = str(uuid.uuid4())
+        task_ids.append(task_id)
+        
+        # Fire and forget the background task
+        background_tasks.add_task(run_pipeline_worker, task_id, r_url)
 
-from fastapi import HTTPException
-from orchestrator import approval_events, broadcast_sse
+    # If it was a single repo, return just that task_id for backward compatibility
+    # But also include the array of task_ids for Multi-Repo mode
+    main_task_id = task_ids[0] if task_ids else ""
 
+    return {
+        "status": "accepted",
+        "task_id": main_task_id,
+        "task_ids": task_ids,
+        "repo_urls": repos_to_analyze
+    }
+
+@router.post("/v1/approve/{task_id}")
 @router.post("/approve/{task_id}")
 async def submit_approval(task_id: str, body: dict):
     '''
@@ -53,10 +74,13 @@ async def submit_approval(task_id: str, body: dict):
     event_dict['decision'] = decision
     event_dict['event'].set() # Unblock the waiting coroutine
     
-    # Broadcast that the pipeline is resuming
-    await broadcast_sse(task_id, {
-        "event": "approval_resolved", 
-        "decision": decision
-    })
+    # Broadcast that the pipeline is resuming via the sse queue
+    # We use a helper function from orchestrator to just put it in the queue
+    from api.sse import sse_queues
+    if task_id in sse_queues:
+        await sse_queues[task_id].put({
+            "event": "approval_resolved", 
+            "data": {"decision": decision}
+        })
     
     return {'status': 'ok', 'decision': decision}
