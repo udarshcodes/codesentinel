@@ -42,6 +42,40 @@ async def agent_dependency_analyzer(state: PipelineState):
             except Exception as e:
                 print(f"[DependencyAnalyzer] Failed to parse package.json: {e}")
                 
+    # Check for outdated packages against public registries
+    async def check_outdated(dep):
+        try:
+            async with httpx.AsyncClient() as client:
+                if dep["ecosystem"] == "PyPI":
+                    res = await client.get(f"https://pypi.org/pypi/{dep['name']}/json", timeout=5)
+                    if res.status_code == 200:
+                        latest = res.json().get("info", {}).get("version")
+                        # Basic string inequality for version check
+                        if latest and latest != dep["version"]:
+                            return latest
+                elif dep["ecosystem"] == "npm":
+                    res = await client.get(f"https://registry.npmjs.org/{dep['name']}/latest", timeout=5)
+                    if res.status_code == 200:
+                        latest = res.json().get("version")
+                        if latest and latest != dep["version"]:
+                            return latest
+        except Exception as e:
+            print(f"[DependencyAnalyzer] Registry check failed for {dep['name']}: {e}")
+        return None
+
+    import asyncio
+    outdated_results = await asyncio.gather(*(check_outdated(d) for d in dependencies))
+    
+    for dep, latest in zip(dependencies, outdated_results):
+        if latest:
+            findings.append({
+                "file": "requirements.txt" if dep["ecosystem"] == "PyPI" else "package.json",
+                "issue": f"Outdated dependency: {dep['name']} is at {dep['version']}, but latest is {latest}.",
+                "cve": "N/A",
+                "package": dep["name"],
+                "severity": "LOW"
+            })
+
     # Hit OSV API using batch query
     from tools.osv_client import batch_query_osv
     
