@@ -80,8 +80,8 @@ If no bugs, return: {{"found": false}}"""
                 try:
                     with open(full_path, "r", errors="ignore") as f:
                         file_content = f.read()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error reading file {full_path}: {e}")
                     
         line_num = finding.get("line")
         if file_content and line_num:
@@ -122,7 +122,7 @@ Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "..."
                 tier=1,
                 expect_json=True,
             )
-            if not issue_data.get("error"):
+            if isinstance(issue_data, dict) and not issue_data.get("error"):
                 issue_data["original_finding"] = finding
                 investigated_issues.append(issue_data)
         except Exception as e:
