@@ -27,6 +27,7 @@ async def agent_static_analysis(state: PipelineState):
                     findings.append({
                         "file": hit.get("path", ""),
                         "issue": hit.get("extra", {}).get("message", "Semgrep issue"),
+                        "rule": hit.get("check_id", ""),
                         "tool": "semgrep",
                         "severity": hit.get("extra", {}).get("severity", "WARNING"),
                         "line": hit.get("start", {}).get("line", 1),
@@ -59,6 +60,7 @@ async def agent_static_analysis(state: PipelineState):
                     findings.append({
                         "file": file_path,
                         "issue": hit.get("issue_text", "Bandit issue"),
+                        "rule": hit.get("test_id", ""),
                         "tool": "bandit",
                         "severity": hit.get("issue_severity", "MEDIUM"),
                         "line": hit.get("line_number", 1),
@@ -180,8 +182,8 @@ async def agent_static_analysis(state: PipelineState):
                                             "line": child.lineno,
                                             "category": "performance"
                                         })
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error parsing {file_path} for AST perf check: {e}")
 
     # 7. JS/TS Performance Checker (Prisma / Mongoose N+1)
     import re
@@ -218,8 +220,8 @@ async def agent_static_analysis(state: PipelineState):
                                 "line": i + 1,
                                 "category": "performance"
                             })
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error parsing {file_path} for JS perf check: {e}")
 
     # Deduplicate findings by file and line
     deduped_findings = []
