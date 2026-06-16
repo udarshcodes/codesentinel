@@ -39,7 +39,8 @@ Return JSON: {{"title": "...", "description": "..."}}"""
         )
         if pr_data.get("error"):
             pr_data = {"title": "Automated Security Fixes", "description": "Fixed vulnerabilities."}
-    except Exception:
+    except Exception as e:
+        print(f"Error calling LLM for PR details: {e}")
         pr_data = {"title": "Automated Security Fixes", "description": "Fixed vulnerabilities."}
         
     pr_url = ""
