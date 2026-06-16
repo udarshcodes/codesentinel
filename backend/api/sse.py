@@ -36,7 +36,6 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
         "retry_count": 0,
         "awaiting_approval": False,
         "confidence_score": 0.0,
-        "token_usage": {},
     }
     
     # We create the queue here if it doesn't exist, so that manual SSE events like approval

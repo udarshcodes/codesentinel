@@ -1,6 +1,7 @@
 from typing import Optional
 from typing_extensions import TypedDict, NotRequired
 
+
 class PipelineState(TypedDict, total=False):
     repo_url: str
     repo_local_path: NotRequired[str]
@@ -18,7 +19,7 @@ class PipelineState(TypedDict, total=False):
     confidence_score: float
     security_retry_context: NotRequired[dict]
     unresolvable_fixes: NotRequired[list]
-    token_usage: NotRequired[dict]
     approval_payload: NotRequired[dict]
     approval_decision: NotRequired[str]
     pr_error: NotRequired[str]
+    task_id: NotRequired[str]

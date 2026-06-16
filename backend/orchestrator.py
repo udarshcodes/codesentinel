@@ -28,7 +28,7 @@ workflow.add_node("validator", agent_validator)
 workflow.add_node("security_verifier", agent_security_verifier)
 workflow.add_node("pr_author", agent_pr_author)
 
-# Edges (Linear for now, conditional handled via pause in SSE layer)
+# Edges (DAG with conditional cycles for validation and security retries)
 workflow.set_entry_point("repo_mapper")
 workflow.add_edge("repo_mapper", "dependency_analyzer")
 workflow.add_edge("dependency_analyzer", "static_analysis")
