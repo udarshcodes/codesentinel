@@ -4,7 +4,7 @@ import os
 import httpx
 import uuid
 from api.sse import run_pipeline_worker
-from orchestrator import approval_events, broadcast_sse
+from state import approval_events, broadcast_sse
 
 router = APIRouter()
 
@@ -76,7 +76,7 @@ async def submit_approval(task_id: str, body: dict):
     
     # Broadcast that the pipeline is resuming via the sse queue
     # We use a helper function from orchestrator to just put it in the queue
-    from api.sse import sse_queues
+    from state import sse_queues
     if task_id in sse_queues:
         await sse_queues[task_id].put({
             "event": "approval_resolved", 
