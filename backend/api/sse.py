@@ -1,8 +1,9 @@
 import json
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 import asyncio
 from sse_starlette.sse import EventSourceResponse
-from orchestrator import app as langgraph_app, sse_queues
+from orchestrator import app as langgraph_app
+from state import sse_queues
 
 router = APIRouter()
 
@@ -62,28 +63,12 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
         astream_iter = langgraph_app.astream(state)
         astream_task = asyncio.create_task(anext(astream_iter, None))
         
-        q = sse_queues[task_id]
-        queue_task = asyncio.create_task(q.get())
-        
         while True:
             done, pending = await asyncio.wait(
-                {astream_task, queue_task},
+                {astream_task},
                 return_when=asyncio.FIRST_COMPLETED
             )
             
-            # This allows the background worker to "drain" manual messages sent by the orchestrator 
-            # (e.g. approval messages from routes.py) and broadcast them down the line
-            if queue_task in done:
-                payload = queue_task.result()
-                # Just re-emit the message so the frontend gets it
-                # Wait, if we emit it, we put it back in the queue! We'll cause an infinite loop!
-                # Actually, the old code yielded it directly to SSE. 
-                # Since SSE is just reading from the queue now, we don't need to do anything here for manual events!
-                # Wait, if `routes.py` puts "approval_resolved" in the queue, the SSE reader will read it!
-                # We don't need to poll the queue in the worker anymore, EXCEPT to unblock the pipeline!
-                # Oh! The pipeline unblocks via `event.set()` in `approval_events[task_id]['event']` from `routes.py`!
-                pass # We don't need to poll the queue!
-                
             if astream_task in done:
                 output = astream_task.result()
                 if output is None: # End of stream
@@ -98,6 +83,9 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
                         final_pr_error = safe_update["pr_error"]
                     if "confidence_score" in safe_update:
                         final_confidence = safe_update["confidence_score"]
+                        
+                    if "repo_local_path" in safe_update:
+                        state["repo_local_path"] = safe_update["repo_local_path"]
                         
                     event_data = {
                         "agent": node_name,
@@ -119,6 +107,14 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
         import traceback
         traceback.print_exc()
         await emit("error", {"error": str(e)})
+    finally:
+        try:
+            repo_local_path = state.get("repo_local_path")
+            if repo_local_path and "codesentinel_" in repo_local_path:
+                import shutil
+                shutil.rmtree(repo_local_path, ignore_errors=True)
+        except Exception as e:
+            print(f"Error cleaning up temp dir: {e}")
 
 async def event_generator(task_id: str):
     if task_id not in sse_queues:
@@ -141,7 +137,7 @@ async def event_generator(task_id: str):
         print(f"SSE stream error: {e}")
 
 @router.get("/stream")
-async def stream_pipeline(request: Request, repo_url: str = None, task_id: str = None):
+async def stream_pipeline(repo_url: str = None, task_id: str = None):
     # Support backward compatibility
     if not task_id and repo_url:
         task_id = repo_url.split('/')[-1]
