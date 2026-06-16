@@ -16,6 +16,7 @@ async def agent_code_generator(state: PipelineState):
     
     validation_results = state.get("validation_results", [])
     security_retry_context = state.get("security_retry_context", [])
+    touched_symbols = state.get("touched_symbols", {})
     failure_context = ""
     if validation_results and not validation_results[-1].get("passed"):
         failure_context = f"PREVIOUS PATCH FAILED TESTS. Logs: {validation_results[-1].get('logs')}"
@@ -53,11 +54,26 @@ async def agent_code_generator(state: PipelineState):
         
         # Tier 2 — Code generation requires the 70b model for accurate patches.
         # Strict diff output via system prompt.
+        touched = touched_symbols.get(plan.get("issue_id"))
+        previous_attempt_context = ""
+        if touched:
+            previous_attempt_context = f"""
+Previous attempt for this issue (already applied in the file):
+Last Patch:
+{touched.get('last_patch')}
+
+Failure Reason:
+{touched.get('last_failure_reason')}
+
+Attempt Count: {touched.get('attempt_count')}
+"""
+        
         prompt = f"""{CODE_GENERATOR_SYSTEM}
 
 Issue to fix: {plan.get('action')}
 Original Issue Context: {json.dumps(issue)}
 {failure_context}
+{previous_attempt_context}
 
 File path: {target_file}
 Current file content:
@@ -98,9 +114,27 @@ Current file content:
                     with open(full_path, "r", errors="ignore") as f:
                         new_content = f.read()
                     diff = _generate_diff(file_content, new_content, target_file)
+                    
+                    issue_id = plan.get("issue_id")
+                    touched_symbols[issue_id] = {
+                        "issue_id": issue_id,
+                        "file_path": target_file,
+                        "attempt_count": touched_symbols.get(issue_id, {}).get("attempt_count", 0) + 1,
+                        "last_patch": fixed_content,
+                        "last_failure_reason": None
+                    }
                 else:
                     print(f"[CodeGenerator] Patch failed to apply on {target_file}: {patch_result['stderr']}")
                     diff = fixed_content # Show what the LLM generated even if it failed to apply
+                    
+                    issue_id = plan.get("issue_id")
+                    touched_symbols[issue_id] = {
+                        "issue_id": issue_id,
+                        "file_path": target_file,
+                        "attempt_count": touched_symbols.get(issue_id, {}).get("attempt_count", 0) + 1,
+                        "last_patch": fixed_content,
+                        "last_failure_reason": f"Patch failed to apply: {patch_result['stderr']}"
+                    }
             else:
                 diff = fixed_content
             
@@ -119,7 +153,7 @@ Current file content:
     current_issue_ids = [plan.get("issue_id") for plan in repair_plan]
     existing_patches = [p for p in patches if p.get("patch_id") not in current_issue_ids]
             
-    result = {"patches": existing_patches + new_patches}
+    result = {"patches": existing_patches + new_patches, "touched_symbols": touched_symbols}
     if repair_plan and not new_patches:
         result["pr_error"] = state.get("pr_error", "Failed to generate code patches: API Rate Limit Exceeded or LLM failure.")
         

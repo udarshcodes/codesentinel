@@ -63,6 +63,8 @@ If no bugs, return: {{"found": false}}"""
                     result.pop("found", None)
                     result["original_finding"] = {"issue": result.get("description"), "file": rel_path}
                     result["id"] = len(investigated_issues) + 100
+                    if "category" not in result:
+                        result["category"] = "functional"
                     investigated_issues.append(result)
             except Exception as e:
                 print(f"Error in deep review: {e}")

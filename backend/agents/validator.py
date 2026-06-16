@@ -174,12 +174,21 @@ async def agent_validator(state: PipelineState):
     retry_count = state.get("retry_count", 0)
     unresolvable = False
     unresolvable_fixes = state.get("unresolvable_fixes", [])
+    touched_symbols = state.get("touched_symbols", {})
     
     if not all_passed:
+        if patches:
+            latest_patch = patches[-1]
+            issue_id = latest_patch.get("patch_id")
+            failure_summary = "\n".join(logs_list) + "\nTest Results:\n" + test_logs
+            if issue_id in touched_symbols:
+                touched_symbols[issue_id]["last_failure_reason"] = failure_summary
+                
         retry_count += 1
         if retry_count >= 3:
             unresolvable = True
-            unresolvable_fixes.append(patches[-1].get("patch_id", 0))
+            if patches:
+                unresolvable_fixes.append(patches[-1].get("patch_id", 0))
     
     new_validation_results = list(validation_results)
     files_validated = len(patches)
@@ -226,5 +235,6 @@ async def agent_validator(state: PipelineState):
         "validation_results": new_validation_results,
         "confidence_score": confidence,
         "unresolvable_fixes": unresolvable_fixes,
-        "retry_count": retry_count
+        "retry_count": retry_count,
+        "touched_symbols": touched_symbols
     }

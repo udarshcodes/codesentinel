@@ -130,13 +130,12 @@ def invoke_llm(
     if prompt_tokens > budget["prompt"]:
         print(
             f"[LLMRouter] WARNING: {agent_name} prompt ({prompt_tokens} tokens) "
-            f"exceeds budget ({budget['prompt']}). Truncating."
+            f"exceeds budget ({budget['prompt']}). Truncating end."
         )
-        # Truncate prompt to fit budget (rough heuristic: 1 token ≈ 4 chars)
-        # We truncate the middle so we preserve system instructions (start) and JSON formatting rules (end)
+        # Truncate from the END so we preserve system instructions and issue context at the start.
+        # The file content at the end gets shortened — the LLM still sees the start of the file.
         max_chars = budget["prompt"] * 4
-        half = max_chars // 2
-        prompt = prompt[:half] + "\n\n...[TRUNCATED DUE TO TOKEN LIMIT]...\n\n" + prompt[-half:]
+        prompt = prompt[:max_chars] + "\n```\n[FILE TRUNCATED DUE TO TOKEN LIMIT]\n"
         prompt_tokens = budget["prompt"]
 
     # Determine starting model based on tier AND token threshold

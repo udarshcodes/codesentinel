@@ -12,6 +12,7 @@ async def agent_dependency_analyzer(state: PipelineState):
         
     req_path = os.path.join(repo_local_path, "requirements.txt")
     pkg_path = os.path.join(repo_local_path, "package.json")
+    pom_path = os.path.join(repo_local_path, "pom.xml")
     
     dependencies = []
     
@@ -42,6 +43,33 @@ async def agent_dependency_analyzer(state: PipelineState):
             except Exception as e:
                 print(f"[DependencyAnalyzer] Failed to parse package.json: {e}")
                 
+    if os.path.exists(pom_path):
+        import xml.etree.ElementTree as ET
+        try:
+            tree = ET.parse(pom_path)
+            root = tree.getroot()
+            ns = ""
+            if "}" in root.tag:
+                ns = root.tag.split("}")[0] + "}"
+                
+            deps_node = root.find(f"{ns}dependencies")
+            if deps_node is not None:
+                for dep_node in deps_node.findall(f"{ns}dependency"):
+                    grp = dep_node.find(f"{ns}groupId")
+                    art = dep_node.find(f"{ns}artifactId")
+                    ver = dep_node.find(f"{ns}version")
+                    
+                    if grp is not None and art is not None and ver is not None:
+                        version_text = ver.text
+                        if version_text and not version_text.startswith("${"):
+                            dependencies.append({
+                                "name": f"{grp.text}:{art.text}",
+                                "version": version_text,
+                                "ecosystem": "Maven"
+                            })
+        except Exception as e:
+            print(f"[DependencyAnalyzer] Failed to parse pom.xml: {e}")
+                
     def is_outdated(current: str, latest: str) -> bool:
         if current == latest: return False
         try:
@@ -69,6 +97,16 @@ async def agent_dependency_analyzer(state: PipelineState):
                         latest = res.json().get("version")
                         if latest and is_outdated(dep["version"], latest):
                             return latest
+                elif dep["ecosystem"] == "Maven":
+                    grp, art = dep['name'].split(":")
+                    url = f"https://search.maven.org/solrsearch/select?q=g:{grp}+AND+a:{art}&rows=1&wt=json"
+                    res = await client.get(url, timeout=5)
+                    if res.status_code == 200:
+                        docs = res.json().get("response", {}).get("docs", [])
+                        if docs:
+                            latest = docs[0].get("latestVersion")
+                            if latest and is_outdated(dep["version"], latest):
+                                return latest
         except Exception as e:
             print(f"[DependencyAnalyzer] Registry check failed for {dep['name']}: {e}")
         return None
@@ -78,8 +116,14 @@ async def agent_dependency_analyzer(state: PipelineState):
     
     for dep, latest in zip(dependencies, outdated_results):
         if latest:
+            file_name = "requirements.txt"
+            if dep["ecosystem"] == "npm":
+                file_name = "package.json"
+            elif dep["ecosystem"] == "Maven":
+                file_name = "pom.xml"
+                
             findings.append({
-                "file": "requirements.txt" if dep["ecosystem"] == "PyPI" else "package.json",
+                "file": file_name,
                 "issue": f"Outdated dependency: {dep['name']} is at {dep['version']}, but latest is {latest}.",
                 "cve": "N/A",
                 "package": dep["name"],
@@ -100,8 +144,14 @@ async def agent_dependency_analyzer(state: PipelineState):
             if vuln_severity:
                 severity = vuln_severity.upper()
             
+            file_name = "requirements.txt"
+            if dep["ecosystem"] == "npm":
+                file_name = "package.json"
+            elif dep["ecosystem"] == "Maven":
+                file_name = "pom.xml"
+
             findings.append({
-                "file": "requirements.txt" if dep["ecosystem"] == "PyPI" else "package.json",
+                "file": file_name,
                 "issue": f"Vulnerable dependency: {dep['name']} {dep['version']}. CVE: {vuln.get('id', 'Unknown')}. Update to a secure version.",
                 "cve": vuln.get("id", "Unknown"),
                 "package": dep["name"],

@@ -155,7 +155,26 @@ async def agent_static_analysis(state: PipelineState):
     else:
         print("[StaticAnalysis] flake8 not found in PATH, skipping.")
 
-    # 6. Performance AST Checker (SQLAlchemy N+1)
+    # 6. SonarQube
+    sonar_path = shutil.which("sonar-scanner")
+    if sonar_path:
+        try:
+            result = subprocess.run(
+                [sonar_path],
+                cwd=repo_local_path,
+                capture_output=True,
+                text=True
+            )
+            # Typically SonarQube findings are uploaded to a server, but we can attempt to parse local reports if they exist
+            report_path = os.path.join(repo_local_path, ".scannerwork", "report-task.txt")
+            if os.path.exists(report_path) and result.returncode == 0:
+                print("[StaticAnalysis] SonarQube analysis completed successfully.")
+        except Exception as e:
+            print(f"SonarQube execution skipped or failed: {e}")
+    else:
+        print("[StaticAnalysis] sonar-scanner not found in PATH, skipping.")
+
+    # 7. Performance AST Checker (SQLAlchemy N+1)
     import ast
     for root, _, files in os.walk(repo_local_path):
         if "venv" in root or ".git" in root or "__pycache__" in root:
