@@ -16,7 +16,7 @@ const initialState = {
 function pipelineReducer(state, action) {
   switch (action.type) {
     case 'AGENT_START':
-      return { ...state, status: 'running' };
+      return { ...initialState, status: 'running' };
     case 'AGENT_COMPLETE':
       return { ...state, agents: [...state.agents, action.payload] };
     case 'FINDINGS_UPDATED':
@@ -27,6 +27,7 @@ function pipelineReducer(state, action) {
       return { ...state, awaiting_approval: true, current_fix: action.payload };
     case 'APPROVAL_RESOLVED':
       return { ...state, awaiting_approval: false, current_fix: null };
+
     case 'PIPELINE_COMPLETE':
       return { 
         ...state, 
@@ -35,6 +36,8 @@ function pipelineReducer(state, action) {
         pr_url: action.payload.pr_url,
         pr_error: action.payload.pr_error 
       };
+    case 'PIPELINE_ERROR':
+      return { ...state, status: 'error', pipeline_error: action.payload?.error };
     case 'VALIDATION_FAILED':
       return { ...state, status: 'validating_failed' };
     case 'RESET':

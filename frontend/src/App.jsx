@@ -20,7 +20,7 @@ function App() {
   const syntheticEvents = [
     ...pipelineState.agents.map(a => ({ event: 'agent_complete', data: a })),
     ...(pipelineState.status === 'awaiting_approval' ? [{ event: 'approval_required' }] : []),
-    ...(pipelineState.status === 'complete' ? [{ event: 'pipeline_complete' }] : [])
+    ...(pipelineState.status === 'complete' || pipelineState.status === 'validating_failed' ? [{ event: 'pipeline_complete' }] : [])
   ];
 
   const startAnalysis = async (e) => {

@@ -60,6 +60,16 @@ export function usePipeline(taskId) {
         }
       });
 
+      es.addEventListener('error', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          dispatch({ type: 'PIPELINE_ERROR', payload: data });
+          es.close();
+        } catch (err) {
+          console.error('Error parsing error event data', err);
+        }
+      });
+
       es.onerror = (e) => {
         console.error('SSE connection error, retrying in 3 seconds...');
         es.close();
