@@ -48,7 +48,7 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners:** `Semgrep`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline. Also includes real-time OSV, NPM, and PyPI public registry checks.
+- **SAST Runners:** `Semgrep`, `SonarQube`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline. Also includes real-time OSV, NPM, PyPI, and Maven Central public registry checks.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
 

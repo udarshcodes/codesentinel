@@ -40,7 +40,7 @@ CodeSentinel is built on a modern, decoupled architecture prioritizing extreme f
 
 The data flow ensures context is preserved and strictly typed throughout the execution lifecycle.
 1. **Ingestion & Triggering:** A webhook or API call initiates the pipeline. The orchestrator initializes a strictly typed `PipelineState` object containing `repo_url`, `retry_count`, and `confidence_score`.
-2. **Analysis Execution:** `static_analysis` and `dependency_analyzer` agents extract raw findings using external tools (OSV, Bandit, Semgrep) and real-time public registry checks (NPM/PyPI), injecting them into the state.
+2. **Analysis Execution:** `static_analysis` and `dependency_analyzer` agents extract raw findings using external tools (OSV, Bandit, Semgrep, SonarQube) and real-time public registry checks (NPM/PyPI/Maven), injecting them into the state.
 3. **LLM Triage & Context Retrieval:** The `bug_investigator` agent queries the ChromaDB Vector Store for historical fixes of similar bugs, filtering out false positives using an LLM.
 4. **Planning & Approval:** The `repair_planner` formulates a patch strategy. If modifications hit sensitive paths (e.g., `auth/`, `db/`), it transitions the pipeline to an `awaiting_approval` state, broadcasting an SSE event and pausing the graph until a `/api/v1/approve` webhook is received.
 5. **Execution Loop:** The `code_generator` executes file I/O to apply patches. The `validator` inspects syntax and test outputs. If tests fail, the graph cycles back. 
