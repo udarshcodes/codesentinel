@@ -1,7 +1,7 @@
 from typing import Optional
 from typing_extensions import TypedDict, NotRequired
 
-class PipelineState(TypedDict):
+class PipelineState(TypedDict, total=False):
     repo_url: str
     repo_local_path: NotRequired[str]
     knowledge_graph: dict
