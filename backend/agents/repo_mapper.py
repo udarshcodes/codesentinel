@@ -10,8 +10,16 @@ async def agent_repo_mapper(state: PipelineState):
     repo_url = state["repo_url"]
     
     # 1. Clone repository
-    temp_dir = tempfile.mkdtemp(prefix="codesentinel_")
-    Repo.clone_from(repo_url, temp_dir)
+    temp_base = os.getenv("TEMP_REPO_PATH", "/tmp/repos")
+    os.makedirs(temp_base, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(prefix="codesentinel_", dir=temp_base)
+    
+    import subprocess
+    try:
+        subprocess.run(["git", "clone", repo_url, temp_dir], check=True, timeout=300)
+    except Exception as e:
+        print(f"Error cloning repository: {e}")
+        return {"repo_local_path": "", "knowledge_graph": {}}
     
     # 2. Walk directory to find extensions, dependency files, and build context
     extensions = {}

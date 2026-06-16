@@ -25,9 +25,9 @@ def prepare_repo_for_push(repo_url: str, local_path: str, token: str) -> dict:
     branch_name = f"agent/fix-{int(datetime.now().timestamp())}"
     
     # Configure git and checkout branch
-    subprocess.run(["git", "checkout", "-b", branch_name], cwd=local_path, check=True)
-    subprocess.run(["git", "config", "user.name", "CodeSentinel AI"], cwd=local_path, check=True)
-    subprocess.run(["git", "config", "user.email", "codesentinel@ai.local"], cwd=local_path, check=True)
+    subprocess.run(["git", "checkout", "-b", branch_name], cwd=local_path, check=True, timeout=30)
+    subprocess.run(["git", "config", "user.name", "CodeSentinel AI"], cwd=local_path, check=True, timeout=10)
+    subprocess.run(["git", "config", "user.email", "codesentinel@ai.local"], cwd=local_path, check=True, timeout=10)
     
     # Clean up temp
     for junk in ["temp.patch", ".pytest_cache"]:
@@ -54,21 +54,21 @@ def prepare_repo_for_push(repo_url: str, local_path: str, token: str) -> dict:
 def commit_and_push(local_path: str, branch_name: str, message: str, push_repo_url: str, token: str, files: list) -> bool:
     """Commits and pushes."""
     try:
-        subprocess.run(["git", "add", "-A"], cwd=local_path, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=local_path, check=True, timeout=30)
     except subprocess.CalledProcessError as e:
         print(f"Failed to add files: {e}")
             
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=local_path, capture_output=True, text=True)
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=local_path, capture_output=True, text=True, timeout=30)
     if not status.stdout.strip():
         return False
         
-    subprocess.run(["git", "commit", "--no-verify", "-m", message], cwd=local_path, check=True)
+    subprocess.run(["git", "commit", "--no-verify", "-m", message], cwd=local_path, check=True, timeout=30)
     
     auth_push_url = push_repo_url.replace("https://", f"https://oauth2:{token}@")
     
-    subprocess.run(["git", "remote", "add", "auth_origin", auth_push_url], cwd=local_path, capture_output=True)
-    subprocess.run(["git", "remote", "set-url", "auth_origin", auth_push_url], cwd=local_path, capture_output=True)
-    subprocess.run(["git", "push", "-u", "auth_origin", branch_name], cwd=local_path, check=True)
+    subprocess.run(["git", "remote", "add", "auth_origin", auth_push_url], cwd=local_path, capture_output=True, timeout=10)
+    subprocess.run(["git", "remote", "set-url", "auth_origin", auth_push_url], cwd=local_path, capture_output=True, timeout=10)
+    subprocess.run(["git", "push", "-u", "auth_origin", branch_name], cwd=local_path, check=True, timeout=120)
     return True
 
 def open_pull_request(repo_name: str, branch_name: str, title: str, body: str, token: str, is_owner: bool, user_login: str) -> str:

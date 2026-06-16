@@ -32,7 +32,7 @@ async def agent_validator(state: PipelineState):
             try:
                 result = subprocess.run(
                     [sys.executable, "-m", "py_compile", full_path],
-                    capture_output=True, text=True
+                    capture_output=True, text=True, timeout=30
                 )
                 if result.returncode == 0:
                     logs_list.append(f"[PASS] {target_file} - syntax OK")
@@ -47,7 +47,7 @@ async def agent_validator(state: PipelineState):
             try:
                 result = subprocess.run(
                     ["node", "--check", full_path],
-                    capture_output=True, text=True
+                    capture_output=True, text=True, timeout=30
                 )
                 if result.returncode == 0:
                     logs_list.append(f"[PASS] {target_file} - syntax OK")

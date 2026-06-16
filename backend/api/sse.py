@@ -4,6 +4,8 @@ import asyncio
 from sse_starlette.sse import EventSourceResponse
 from orchestrator import app as langgraph_app
 from state import sse_queues
+from main import metrics
+import time
 
 router = APIRouter()
 
@@ -56,6 +58,9 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
     final_pr_error = ""
     final_confidence = 0.0
     
+    metrics.queue_depth += 1
+    start_time = time.time()
+    
     try:
         # We need to run astream and concurrently poll the queue for manual events
         # like we did in the old code to support the approval_resolved event
@@ -106,7 +111,13 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
         import traceback
         traceback.print_exc()
         await emit("error", {"error": str(e)})
+        metrics.failed_jobs += 1
     finally:
+        metrics.queue_depth = max(0, metrics.queue_depth - 1)
+        metrics.scan_duration_ms = int((time.time() - start_time) * 1000)
+        if final_pr_url or final_confidence > 0:
+            metrics.completed_jobs += 1
+            
         try:
             repo_local_path = state.get("repo_local_path")
             if repo_local_path and "codesentinel_" in repo_local_path:

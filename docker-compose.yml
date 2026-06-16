@@ -7,7 +7,10 @@ services:
       - "8000:8000"
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_EMERGENCY_KEY=${GROQ_EMERGENCY_KEY:-}
+      - GROQ_TOKENS_PER_KEY=${GROQ_TOKENS_PER_KEY:-6000}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - PORT=8000
     volumes:
       - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload

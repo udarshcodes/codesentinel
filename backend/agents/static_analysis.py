@@ -19,7 +19,8 @@ async def agent_static_analysis(state: PipelineState):
                 [semgrep_path, "--config=auto", "--json", "."],
                 cwd=repo_local_path,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=120
             )
             if result.stdout:
                 data = json.loads(result.stdout)
@@ -46,14 +47,17 @@ async def agent_static_analysis(state: PipelineState):
                 [bandit_path, "-r", ".", "-f", "json"],
                 cwd=repo_local_path,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=120
             )
             if result.stdout:
                 data = json.loads(result.stdout)
                 for hit in data.get("results", []):
                     file_path = hit.get("filename", "")
-                    # Clean up path to be relative
-                    file_path = file_path.replace(f"{repo_local_path}/", "").replace(f"{repo_local_path}\\", "")
+                    try:
+                        file_path = os.path.relpath(file_path, repo_local_path)
+                    except ValueError:
+                        pass
                     if file_path.startswith("./") or file_path.startswith(".\\"):
                         file_path = file_path[2:]
                         
@@ -78,13 +82,17 @@ async def agent_static_analysis(state: PipelineState):
             ["npx", "eslint", ".", "--format", "json"],
             cwd=repo_local_path,
             capture_output=True,
-            text=True
+            text=True,
+            timeout=120
         )
         if result.stdout:
             data = json.loads(result.stdout)
             for file_result in data:
                 file_path = file_result.get("filePath", "")
-                file_path = file_path.replace(f"{repo_local_path}/", "").replace(f"{repo_local_path}\\", "")
+                try:
+                    file_path = os.path.relpath(file_path, repo_local_path)
+                except ValueError:
+                    pass
                 
                 for msg in file_result.get("messages", []):
                     findings.append({
@@ -106,7 +114,8 @@ async def agent_static_analysis(state: PipelineState):
                 [pylint_path, '--disable=all', '--enable=W0611,W0612,R0801,R0401,R0915', '-f', 'json', '.'],
                 cwd=repo_local_path,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=120
             )
             if result.stdout:
                 try:
@@ -136,7 +145,8 @@ async def agent_static_analysis(state: PipelineState):
                 [flake8_path, '.'],
                 cwd=repo_local_path,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=120
             )
             if result.stdout:
                 for line in result.stdout.splitlines():
@@ -163,7 +173,8 @@ async def agent_static_analysis(state: PipelineState):
                 [sonar_path],
                 cwd=repo_local_path,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=300
             )
             # Typically SonarQube findings are uploaded to a server, but we can attempt to parse local reports if they exist
             report_path = os.path.join(repo_local_path, ".scannerwork", "report-task.txt")
