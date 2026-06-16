@@ -56,8 +56,8 @@ def commit_and_push(local_path: str, branch_name: str, message: str, push_repo_u
     for f in files:
         try:
             subprocess.run(["git", "add", f], cwd=local_path, check=True)
-        except Exception:
-            pass
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to add file {f}: {e}")
             
     status = subprocess.run(["git", "status", "--porcelain"], cwd=local_path, capture_output=True, text=True)
     if not status.stdout.strip():
@@ -79,7 +79,7 @@ def open_pull_request(repo_name: str, branch_name: str, title: str, body: str, t
         base = "main"
         try:
             source_repo.get_branch("main")
-        except:
+        except Exception:
             base = "master"
             
         head_ref = branch_name if is_owner else f"{user_login}:{branch_name}"
