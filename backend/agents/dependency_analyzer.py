@@ -42,6 +42,17 @@ async def agent_dependency_analyzer(state: PipelineState):
             except Exception as e:
                 print(f"[DependencyAnalyzer] Failed to parse package.json: {e}")
                 
+    def is_outdated(current: str, latest: str) -> bool:
+        if current == latest: return False
+        try:
+            c_parts = [int(x) for x in current.split('.') if x.isdigit()]
+            l_parts = [int(x) for x in latest.split('.') if x.isdigit()]
+            if c_parts and l_parts:
+                return l_parts > c_parts
+        except Exception:
+            pass
+        return latest != current
+
     # Check for outdated packages against public registries
     async def check_outdated(dep):
         try:
@@ -50,14 +61,13 @@ async def agent_dependency_analyzer(state: PipelineState):
                     res = await client.get(f"https://pypi.org/pypi/{dep['name']}/json", timeout=5)
                     if res.status_code == 200:
                         latest = res.json().get("info", {}).get("version")
-                        # Basic string inequality for version check
-                        if latest and latest != dep["version"]:
+                        if latest and is_outdated(dep["version"], latest):
                             return latest
                 elif dep["ecosystem"] == "npm":
                     res = await client.get(f"https://registry.npmjs.org/{dep['name']}/latest", timeout=5)
                     if res.status_code == 200:
                         latest = res.json().get("version")
-                        if latest and latest != dep["version"]:
+                        if latest and is_outdated(dep["version"], latest):
                             return latest
         except Exception as e:
             print(f"[DependencyAnalyzer] Registry check failed for {dep['name']}: {e}")
