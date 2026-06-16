@@ -40,11 +40,12 @@ async def agent_code_generator(state: PipelineState):
                 try:
                     with open(full_path, "r", errors="ignore") as f:
                         file_content = f.read()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error reading file {full_path}: {e}")
         
         if not target_file:
-            target_file = "main.py"
+            print(f"[CodeGenerator] No target file identified for issue {plan.get('issue_id')}. Skipping.")
+            continue
             
         if not file_content:
             print(f"[CodeGenerator] Target file '{target_file}' is missing or empty. Skipping.")
@@ -83,6 +84,7 @@ Current file content:
             if fixed_content.endswith("```"):
                 fixed_content = fixed_content[:-3].rstrip()
             
+            patch_applied = False
             if file_content and repo_local_path:
                 full_path = os.path.join(repo_local_path, target_file)
                 
@@ -91,7 +93,7 @@ Current file content:
                 
                 if patch_result["success"]:
                     print(f"[CodeGenerator] Successfully applied patch to {target_file}")
-                    
+                    patch_applied = True
                     # Read back the modified content to create a diff for the UI
                     with open(full_path, "r", errors="ignore") as f:
                         new_content = f.read()
@@ -106,7 +108,7 @@ Current file content:
                 "patch_id": plan.get("issue_id"),
                 "file": target_file,
                 "diff": diff,
-                "applied": True
+                "applied": patch_applied
             })
         except Exception as e:
             print(f"Error generating code: {e}")
