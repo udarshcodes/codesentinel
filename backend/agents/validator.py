@@ -104,8 +104,8 @@ async def agent_validator(state: PipelineState):
                         logs_list.append(f"[FAIL] Build verification failed (npm run build):\n{res.stderr[:500]}")
                     else:
                         logs_list.append("[PASS] Build verification passed (npm run build)")
-        except Exception:
-            pass
+        except Exception as e:
+            logs_list.append(f"[WARN] package.json build error: {e}")
 
     elif os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
         try:
@@ -115,8 +115,8 @@ async def agent_validator(state: PipelineState):
                 logs_list.append(f"[FAIL] Build verification failed (python -m build):\n{res.stderr[:500]}")
             else:
                 logs_list.append("[PASS] Build verification passed (python -m build)")
-        except Exception:
-            pass
+        except Exception as e:
+            logs_list.append(f"[WARN] setup.py/pyproject.toml build error: {e}")
 
     elif os.path.exists(os.path.join(repo_local_path, "pom.xml")):
         try:
@@ -126,9 +126,11 @@ async def agent_validator(state: PipelineState):
                 logs_list.append(f"[FAIL] Build verification failed (mvn package):\n{res.stdout[-500:]}")
             else:
                 logs_list.append("[PASS] Build verification passed (mvn package)")
-        except Exception:
-            pass
+        except Exception as e:
+            logs_list.append(f"[WARN] pom.xml build error: {e}")
 
+    import shlex
+    
     test_logs = ""
     if not build_passed:
         all_passed = False
@@ -139,7 +141,7 @@ async def agent_validator(state: PipelineState):
         test_framework = knowledge_graph.get("test_framework", "")
         
         if test_framework:
-            cmd = test_framework.split(" ")
+            cmd = shlex.split(test_framework)
             try:
                 res = subprocess.run(
                     cmd,
@@ -173,9 +175,11 @@ async def agent_validator(state: PipelineState):
     unresolvable = False
     unresolvable_fixes = state.get("unresolvable_fixes", [])
     
-    if not all_passed and retry_count >= 3:
-        unresolvable = True
-        unresolvable_fixes.append(patches[-1].get("patch_id", 0))
+    if not all_passed:
+        retry_count += 1
+        if retry_count >= 3:
+            unresolvable = True
+            unresolvable_fixes.append(patches[-1].get("patch_id", 0))
     
     new_validation_results = list(validation_results)
     files_validated = len(patches)
@@ -206,7 +210,8 @@ async def agent_validator(state: PipelineState):
             2
         )
         
-    confidence = await compute_confidence(files_passed, files_validated, False, issue_desc)
+    security_clean = state.get("security_verified", False)
+    confidence = await compute_confidence(files_passed, files_validated, security_clean, issue_desc)
     
     if all_passed:
         for patch in patches:
@@ -220,5 +225,6 @@ async def agent_validator(state: PipelineState):
     return {
         "validation_results": new_validation_results,
         "confidence_score": confidence,
-        "unresolvable_fixes": unresolvable_fixes
+        "unresolvable_fixes": unresolvable_fixes,
+        "retry_count": retry_count
     }
