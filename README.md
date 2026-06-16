@@ -37,7 +37,7 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 ## Tech Stack & Architecture
 
 ### Backend
-- **Python 3.10+ & FastAPI:** Asynchronous speed, Pydantic validation, and Server-Sent Events (SSE).
+- **Python 3.10+ & FastAPI:** Asynchronous speed, Pydantic validation, and Server-Sent Events (SSE). Utilizes `fastapi.BackgroundTasks` to execute headless pipelines suitable for robust CI/CD webhook triggers.
 - **LangGraph:** Robust Directed Acyclic Graph (DAG) state machine orchestrating discrete AI agents, enabling cyclic validation loops (test -> fail -> fix -> test).
 - **ChromaDB:** Lightweight embedded vector database storing and retrieving past validated fixes via RAG.
 - **Groq API:** Multi-tier routing sending simple tasks to rapid models and complex code generation to 70B+ parameters.
@@ -48,7 +48,7 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners:** `Semgrep`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline.
+- **SAST Runners:** `Semgrep`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline. Also includes real-time OSV, NPM, and PyPI public registry checks.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
 
@@ -63,15 +63,19 @@ graph TD
     
     subgraph Agentic Pipeline
     C --> D[Repo Mapper]
-    D --> E[Static Analysis]
-    E --> F[Bug Investigator]
+    D --> DA[Dependency Analyzer]
+    D --> SA[Static Analysis]
+    DA --> F[Bug Investigator]
+    SA --> F
     F -.->|Query| G[(ChromaDB Vector Store)]
     F --> H[Repair Planner]
     H -->|SSE Pause| I((Human Approval))
     I -->|POST /api/v1/approve| J[Code Generator]
     J --> K[Validator]
     K -->|If Build or Tests Fail| J
-    K -->|If Tests Pass| L[PR Author]
+    K -->|If Tests Pass| SV[Security Verifier]
+    SV -->|If Still Vulnerable| J
+    SV -->|If Secure| L[PR Author]
     end
     
     L --> M[GitHub API]
@@ -146,8 +150,8 @@ Navigate to `http://localhost:5173` to use the app.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/analyze` | Initiates the pipeline for a given `repo_url` (and optional `commit_sha`). |
-| `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads. |
+| `POST` | `/api/v1/analyze` | Initiates the headless pipeline for a given `repo_url` (or a wildcard list of repos), returning a unique UUID `task_id` without blocking the HTTP response. |
+| `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads, filterable by `task_id`. |
 | `POST` | `/api/v1/approve/{task_id}` | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
 | `GET`  | `/admin/token-usage` | Protected endpoint returning LLM key rotation stats. Requires `X-Admin-Token` header. |
 | `GET`  | `/admin` | Serves the statically built React Admin Dashboard. |
@@ -172,7 +176,7 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 
 ## Security Considerations
 
-1. **Deterministic Patching:** The custom Python patch engine ensures exactly what the AI suggests is applied, bypassing brittle system patch limits while maintaining strict character matching.
+1. **Deterministic Patching:** The custom Python patch engine ensures exactly what the AI suggests is applied, bypassing brittle system patch limits while maintaining strict character matching and forbidding LLM abbreviations.
 2. **Ephemeral Sandboxing:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit.
 3. **Secret Management:** LLM API keys and GitHub tokens are strictly confined to the backend environment and never exposed via SSE payloads.
 
@@ -184,18 +188,21 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 codesentinel/
 ├── backend/
 │   ├── main.py                  # FastAPI entry point & static asset mounter
-│   ├── orchestrator.py          # LangGraph state machine & event queues
+│   ├── state.py                 # Global state and SSE queues
+│   ├── orchestrator.py          # LangGraph state machine
 │   ├── config.py                # Environment & LLM key rotation pool
 │   ├── api/
 │   │   ├── routes.py            # POST endpoints (analysis initiation, approvals)
 │   │   └── sse.py               # SSE streaming endpoint for pipeline observability
 │   ├── agents/                  # LangGraph Node Actors
-│   │   ├── repo_mapper.py       # Builds AST knowledge graph of target repo
+│   │   ├── repo_mapper.py       # Builds LLM architectural map of target repo
+│   │   ├── dependency_analyzer.py # Identifies outdated packages and CVEs
 │   │   ├── static_analysis.py   # Subprocess orchestration for SAST tools
 │   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
 │   │   ├── repair_planner.py    # Formulates fixes & requests human approval
 │   │   ├── code_generator.py    # Generates Search/Replace blocks
 │   │   ├── validator.py         # Dynamic test suite execution & retry loops
+│   │   ├── security_verifier.py # Re-runs SAST to verify vulnerabilities are fixed
 │   │   └── pr_author.py         # Pull Request synthesizer
 │   ├── models/
 │   │   └── pipeline_state.py    # Strictly typed state schema
