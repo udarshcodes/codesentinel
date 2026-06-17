@@ -20,3 +20,10 @@ langgraph
 requests
 pytest
 build
+
+# OpenTelemetry explicit pins (Fix for ChromaDB)
+opentelemetry-api==1.28.0
+opentelemetry-sdk==1.28.0
+opentelemetry-exporter-otlp-proto-grpc==1.28.0
+opentelemetry-exporter-otlp-proto-common==1.28.0
+opentelemetry-exporter-otlp-proto-http==1.28.0
