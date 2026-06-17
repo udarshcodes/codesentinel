@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Build the admin dashboard so FastAPI can serve it statically at /admin
+RUN cd admin_dashboard && npm install && npm run build
+
 # Add Healthcheck for Azure Container Apps
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
