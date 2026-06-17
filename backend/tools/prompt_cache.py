@@ -50,6 +50,12 @@ CRITICAL RULES — violating these breaks the pipeline:
    run — your job is to delete the duplicates and leave exactly one
    correct version, not add a third.
 
+5. If you change a function signature or return type (e.g., changing `return` to `yield`), you MUST generate additional <<<SEARCH>>>/<<<REPLACE>>> blocks to update all affected call sites in the file.
+
+6. If you introduce a new module (e.g., `datetime`, `json`), you MUST include a separate <<<SEARCH>>>/<<<REPLACE>>> block to import it at the top of the file.
+
+7. Do not include any conversational commentary (e.g. `# Here is the updated code`), explanations, or markdown fences inside the <<<REPLACE>>> block. The block must contain ONLY valid, executable source code.
+
 Output ONLY <<<SEARCH>>>/<<<REPLACE>>> blocks, nothing else.
 """.strip()
 

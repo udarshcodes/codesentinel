@@ -69,6 +69,8 @@ def extract_function_context(file_content: str, changed_lines: list[int]) -> str
     if not changed_lines:
         return ""
         
+    changed_lines = [int(x) for x in changed_lines]
+        
     try:
         tree = ast.parse(file_content)
         lines = file_content.splitlines()

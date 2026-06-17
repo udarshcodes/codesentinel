@@ -54,10 +54,11 @@ async def agent_static_analysis(state: PipelineState):
                 data = json.loads(result.stdout)
                 for hit in data.get("results", []):
                     file_path = hit.get("filename", "")
-                    try:
-                        file_path = os.path.relpath(file_path, repo_local_path)
-                    except ValueError:
-                        pass
+                    if os.path.isabs(file_path):
+                        try:
+                            file_path = os.path.relpath(file_path, repo_local_path)
+                        except ValueError:
+                            pass
                     if file_path.startswith("./") or file_path.startswith(".\\"):
                         file_path = file_path[2:]
                         
@@ -89,10 +90,13 @@ async def agent_static_analysis(state: PipelineState):
             data = json.loads(result.stdout)
             for file_result in data:
                 file_path = file_result.get("filePath", "")
-                try:
-                    file_path = os.path.relpath(file_path, repo_local_path)
-                except ValueError:
-                    pass
+                if os.path.isabs(file_path):
+                    try:
+                        file_path = os.path.relpath(file_path, repo_local_path)
+                    except ValueError:
+                        pass
+                if file_path.startswith("./") or file_path.startswith(".\\"):
+                    file_path = file_path[2:]
                 
                 for msg in file_result.get("messages", []):
                     findings.append({
@@ -200,9 +204,15 @@ async def agent_static_analysis(state: PipelineState):
                     for node in ast.walk(tree):
                         if isinstance(node, ast.For):
                             # Check for attribute access inside the loop (potential lazy load)
+                            # Extract all loop variables to handle tuple unpacking
+                            loop_vars = []
+                            for target_node in ast.walk(node.target):
+                                if isinstance(target_node, ast.Name):
+                                    loop_vars.append(target_node.id)
+
                             for child in ast.walk(node):
                                 if isinstance(child, ast.Attribute) and isinstance(child.value, ast.Name):
-                                    if child.value.id == node.target.id if isinstance(node.target, ast.Name) else "":
+                                    if child.value.id in loop_vars:
                                         rel_path = os.path.relpath(file_path, repo_local_path)
                                         findings.append({
                                             "file": rel_path,
