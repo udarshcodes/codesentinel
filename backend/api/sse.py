@@ -3,8 +3,7 @@ from fastapi import APIRouter
 import asyncio
 from sse_starlette.sse import EventSourceResponse
 from orchestrator import app as langgraph_app
-from state import sse_queues
-from main import metrics
+from state import sse_queues, metrics
 import time
 
 router = APIRouter()

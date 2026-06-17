@@ -9,15 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from api.routes import router as api_router
 from api.sse import router as sse_router
 from tools.key_dispatcher import get_usage_report
-
-# Observability metrics
-class Metrics:
-    queue_depth = 0
-    scan_duration_ms = 0
-    failed_jobs = 0
-    completed_jobs = 0
-
-metrics = Metrics()
+from state import metrics
 
 app = FastAPI(title="Multi-Agent Bug Detection System")
 
