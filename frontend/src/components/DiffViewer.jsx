@@ -6,7 +6,7 @@ export default function DiffViewer({ events }) {
 
   events.forEach(e => {
     if (e.event === 'agent_complete' && e.data?.agent === 'code_generator') {
-      patches = e.data.data.patches || []
+      patches = e.data?.data?.patches || []
     }
   })
 

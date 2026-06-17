@@ -6,7 +6,7 @@ export default function FindingsPanel({ events }) {
   
   events.forEach(e => {
     if (e.event === 'agent_complete' && e.data?.agent === 'bug_investigator') {
-      investigatedIssues = e.data.data.investigated_issues || []
+      investigatedIssues = e.data?.data?.investigated_issues || []
     }
   })
 
@@ -47,7 +47,7 @@ export default function FindingsPanel({ events }) {
               {issue.root_cause || issue.description || 'No description provided.'}
             </p>
 
-            {issue.affected_files && issue.affected_files.length > 0 && (
+            {Array.isArray(issue.affected_files) && issue.affected_files.length > 0 && (
               <div className="mt-4">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Affected Files</p>
                 <div className="flex flex-wrap gap-2">
