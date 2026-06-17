@@ -136,7 +136,7 @@ def invoke_llm(
         # The file content at the end gets shortened — the LLM still sees the start of the file.
         max_chars = budget["prompt"] * 4
         prompt = prompt[:max_chars] + "\n```\n[FILE TRUNCATED DUE TO TOKEN LIMIT]\n"
-        prompt_tokens = budget["prompt"]
+        prompt_tokens = count_tokens(prompt)
 
     # Determine starting model based on tier AND token threshold
     if tier == 1 and prompt_tokens <= ESCALATION_TOKEN_THRESHOLD:
@@ -176,6 +176,15 @@ def invoke_llm(
             res = llm.invoke(prompt)
             raw = res.content.strip()
             
+            # Extract actual token usage from the Groq API response if available
+            tokens = getattr(res, "usage_metadata", {}).get("total_tokens", 0)
+            if tokens:
+                record_usage(key_idx, tokens)
+                completion_tokens = tokens
+            else:
+                # Fallback to offline approximation
+                completion_tokens = count_tokens(raw)
+
             if expect_json:
                 cleaned = raw.replace("```json", "").replace("```", "").strip()
                 if json_array:
@@ -186,15 +195,6 @@ def invoke_llm(
                     raise ValueError("No JSON block found in response")
                 # Ensure it parses successfully
                 json.loads(match.group(0))
-            
-            # Extract actual token usage from the Groq API response if available
-            tokens = getattr(res, "usage_metadata", {}).get("total_tokens", 0)
-            if tokens:
-                record_usage(key_idx, tokens)
-                completion_tokens = tokens
-            else:
-                # Fallback to offline approximation
-                completion_tokens = count_tokens(raw)
                 
             break
             
@@ -222,9 +222,11 @@ def invoke_llm(
     else:
         # Loop finished without breaking -> all retries failed
         raw = ""
+        completion_tokens = 0
+
+    _record(agent_name, prompt_tokens, completion_tokens, current_model)
 
     if raw:
-        _record(agent_name, prompt_tokens, completion_tokens, current_model)
 
         if not expect_json:
             if res_content is None:

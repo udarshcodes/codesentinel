@@ -23,6 +23,10 @@ async def agent_code_generator(state: PipelineState):
     elif security_retry_context:
         failure_context = f"PREVIOUS PATCH FAILED SECURITY VERIFICATION. Remaining vulnerability details: {json.dumps(security_retry_context)}"
 
+    if state.get("approval_decision") == "rejected":
+        print("[CodeGenerator] Repair plan was REJECTED by human. Skipping.")
+        return {"patches": patches, "pr_error": "Repair plan was rejected by a human reviewer."}
+
     if not repair_plan or not GROQ_API_KEYS:
         return {"patches": patches}
     
