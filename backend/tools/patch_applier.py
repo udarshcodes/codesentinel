@@ -1,5 +1,22 @@
 import os
 import difflib
+import re
+import ast
+
+def strip_markdown(text: str, target_file: str) -> str:
+    """Removes markdown code fences if present, unless targeting a markdown file."""
+    if target_file.endswith(".md"):
+        return text.strip("\n")
+    
+    lines = text.split("\n")
+    cleaned = [line for line in lines if not re.match(r"^\s*```.*$", line)]
+    return "\n".join(cleaned).strip("\n")
+
+def strip_conversational_comments(text: str) -> str:
+    """Removes common LLM conversational phrasing masquerading as comments."""
+    lines = text.split("\n")
+    cleaned = [line for line in lines if not re.match(r"^\s*#\s*(However|Here is|The above|Note that|To fix)", line, re.IGNORECASE)]
+    return "\n".join(cleaned)
 
 def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> dict:
     """
@@ -35,9 +52,12 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
             if len(parts) != 2:
                 continue
                 
-            search_str = parts[0].strip("\n")
-            replace_str = parts[1].split("<<<")[0].strip("\n") # in case there are other markers
+            search_str = strip_markdown(parts[0], target_file)
+            replace_str = strip_markdown(parts[1].split("<<<")[0], target_file)
             
+            replace_str = strip_conversational_comments(replace_str)
+            
+
             # --- Attempt 1: Exact match ---
             if search_str in content:
                 content = content.replace(search_str, replace_str, 1)
@@ -95,6 +115,13 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
                 
         if modifications == 0:
             return {"success": False, "stderr": "No replacements were made."}
+            
+        # Pass 2: AST syntax verification for Python files on FULL content
+        if target_file.endswith(".py"):
+            try:
+                ast.parse(content)
+            except SyntaxError as e:
+                return {"success": False, "stderr": f"SyntaxError after patch application: {e}"}
             
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)

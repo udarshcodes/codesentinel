@@ -26,6 +26,11 @@ async def agent_validator(state: PipelineState):
         if not os.path.exists(full_path):
             logs_list.append(f"[SKIP] {target_file} - file not found")
             continue
+            
+        if not patch.get("applied", True):
+            logs_list.append(f"[FAIL] {target_file} - patch failed to apply, file is unmodified")
+            all_passed = False
+            continue
         
         # Python files: check syntax with py_compile
         if target_file.endswith(".py"):
@@ -42,8 +47,8 @@ async def agent_validator(state: PipelineState):
             except Exception as e:
                 logs_list.append(f"[WARN] {target_file} - could not validate: {e}")
                 
-        # JS/TS files: basic syntax check with node --check
-        elif target_file.endswith((".js", ".mjs")):
+        # JS/TS/JSX files: basic syntax check with node --check (will fail gracefully on JSX, caught by build step)
+        elif target_file.endswith((".js", ".mjs", ".jsx", ".tsx")):
             try:
                 result = subprocess.run(
                     ["node", "--check", full_path],
@@ -92,18 +97,24 @@ async def agent_validator(state: PipelineState):
     # Build verification stage
     build_passed = True
     
-    if os.path.exists(os.path.join(repo_local_path, "package.json")):
+    # Check for frontend package.json first, then fallback to root
+    frontend_pkg = os.path.join(repo_local_path, "frontend", "package.json")
+    root_pkg = os.path.join(repo_local_path, "package.json")
+    pkg_path = frontend_pkg if os.path.exists(frontend_pkg) else (root_pkg if os.path.exists(root_pkg) else None)
+    
+    if pkg_path:
+        build_cwd = os.path.dirname(pkg_path)
         try:
-            with open(os.path.join(repo_local_path, "package.json"), "r", encoding="utf-8") as f:
+            with open(pkg_path, "r", encoding="utf-8") as f:
                 import json
                 pkg = json.load(f)
                 if "scripts" in pkg and "build" in pkg["scripts"]:
-                    res = subprocess.run(["npm", "run", "build"], cwd=repo_local_path, capture_output=True, text=True, timeout=60)
+                    res = subprocess.run(["npm", "run", "build"], cwd=build_cwd, capture_output=True, text=True, timeout=60)
                     if res.returncode != 0:
                         build_passed = False
-                        logs_list.append(f"[FAIL] Build verification failed (npm run build):\n{res.stderr[:500]}")
+                        logs_list.append(f"[FAIL] Build verification failed (npm run build in {build_cwd}):\n{res.stderr[:500]}")
                     else:
-                        logs_list.append("[PASS] Build verification passed (npm run build)")
+                        logs_list.append(f"[PASS] Build verification passed (npm run build in {build_cwd})")
         except Exception as e:
             logs_list.append(f"[WARN] package.json build error: {e}")
 
@@ -151,7 +162,7 @@ async def agent_validator(state: PipelineState):
                 )
                 test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
                 if res.returncode != 0:
-                    if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
+                    if "not found" not in test_logs.lower():
                         all_passed = False
             except Exception as e:
                 test_logs = f"Failed to execute dynamic test suite '{test_framework}': {e}"
@@ -166,7 +177,7 @@ async def agent_validator(state: PipelineState):
                 )
                 test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
                 if res.returncode != 0:
-                    if "no tests ran" not in test_logs.lower() and "not found" not in test_logs.lower():
+                    if "not found" not in test_logs.lower():
                         all_passed = False
             except Exception as e:
                 test_logs = f"No test suite found (pytest not available or timed out): {e}"

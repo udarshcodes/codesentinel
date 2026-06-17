@@ -54,7 +54,10 @@ def prepare_repo_for_push(repo_url: str, local_path: str, token: str) -> dict:
 def commit_and_push(local_path: str, branch_name: str, message: str, push_repo_url: str, token: str, files: list) -> bool:
     """Commits and pushes."""
     try:
-        subprocess.run(["git", "add", "-A"], cwd=local_path, check=True, timeout=30)
+        if not files:
+            return False
+        for f in files:
+            subprocess.run(["git", "add", f], cwd=local_path, check=True, timeout=30)
     except subprocess.CalledProcessError as e:
         print(f"Failed to add files: {e}")
             
