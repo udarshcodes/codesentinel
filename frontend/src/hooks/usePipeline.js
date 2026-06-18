@@ -67,7 +67,7 @@ export function usePipeline(taskId) {
         }
       });
 
-      es.onerror = (e) => {
+      es.onerror = () => {
         console.error('SSE connection error, retrying in 3 seconds...');
         es.close();
         retryTimeout = setTimeout(() => {

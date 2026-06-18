@@ -1,4 +1,4 @@
-import React from 'react'
+
 
 const AGENT_ORDER = [
   'repo_mapper',
@@ -66,19 +66,16 @@ export default function PipelineView({ events }) {
             const isActive = currentAgent === agentKey && !isError
             
             let statusColor = 'bg-slate-100 border-slate-300 text-slate-400' // Pending
-            let iconColor = 'text-slate-400'
+          
             let glowEffect = ''
             
             if (isCompleted) {
               statusColor = 'bg-green-100 border-green-300 text-green-600'
-              iconColor = 'text-green-600'
             } else if (isActive) {
               statusColor = 'bg-blue-100 border-blue-500 text-blue-600'
-              iconColor = 'text-blue-600'
               glowEffect = 'shadow-[0_0_15px_rgba(59,130,246,0.3)]'
             } else if (isError && currentAgent === agentKey) {
               statusColor = 'bg-red-100 border-red-500 text-red-600'
-              iconColor = 'text-red-600'
               glowEffect = 'shadow-[0_0_15px_rgba(239,68,68,0.3)]'
             }
 

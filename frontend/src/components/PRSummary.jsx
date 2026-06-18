@@ -1,4 +1,4 @@
-import React from 'react'
+
 import ConfidenceScore from './ConfidenceScore'
 
 export default function PRSummary({ prUrl, confidenceScore, prError }) {

@@ -125,6 +125,8 @@ To provide a massive leap in User Experience (UX), the FastAPI backend streams L
 - **Execution Environment:** Code execution (e.g., running `npm build` or `python -m build` during the validation phase) currently runs directly on the host environment. Future updates plan to shift this execution into ephemeral, isolated Docker containers to prevent malicious LLM code generation from executing arbitrary operations on the host SRE server.
 - **Principle of Least Privilege:** GitHub Personal Access Tokens (PATs) used by the `pr_author` agent are strictly scoped to the `repo:write` capability and are designed for rapid rotation.
 - **Air-Gapped Telemetry:** No user source code is ever transmitted via SSE payloads; the system relies heavily on metadata, diff hashes, and rule IDs to stream pipeline progress.
+- **Secure Secret Transport:** API tokens and GitHub credentials are never passed via command-line arguments (which are visible in process logs) and are injected using `http.extraheader` configuration for git operations.
+- **Strict Input Validation:** All external inputs, specifically target repository URLs, are scrubbed and validated via strict regex allowlists to thwart Server-Side Request Forgery (SSRF) and command injection vectors prior to cloning.
 
 ## 11. Future Roadmap
 1. **Advanced Distributed Tracing:** Expanding the `repo_mapper` to trace vulnerabilities across microservice boundaries via OpenTelemetry integrations, building on top of the newly implemented Multi-Repository wildcard execution engine.

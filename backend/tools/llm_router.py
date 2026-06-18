@@ -7,7 +7,6 @@ import json
 import re
 import tiktoken
 from langchain_groq import ChatGroq
-from langchain_core.exceptions import OutputParserException
 from config import GROQ_API_KEYS
 from tools.key_dispatcher import get_next_key, record_usage, mark_rate_limited
 from tools.response_cache import get_cached, set_cached

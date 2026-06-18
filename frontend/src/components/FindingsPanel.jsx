@@ -1,4 +1,4 @@
-import React from 'react'
+
 
 export default function FindingsPanel({ events }) {
   // Extract findings from the bug_investigator or static_analysis events

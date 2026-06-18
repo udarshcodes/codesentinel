@@ -178,7 +178,8 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 
 1. **Deterministic Patching:** The custom Python patch engine ensures exactly what the AI suggests is applied, bypassing brittle system patch limits while maintaining strict character matching and forbidding LLM abbreviations.
 2. **Ephemeral Sandboxing:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit.
-3. **Secret Management:** LLM API keys and GitHub tokens are strictly confined to the backend environment and never exposed via SSE payloads.
+3. **Secret Management & Transport:** LLM API keys and GitHub tokens are strictly confined to the backend environment. Tokens are handled securely via local git configuration (`http.extraheader`) rather than command-line remote URLs, ensuring they never leak into process logs or `.git/config`.
+4. **Input Validation:** All repository URLs are strictly validated against allowlist regex patterns to prevent Server-Side Request Forgery (SSRF) and command injection before any cloning occurs.
 
 ---
 

@@ -1,4 +1,4 @@
-import React from 'react'
+
 
 export default function ConfidenceScore({ score }) {
   let colorClass = 'text-green-400'

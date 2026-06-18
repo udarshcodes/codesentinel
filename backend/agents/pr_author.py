@@ -1,11 +1,8 @@
 import os
 import json
-import time
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
-from github import Github
-from git import Repo
 from tools.prompt_cache import PR_AUTHOR_SYSTEM
 
 async def agent_pr_author(state: PipelineState):

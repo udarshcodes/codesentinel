@@ -1,4 +1,5 @@
-import React, { createContext, useReducer } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useReducer } from 'react';
 
 export const PipelineContext = createContext();
 

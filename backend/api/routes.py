@@ -4,7 +4,7 @@ import os
 import httpx
 import uuid
 from api.sse import run_pipeline_worker
-from state import approval_events, broadcast_sse
+from state import approval_events
 
 router = APIRouter()
 

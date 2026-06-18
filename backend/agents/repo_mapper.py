@@ -1,6 +1,5 @@
 import os
 import tempfile
-from git import Repo
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEY
 from tools.llm_router import invoke_llm

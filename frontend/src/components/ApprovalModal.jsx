@@ -1,4 +1,4 @@
-import React from 'react'
+
 
 export default function ApprovalModal({ isOpen, agentData, onApprove, onReject }) {
   if (!isOpen || !agentData) return null

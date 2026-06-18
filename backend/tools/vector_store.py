@@ -1,6 +1,5 @@
 import os
 import chromadb
-from chromadb.utils import embedding_functions
 
 CHROMA_PERSIST_PATH = os.getenv("CHROMA_PERSIST_PATH", "./chroma_data")
 client = None
