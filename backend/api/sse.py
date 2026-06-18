@@ -124,6 +124,13 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
                 shutil.rmtree(repo_local_path, ignore_errors=True)
         except Exception as e:
             print(f"Error cleaning up temp dir: {e}")
+            
+        # Cleanup queue and cache
+        if task_id in sse_queues:
+            del sse_queues[task_id]
+            
+        from tools import context_cache
+        context_cache.invalidate(repo_url)
 
 async def event_generator(task_id: str):
     if task_id not in sse_queues:
@@ -144,6 +151,10 @@ async def event_generator(task_id: str):
         print(f"SSE client disconnected for task {task_id}")
     except Exception as e:
         print(f"SSE stream error: {e}")
+    finally:
+        # Client disconnect should also remove the queue if still present
+        if task_id in sse_queues:
+            del sse_queues[task_id]
 
 @router.get("/stream")
 async def stream_pipeline(repo_url: str = None, task_id: str = None):

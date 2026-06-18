@@ -144,7 +144,7 @@ export default function App() {
           <StatCard 
             icon={<Activity className="w-6 h-6 text-indigo-500" />}
             title="System Status" 
-            value={data.summary.active_primary_keys > 0 || (data.emergency_key.available && !data.emergency_key.percent_used >= 100) ? 'Operational' : 'Exhausted'}
+            value={data.summary.active_primary_keys > 0 || (data.emergency_key.available && !(data.emergency_key.percent_used >= 100)) ? 'Operational' : 'Exhausted'}
             sub="Pipeline availability"
           />
         </div>

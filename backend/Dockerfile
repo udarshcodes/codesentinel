@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir semgrep
 
 # Install Python requirements
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 # Copy application code
 COPY . .

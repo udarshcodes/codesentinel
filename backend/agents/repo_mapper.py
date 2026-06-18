@@ -7,7 +7,13 @@ from tools.llm_router import invoke_llm
 from tools import context_cache
 
 async def agent_repo_mapper(state: PipelineState):
+    import re
     repo_url = state["repo_url"]
+    
+    # 0. Validate repo_url to prevent command injection and SSRF
+    if not re.match(r'^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(?:\.git)?$', repo_url):
+        print(f"Invalid or unsafe repository URL: {repo_url}")
+        return {"repo_local_path": "", "knowledge_graph": {}}
     
     # 1. Clone repository
     temp_base = os.getenv("TEMP_REPO_PATH", "/tmp/repos")

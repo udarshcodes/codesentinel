@@ -131,18 +131,37 @@ async def agent_dependency_analyzer(state: PipelineState):
             })
 
     # Hit OSV API using batch query
-    from tools.osv_client import batch_query_osv
+    from tools.osv_client import batch_query_osv, fetch_vuln_details
     
     cves_map = await batch_query_osv(dependencies)
+    
+    # Collect all unique vuln IDs to fetch details
+    all_vuln_ids = set()
+    for dep_cves in cves_map.values():
+        for vuln in dep_cves:
+            all_vuln_ids.add(vuln.get('id'))
+            
+    vuln_details = await fetch_vuln_details(list(all_vuln_ids))
     
     for dep in dependencies:
         cves = cves_map.get(dep["name"], [])
         for vuln in cves:
-            # Extract severity from OSV response if available
+            vid = vuln.get('id', 'Unknown')
+            # Extract severity from full details
             severity = "HIGH"
-            vuln_severity = vuln.get("database_specific", {}).get("severity", "")
-            if vuln_severity:
-                severity = vuln_severity.upper()
+            full_vuln = vuln_details.get(vid, {})
+            # Look in severity array (e.g. CVSS_V3) or database_specific
+            severity_arr = full_vuln.get('severity', [])
+            if severity_arr:
+                # Find CVSS vector and compute severity if we want, or look for string. 
+                # Usually OSV provides "database_specific" -> "severity" in the detailed response
+                pass
+            
+            db_spec = full_vuln.get("database_specific", {})
+            if db_spec and db_spec.get("severity"):
+                severity = db_spec.get("severity").upper()
+            elif full_vuln.get("database_specific", {}).get("severity"):
+                 severity = full_vuln.get("database_specific", {}).get("severity").upper()
             
             file_name = "requirements.txt"
             if dep["ecosystem"] == "npm":

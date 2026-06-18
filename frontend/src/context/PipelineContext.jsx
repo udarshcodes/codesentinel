@@ -38,8 +38,7 @@ function pipelineReducer(state, action) {
       };
     case 'PIPELINE_ERROR':
       return { ...state, status: 'error', pipeline_error: action.payload?.error };
-    case 'VALIDATION_FAILED':
-      return { ...state, status: 'validating_failed' };
+
     case 'RESET':
       return initialState;
     default:

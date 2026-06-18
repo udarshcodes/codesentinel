@@ -155,6 +155,9 @@ def invoke_llm(
         
     total_attempts = MAX_RETRIES_PER_TIER * (len(GROQ_API_KEYS) + 1)
     
+    raw = ""
+    completion_tokens = 0
+    
     # --- Retry loop with deterministic escalation ---
     for attempt in range(1, total_attempts + 1):
         if res_content is not None:

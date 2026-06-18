@@ -49,7 +49,7 @@ jobs:
         run: |
           TASK_ID="${{ steps.codesentinel.outputs.task_id }}"
           API_URL="${{ secrets.CODESENTINEL_API_URL }}"
-          STREAM_URL="$API_URL/api/stream"
+          STREAM_URL="$API_URL/api/stream?task_id=$TASK_ID"
           
           COMMENT="🚀 **CodeSentinel Analysis Started**
 

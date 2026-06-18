@@ -25,6 +25,12 @@ export default function DiffViewer({ events }) {
     let oldVal = []
     let newVal = []
     
+    const hasDiffHeaders = patchStr.includes('--- ') || patchStr.includes('+++ ') || patchStr.includes('diff --git')
+    if (!hasDiffHeaders && patchStr.trim().length > 0) {
+      // If it doesn't look like a diff, treat it as entirely new content
+      return { oldString: '', newString: patchStr }
+    }
+    
     // Skip diff header (--- a/file +++ b/file)
     let startIndex = 0
     while (startIndex < lines.length && (lines[startIndex].startsWith('---') || lines[startIndex].startsWith('+++') || lines[startIndex].startsWith('diff') || lines[startIndex].startsWith('index'))) {

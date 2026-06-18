@@ -53,13 +53,16 @@ def prepare_repo_for_push(repo_url: str, local_path: str, token: str) -> dict:
 
 def commit_and_push(local_path: str, branch_name: str, message: str, push_repo_url: str, token: str, files: list) -> bool:
     """Commits and pushes."""
-    try:
-        if not files:
-            return False
-        for f in files:
-            subprocess.run(["git", "add", f], cwd=local_path, check=True, timeout=30)
-    except subprocess.CalledProcessError as e:
-        print(f"Failed to add files: {e}")
+    if not files:
+        return False
+    for f in files:
+        if os.path.exists(os.path.join(local_path, f)):
+            try:
+                subprocess.run(["git", "add", f], cwd=local_path, check=True, timeout=30)
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to add file {f}: {e}")
+        else:
+            print(f"File {f} does not exist, skipping add.")
             
     status = subprocess.run(["git", "status", "--porcelain"], cwd=local_path, capture_output=True, text=True, timeout=30)
     if not status.stdout.strip():
@@ -67,10 +70,12 @@ def commit_and_push(local_path: str, branch_name: str, message: str, push_repo_u
         
     subprocess.run(["git", "commit", "--no-verify", "-m", message], cwd=local_path, check=True, timeout=30)
     
-    auth_push_url = push_repo_url.replace("https://", f"https://oauth2:{token}@")
+    import base64
+    b64_token = base64.b64encode(f"oauth2:{token}".encode()).decode()
     
-    subprocess.run(["git", "remote", "add", "auth_origin", auth_push_url], cwd=local_path, capture_output=True, timeout=10)
-    subprocess.run(["git", "remote", "set-url", "auth_origin", auth_push_url], cwd=local_path, capture_output=True, timeout=10)
+    subprocess.run(["git", "remote", "add", "auth_origin", push_repo_url], cwd=local_path, capture_output=True, timeout=10)
+    subprocess.run(["git", "remote", "set-url", "auth_origin", push_repo_url], cwd=local_path, capture_output=True, timeout=10)
+    subprocess.run(["git", "config", "http.https://github.com/.extraheader", f"AUTHORIZATION: basic {b64_token}"], cwd=local_path, check=True, timeout=10)
     subprocess.run(["git", "push", "-u", "auth_origin", branch_name], cwd=local_path, check=True, timeout=120)
     return True
 

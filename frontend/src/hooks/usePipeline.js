@@ -46,9 +46,6 @@ export function usePipeline(taskId) {
         }
       });
 
-      es.addEventListener('validation_failed', (e) => {
-        dispatch({ type: 'VALIDATION_FAILED' });
-      });
 
       es.addEventListener('pipeline_complete', (e) => {
         try {

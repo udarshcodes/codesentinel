@@ -1,572 +1,0 @@
-backend-1  | INFO:     Will watch for changes in these directories: ['/app']
-backend-1  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-backend-1  | INFO:     Started reloader process [1] using WatchFiles
-backend-1  | INFO:     Started server process [41]
-backend-1  | INFO:     Waiting for application startup.
-backend-1  | INFO:     Application startup complete.
-backend-1  | INFO:     172.18.0.3:59376 - "POST /api/analyze HTTP/1.1" 200 OK
-backend-1  | Cloning into '/tmp/repos/codesentinel_k1o400gz'...
-backend-1  | [LLMRouter] repo_mapper attempt 1 failed (model=llama-3.1-8b-instant): Extra data: line 6 column 1 (char 75)
-backend-1  | [LLMRouter] repo_mapper attempt 2 failed (model=llama-3.1-8b-instant): Extra data: line 7 column 1 (char 76)
-backend-1  | [LLMRouter] Escalating repo_mapper from llama-3.1-8b-instant → llama-3.3-70b-versatile
-backend-1  | [TokenTracker] repo_mapper: prompt 560/4000 | completion 1057/1000 | model=llama-3.3-70b-versatile
-backend-1  | INFO:     172.18.0.3:59380 - "GET /api/stream?task_id=39afc91e-4abd-4bf7-b5c4-d1edc3bc328b HTTP/1.1" 200 OK
-backend-1  | [StaticAnalysis] sonar-scanner not found in PATH, skipping.
-backend-1  | INFO:     127.0.0.1:47560 - "GET /health HTTP/1.1" 200 OK
-backend-1  | /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   0%|          | 0.00/79.3M [00:00<?, ?iB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   0%|          | 17.0k/79.3M [00:00<16:17, 85.1kiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   0%|          | 62.0k/79.3M [00:00<08:16, 167kiB/s] /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   0%|          | 147k/79.3M [00:00<04:50, 285kiB/s] /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   0%|          | 334k/79.3M [00:00<02:32, 543kiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   1%|          | 691k/79.3M [00:01<01:23, 993kiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   2%|▏         | 1.39M/79.3M [00:01<00:43, 1.90MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   3%|▎         | 2.07M/79.3M [00:01<00:32, 2.46MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   3%|▎         | 2.54M/79.3M [00:01<00:27, 2.94MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   4%|▎         | 2.86M/79.3M [00:01<00:30, 2.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   4%|▍         | 3.36M/79.3M [00:01<00:29, 2.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   5%|▍         | 3.82M/79.3M [00:01<00:25, 3.09MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   5%|▌         | 4.23M/79.3M [00:02<00:23, 3.36MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   6%|▌         | 4.59M/79.3M [00:02<00:22, 3.42MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   6%|▌         | 4.95M/79.3M [00:02<00:22, 3.48MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   7%|▋         | 5.31M/79.3M [00:02<00:21, 3.54MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   7%|▋         | 5.67M/79.3M [00:02<00:21, 3.57MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   8%|▊         | 6.03M/79.3M [00:02<00:21, 3.61MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   8%|▊         | 6.39M/79.3M [00:02<00:21, 3.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   8%|▊         | 6.74M/79.3M [00:02<00:20, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   9%|▉         | 7.09M/79.3M [00:02<00:20, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:   9%|▉         | 7.45M/79.3M [00:03<00:20, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  10%|▉         | 7.81M/79.3M [00:03<00:20, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  10%|█         | 8.17M/79.3M [00:03<00:20, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  11%|█         | 8.53M/79.3M [00:03<00:20, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  11%|█         | 8.88M/79.3M [00:03<00:20, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  12%|█▏        | 9.24M/79.3M [00:03<00:20, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  12%|█▏        | 9.60M/79.3M [00:03<00:19, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  13%|█▎        | 9.96M/79.3M [00:03<00:19, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  13%|█▎        | 10.3M/79.3M [00:03<00:19, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  13%|█▎        | 10.7M/79.3M [00:03<00:19, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  14%|█▍        | 11.0M/79.3M [00:04<00:19, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  14%|█▍        | 11.4M/79.3M [00:04<00:19, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  15%|█▍        | 11.8M/79.3M [00:04<00:19, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  15%|█▌        | 12.1M/79.3M [00:04<00:19, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  16%|█▌        | 12.5M/79.3M [00:04<00:19, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  16%|█▌        | 12.8M/79.3M [00:04<00:18, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  17%|█▋        | 13.2M/79.3M [00:04<00:18, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  17%|█▋        | 13.5M/79.3M [00:04<00:18, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  18%|█▊        | 13.9M/79.3M [00:04<00:18, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  18%|█▊        | 14.3M/79.3M [00:04<00:18, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  18%|█▊        | 14.6M/79.3M [00:05<00:18, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  19%|█▉        | 15.0M/79.3M [00:05<00:18, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  19%|█▉        | 15.3M/79.3M [00:05<00:18, 3.69MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  20%|█▉        | 15.7M/79.3M [00:05<00:18, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  20%|██        | 16.1M/79.3M [00:05<00:18, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  21%|██        | 16.4M/79.3M [00:05<00:17, 3.69MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  21%|██        | 16.8M/79.3M [00:05<00:17, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  22%|██▏       | 17.1M/79.3M [00:05<00:17, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  22%|██▏       | 17.5M/79.3M [00:05<00:17, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  22%|██▏       | 17.8M/79.3M [00:05<00:17, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  23%|██▎       | 18.2M/79.3M [00:06<00:17, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  23%|██▎       | 18.5M/79.3M [00:06<00:17, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  24%|██▍       | 18.9M/79.3M [00:06<00:17, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  24%|██▍       | 19.3M/79.3M [00:06<00:18, 3.34MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  25%|██▍       | 19.6M/79.3M [00:06<00:18, 3.42MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  25%|██▌       | 20.0M/79.3M [00:06<00:17, 3.49MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  26%|██▌       | 20.3M/79.3M [00:06<00:17, 3.54MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  26%|██▌       | 20.7M/79.3M [00:06<00:17, 3.58MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  27%|██▋       | 21.1M/79.3M [00:06<00:16, 3.61MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  27%|██▋       | 21.4M/79.3M [00:07<00:16, 3.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  27%|██▋       | 21.8M/79.3M [00:07<00:16, 3.63MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  28%|██▊       | 22.1M/79.3M [00:07<00:16, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  28%|██▊       | 22.5M/79.3M [00:07<00:16, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  29%|██▉       | 22.8M/79.3M [00:07<00:19, 3.05MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  29%|██▉       | 23.2M/79.3M [00:07<00:30, 1.90MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  30%|██▉       | 23.5M/79.3M [00:07<00:27, 2.12MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  30%|██▉       | 23.8M/79.3M [00:08<00:24, 2.34MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  30%|███       | 24.0M/79.3M [00:08<00:42, 1.36MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  31%|███       | 24.3M/79.3M [00:08<00:35, 1.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  31%|███       | 24.7M/79.3M [00:08<00:28, 1.99MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  32%|███▏      | 25.0M/79.3M [00:08<00:24, 2.34MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  32%|███▏      | 25.4M/79.3M [00:08<00:21, 2.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  32%|███▏      | 25.8M/79.3M [00:09<00:19, 2.89MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  33%|███▎      | 26.1M/79.3M [00:09<00:17, 3.10MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  33%|███▎      | 26.5M/79.3M [00:09<00:17, 3.25MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  34%|███▍      | 26.8M/79.3M [00:09<00:16, 3.37MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  34%|███▍      | 27.2M/79.3M [00:09<00:15, 3.46MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  35%|███▍      | 27.6M/79.3M [00:09<00:15, 3.52MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  35%|███▌      | 27.9M/79.3M [00:09<00:15, 3.56MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  36%|███▌      | 28.3M/79.3M [00:09<00:14, 3.59MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  36%|███▌      | 28.6M/79.3M [00:09<00:14, 3.61MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  37%|███▋      | 29.0M/79.3M [00:09<00:14, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  37%|███▋      | 29.4M/79.3M [00:10<00:14, 3.63MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  37%|███▋      | 29.7M/79.3M [00:10<00:14, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  38%|███▊      | 30.1M/79.3M [00:10<00:19, 2.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  38%|███▊      | 30.4M/79.3M [00:10<00:19, 2.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  39%|███▉      | 30.9M/79.3M [00:10<00:15, 3.28MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  40%|███▉      | 31.4M/79.3M [00:10<00:13, 3.77MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  40%|████      | 31.8M/79.3M [00:10<00:13, 3.76MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  41%|████      | 32.2M/79.3M [00:10<00:13, 3.72MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  41%|████      | 32.5M/79.3M [00:11<00:13, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  41%|████▏     | 32.9M/79.3M [00:11<00:13, 3.71MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  42%|████▏     | 33.3M/79.3M [00:11<00:13, 3.70MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  42%|████▏     | 33.6M/79.3M [00:11<00:13, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  43%|████▎     | 34.0M/79.3M [00:11<00:15, 2.99MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  43%|████▎     | 34.3M/79.3M [00:11<00:15, 3.10MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  44%|████▎     | 34.7M/79.3M [00:11<00:14, 3.24MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  44%|████▍     | 35.0M/79.3M [00:11<00:13, 3.36MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  45%|████▍     | 35.4M/79.3M [00:11<00:13, 3.45MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  45%|████▌     | 35.7M/79.3M [00:12<00:13, 3.49MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  45%|████▌     | 36.1M/79.3M [00:12<00:12, 3.55MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  46%|████▌     | 36.4M/79.3M [00:12<00:12, 3.58MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  46%|████▋     | 36.8M/79.3M [00:12<00:12, 3.51MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  47%|████▋     | 37.1M/79.3M [00:12<00:18, 2.34MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  47%|████▋     | 37.4M/79.3M [00:12<00:19, 2.28MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  48%|████▊     | 37.7M/79.3M [00:12<00:16, 2.59MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  48%|████▊     | 38.1M/79.3M [00:12<00:15, 2.86MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  48%|████▊     | 38.5M/79.3M [00:13<00:13, 3.07MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  49%|████▉     | 38.8M/79.3M [00:13<00:13, 3.21MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  49%|████▉     | 39.2M/79.3M [00:13<00:12, 3.34MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  50%|████▉     | 39.5M/79.3M [00:13<00:12, 3.42MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  50%|█████     | 39.9M/79.3M [00:13<00:11, 3.48MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  51%|█████     | 40.2M/79.3M [00:13<00:11, 3.49MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  51%|█████     | 40.6M/79.3M [00:13<00:11, 3.58MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  52%|█████▏    | 41.0M/79.3M [00:13<00:11, 3.60MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  52%|█████▏    | 41.3M/79.3M [00:13<00:11, 3.61MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  53%|█████▎    | 41.7M/79.3M [00:13<00:10, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  53%|█████▎    | 42.0M/79.3M [00:14<00:10, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  53%|█████▎    | 42.4M/79.3M [00:14<00:10, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  54%|█████▍    | 42.8M/79.3M [00:14<00:10, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  54%|█████▍    | 43.1M/79.3M [00:14<00:10, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  55%|█████▍    | 43.5M/79.3M [00:14<00:10, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  55%|█████▌    | 43.8M/79.3M [00:14<00:10, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  56%|█████▌    | 44.2M/79.3M [00:14<00:10, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  56%|█████▌    | 44.5M/79.3M [00:14<00:09, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  57%|█████▋    | 44.9M/79.3M [00:14<00:09, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  57%|█████▋    | 45.3M/79.3M [00:15<00:09, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  58%|█████▊    | 45.6M/79.3M [00:15<00:09, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  58%|█████▊    | 46.0M/79.3M [00:15<00:09, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  58%|█████▊    | 46.4M/79.3M [00:15<00:09, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  59%|█████▉    | 46.7M/79.3M [00:15<00:09, 3.69MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  59%|█████▉    | 47.1M/79.3M [00:15<00:09, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  60%|█████▉    | 47.4M/79.3M [00:15<00:09, 3.69MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  60%|██████    | 47.8M/79.3M [00:15<00:09, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  61%|██████    | 48.2M/79.3M [00:15<00:08, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  61%|██████    | 48.5M/79.3M [00:15<00:08, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  62%|██████▏   | 48.9M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  62%|██████▏   | 49.2M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  63%|██████▎   | 49.6M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  63%|██████▎   | 50.0M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  63%|██████▎   | 50.3M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  64%|██████▍   | 50.7M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  64%|██████▍   | 51.0M/79.3M [00:16<00:08, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  65%|██████▍   | 51.4M/79.3M [00:16<00:08, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  65%|██████▌   | 51.8M/79.3M [00:16<00:07, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  66%|██████▌   | 52.1M/79.3M [00:16<00:07, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  66%|██████▌   | 52.5M/79.3M [00:17<00:07, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  67%|██████▋   | 52.8M/79.3M [00:17<00:07, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  67%|██████▋   | 53.2M/79.3M [00:17<00:07, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  67%|██████▋   | 53.5M/79.3M [00:17<00:07, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  68%|██████▊   | 53.9M/79.3M [00:17<00:08, 3.19MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  68%|██████▊   | 54.2M/79.3M [00:17<00:08, 3.27MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  69%|██████▉   | 54.6M/79.3M [00:17<00:07, 3.36MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  69%|██████▉   | 54.9M/79.3M [00:17<00:07, 3.45MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  70%|██████▉   | 55.3M/79.3M [00:17<00:07, 3.49MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  70%|███████   | 55.6M/79.3M [00:18<00:07, 3.53MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  71%|███████   | 56.0M/79.3M [00:18<00:06, 3.56MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  71%|███████   | 56.4M/79.3M [00:18<00:06, 3.59MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  71%|███████▏  | 56.7M/79.3M [00:18<00:06, 3.60MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  72%|███████▏  | 57.1M/79.3M [00:18<00:06, 3.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  72%|███████▏  | 57.4M/79.3M [00:18<00:06, 3.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  73%|███████▎  | 57.8M/79.3M [00:18<00:06, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  73%|███████▎  | 58.1M/79.3M [00:18<00:06, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  74%|███████▎  | 58.5M/79.3M [00:18<00:05, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  74%|███████▍  | 58.9M/79.3M [00:18<00:05, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  75%|███████▍  | 59.2M/79.3M [00:19<00:05, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  75%|███████▌  | 59.6M/79.3M [00:19<00:05, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  76%|███████▌  | 59.9M/79.3M [00:19<00:05, 3.68MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  76%|███████▌  | 60.3M/79.3M [00:19<00:05, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  76%|███████▋  | 60.6M/79.3M [00:19<00:05, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  77%|███████▋  | 61.0M/79.3M [00:19<00:05, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  77%|███████▋  | 61.4M/79.3M [00:19<00:05, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  78%|███████▊  | 61.7M/79.3M [00:19<00:05, 3.63MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  78%|███████▊  | 62.1M/79.3M [00:19<00:04, 3.63MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  79%|███████▊  | 62.4M/79.3M [00:19<00:04, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  79%|███████▉  | 62.8M/79.3M [00:20<00:04, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  80%|███████▉  | 63.1M/79.3M [00:20<00:04, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  80%|████████  | 63.5M/79.3M [00:20<00:04, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  81%|████████  | 63.9M/79.3M [00:20<00:04, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  81%|████████  | 64.2M/79.3M [00:20<00:04, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  81%|████████▏ | 64.6M/79.3M [00:20<00:04, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  82%|████████▏ | 64.9M/79.3M [00:20<00:04, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  82%|████████▏ | 65.3M/79.3M [00:20<00:04, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  83%|████████▎ | 65.6M/79.3M [00:20<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  83%|████████▎ | 66.0M/79.3M [00:21<00:03, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  84%|████████▎ | 66.4M/79.3M [00:21<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  84%|████████▍ | 66.7M/79.3M [00:21<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  85%|████████▍ | 67.1M/79.3M [00:21<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  85%|████████▌ | 67.4M/79.3M [00:21<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  85%|████████▌ | 67.8M/79.3M [00:21<00:03, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  86%|████████▌ | 68.1M/79.3M [00:21<00:03, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  86%|████████▋ | 68.5M/79.3M [00:21<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  87%|████████▋ | 68.9M/79.3M [00:21<00:03, 3.66MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  87%|████████▋ | 69.2M/79.3M [00:21<00:02, 3.60MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  88%|████████▊ | 69.6M/79.3M [00:22<00:02, 3.58MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  88%|████████▊ | 69.9M/79.3M [00:22<00:02, 3.55MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  89%|████████▊ | 70.3M/79.3M [00:22<00:02, 3.57MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  89%|████████▉ | 70.6M/79.3M [00:22<00:02, 3.55MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  89%|████████▉ | 70.9M/79.3M [00:22<00:02, 3.50MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  90%|████████▉ | 71.3M/79.3M [00:22<00:02, 3.40MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  90%|█████████ | 71.6M/79.3M [00:22<00:02, 3.29MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  91%|█████████ | 71.9M/79.3M [00:22<00:02, 3.34MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  91%|█████████ | 72.3M/79.3M [00:22<00:02, 3.43MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  92%|█████████▏| 72.7M/79.3M [00:22<00:01, 3.50MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  92%|█████████▏| 73.0M/79.3M [00:23<00:02, 2.93MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  92%|█████████▏| 73.3M/79.3M [00:23<00:02, 3.10MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  93%|█████████▎| 73.7M/79.3M [00:23<00:01, 3.25MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  93%|█████████▎| 74.1M/79.3M [00:23<00:01, 3.37MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  94%|█████████▍| 74.4M/79.3M [00:23<00:01, 3.47MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  94%|█████████▍| 74.8M/79.3M [00:23<00:01, 3.51MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  95%|█████████▍| 75.1M/79.3M [00:23<00:01, 3.57MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  95%|█████████▌| 75.5M/79.3M [00:23<00:01, 3.60MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  96%|█████████▌| 75.9M/79.3M [00:23<00:01, 3.62MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  96%|█████████▌| 76.2M/79.3M [00:24<00:00, 3.63MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  97%|█████████▋| 76.6M/79.3M [00:24<00:00, 3.64MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  97%|█████████▋| 76.9M/79.3M [00:24<00:00, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  97%|█████████▋| 77.3M/79.3M [00:24<00:00, 3.65MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  98%|█████████▊| 77.7M/79.3M [00:24<00:00, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  98%|█████████▊| 78.0M/79.3M [00:24<00:00, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  99%|█████████▉| 78.4M/79.3M [00:24<00:00, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz:  99%|█████████▉| 78.7M/79.3M [00:24<00:00, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz: 100%|█████████▉| 79.1M/79.3M [00:24<00:00, 3.67MiB/s]/root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx.tar.gz: 100%|██████████| 79.3M/79.3M [00:24<00:00, 3.33MiB/s]
-backend-1  | [TokenTracker] bug_investigator: prompt 307/6000 | completion 407/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 671/6000 | completion 872/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 998/6000 | completion 1314/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 1312/6000 | completion 1721/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 1633/6000 | completion 2136/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 2000/6000 | completion 2596/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 2293/6000 | completion 2981/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 2651/6000 | completion 3442/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 3043/6000 | completion 3931/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 3413/6000 | completion 4400/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 3641/6000 | completion 4720/2000 | model=llama-3.1-8b-instant
-backend-1  | INFO:     127.0.0.1:33412 - "GET /health HTTP/1.1" 200 OK
-backend-1  | Traceback (most recent call last):
-backend-1  |   File "/app/api/sse.py", line 76, in run_pipeline_worker
-backend-1  |     output = astream_task.result()
-backend-1  |   File "/usr/local/lib/python3.10/site-packages/langgraph/pregel/main.py", line 3455, in astream
-backend-1  |     async for _ in runner.atick(
-backend-1  |   File "/usr/local/lib/python3.10/site-packages/langgraph/pregel/_runner.py", line 396, in atick
-backend-1  |     await arun_with_retry(
-backend-1  |   File "/usr/local/lib/python3.10/site-packages/langgraph/pregel/_retry.py", line 744, in arun_with_retry
-backend-1  |     return await task.proc.ainvoke(task.input, config)
-backend-1  |   File "/usr/local/lib/python3.10/site-packages/langgraph/_internal/_runnable.py", line 737, in ainvoke
-backend-1  |     input = await step.ainvoke(input, config, **kwargs)
-backend-1  |   File "/usr/local/lib/python3.10/site-packages/langgraph/_internal/_runnable.py", line 501, in ainvoke
-backend-1  |     ret = await self.afunc(*args, **kwargs)
-backend-1  |   File "/app/agents/bug_investigator.py", line 91, in agent_bug_investigator
-backend-1  |     pruned_content = extract_function_context(file_content, [line_num])
-backend-1  |   File "/app/tools/context_pruner.py", line 93, in extract_function_context
-backend-1  |     return extract_error_window(file_content, min(changed_lines), max(changed_lines))
-backend-1  |   File "/app/tools/context_pruner.py", line 100, in extract_error_window
-backend-1  |     start = max(0, first_line - window - 1)
-backend-1  | TypeError: unsupported operand type(s) for -: 'str' and 'int'
-backend-1  | [TokenTracker] bug_investigator: prompt 3872/6000 | completion 5046/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 4098/6000 | completion 5375/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 4324/6000 | completion 5710/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 4550/6000 | completion 6026/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 4786/6000 | completion 6362/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 5022/6000 | completion 6698/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 5258/6000 | completion 7040/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 5621/6000 | completion 7501/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 5989/6000 | completion 7958/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 6294/6000 | completion 8359/2000 | model=llama-3.1-8b-instant
-backend-1  | INFO:     127.0.0.1:45296 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     172.18.0.3:43570 - "GET /api/stream?task_id=39afc91e-4abd-4bf7-b5c4-d1edc3bc328b HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:35866 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:43774 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:41976 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:48404 - "GET /health HTTP/1.1" 200 OK
-backend-1  | SSE client disconnected for task 39afc91e-4abd-4bf7-b5c4-d1edc3bc328b
-backend-1  | INFO:     127.0.0.1:33014 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:41352 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:41206 - "GET /health HTTP/1.1" 200 OK
-backend-1  | WARNING:  WatchFiles detected changes in 'tools/context_pruner.py'. Reloading...
-backend-1  | INFO:     Shutting down
-backend-1  | INFO:     Waiting for application shutdown.
-backend-1  | INFO:     Application shutdown complete.
-backend-1  | INFO:     Finished server process [41]
-backend-1  | INFO:     Started server process [651]
-backend-1  | INFO:     Waiting for application startup.
-backend-1  | INFO:     Application startup complete.
-backend-1  | INFO:     127.0.0.1:45214 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:60828 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     172.18.0.3:48570 - "POST /api/analyze HTTP/1.1" 200 OK
-backend-1  | Cloning into '/tmp/repos/codesentinel_lz8gcz03'...
-backend-1  | [LLMRouter] repo_mapper attempt 1 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 2 column 29 (char 30)
-backend-1  | [LLMRouter] repo_mapper attempt 2 failed (model=llama-3.1-8b-instant): Extra data: line 7 column 1 (char 132)
-backend-1  | [LLMRouter] Escalating repo_mapper from llama-3.1-8b-instant → llama-3.3-70b-versatile
-backend-1  | [TokenTracker] repo_mapper: prompt 560/4000 | completion 1022/1000 | model=llama-3.3-70b-versatile
-backend-1  | INFO:     172.18.0.3:48586 - "GET /api/stream?task_id=7b617b22-721c-4c9e-8523-c81deba3d34b HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:55244 - "GET /health HTTP/1.1" 200 OK
-backend-1  | [StaticAnalysis] sonar-scanner not found in PATH, skipping.
-backend-1  | INFO:     172.18.0.3:56726 - "POST /api/analyze HTTP/1.1" 200 OK
-backend-1  | Cloning into '/tmp/repos/codesentinel_jndd6_20'...
-backend-1  | [LLMRouter] repo_mapper attempt 1 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
-backend-1  | [LLMRouter] repo_mapper attempt 2 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 2 column 9 (char 10)
-backend-1  | [LLMRouter] Escalating repo_mapper from llama-3.1-8b-instant → llama-3.3-70b-versatile
-backend-1  | [TokenTracker] repo_mapper: prompt 1120/4000 | completion 2148/1000 | model=llama-3.3-70b-versatile
-backend-1  | INFO:     172.18.0.3:56730 - "GET /api/stream?task_id=45e2ee7a-a5be-46a0-8c70-2084842ad1ff HTTP/1.1" 200 OK
-backend-1  | [StaticAnalysis] sonar-scanner not found in PATH, skipping.
-backend-1  | [TokenTracker] bug_investigator: prompt 307/6000 | completion 403/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 671/6000 | completion 875/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 978/6000 | completion 875/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 1305/6000 | completion 1313/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 1669/6000 | completion 1313/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 1983/6000 | completion 1721/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 2310/6000 | completion 1721/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 2631/6000 | completion 2142/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 2945/6000 | completion 2142/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 3312/6000 | completion 2609/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 3633/6000 | completion 2609/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 3926/6000 | completion 2989/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 4293/6000 | completion 2989/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 4651/6000 | completion 3450/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 4944/6000 | completion 3450/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 5336/6000 | completion 4009/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 5694/6000 | completion 4009/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 6064/6000 | completion 4477/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 6456/6000 | completion 4477/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 6684/6000 | completion 4801/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 7054/6000 | completion 4801/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 7285/6000 | completion 5131/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 7513/6000 | completion 5131/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 7739/6000 | completion 5455/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 7970/6000 | completion 5455/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 8196/6000 | completion 5455/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 8422/6000 | completion 5778/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 8648/6000 | completion 5778/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 8874/6000 | completion 6102/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 9100/6000 | completion 6102/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 9336/6000 | completion 6435/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 9572/6000 | completion 6435/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 9808/6000 | completion 6765/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 10044/6000 | completion 6765/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 10280/6000 | completion 7092/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 10516/6000 | completion 7092/2000 | model=llama-3.1-8b-instant
-backend-1  | INFO:     127.0.0.1:33728 - "GET /health HTTP/1.1" 200 OK
-backend-1  | [TokenTracker] bug_investigator: prompt 10879/6000 | completion 7560/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 11242/6000 | completion 7560/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 11610/6000 | completion 8017/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 11978/6000 | completion 8017/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 12283/6000 | completion 8424/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 12588/6000 | completion 8424/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 12921/6000 | completion 8864/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 13254/6000 | completion 8864/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 13604/6000 | completion 9312/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 13954/6000 | completion 9312/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 14491/6000 | completion 9949/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 15028/6000 | completion 9949/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 15341/6000 | completion 10351/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 15654/6000 | completion 10351/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 15993/6000 | completion 10780/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 16332/6000 | completion 10780/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 16611/6000 | completion 11161/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 16890/6000 | completion 11161/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 17263/6000 | completion 11644/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 17636/6000 | completion 11644/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 17961/6000 | completion 12062/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 18286/6000 | completion 12062/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 18568/6000 | completion 12456/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 18850/6000 | completion 12456/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 19155/6000 | completion 12855/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 19460/6000 | completion 12855/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 19851/6000 | completion 13344/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 20242/6000 | completion 13344/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 20538/6000 | completion 13735/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 20834/6000 | completion 13735/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 21207/6000 | completion 14202/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 21580/6000 | completion 14202/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 21963/6000 | completion 14698/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 22346/6000 | completion 14698/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 22898/6000 | completion 15355/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 23450/6000 | completion 15355/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 24002/6000 | completion 16040/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 24554/6000 | completion 16040/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 25106/6000 | completion 16706/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 25658/6000 | completion 16706/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 26210/6000 | completion 17380/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 26762/6000 | completion 17380/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 27314/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 27866/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] repair_planner: prompt 3056/4000 | completion 3990/2000 | model=llama-3.3-70b-versatile
-backend-1  | [LLMRouter] Cache hit for llama-3.3-70b-versatile. Skipping API call.
-backend-1  | [TokenTracker] repair_planner: prompt 6112/4000 | completion 3990/2000 | model=llama-3.3-70b-versatile
-backend-1  | SSE client disconnected for task 45e2ee7a-a5be-46a0-8c70-2084842ad1ff
-backend-1  | INFO:     127.0.0.1:40212 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     172.18.0.3:37064 - "POST /api/analyze HTTP/1.1" 200 OK
-backend-1  | Cloning into '/tmp/repos/codesentinel_bi68r774'...
-backend-1  | [LLMRouter] repo_mapper attempt 1 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
-backend-1  | [LLMRouter] repo_mapper attempt 2 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 3 column 37 (char 62)
-backend-1  | [LLMRouter] Escalating repo_mapper from llama-3.1-8b-instant → llama-3.3-70b-versatile
-backend-1  | [TokenTracker] repo_mapper: prompt 1680/4000 | completion 3411/1000 | model=llama-3.3-70b-versatile
-backend-1  | INFO:     172.18.0.3:37076 - "GET /api/stream?task_id=e24322db-1cf3-438d-af64-f93cd5a6b427 HTTP/1.1" 200 OK
-backend-1  | [StaticAnalysis] sonar-scanner not found in PATH, skipping.
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 28173/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 28537/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 28864/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 29178/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 29499/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 29866/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 30159/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 30517/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 30909/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 31279/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 31507/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 31738/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 31964/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 32190/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 32416/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 32652/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 32888/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 33124/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 33487/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 33855/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 34160/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 34493/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 34843/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 35380/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 35693/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 36032/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 36311/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 36684/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 37009/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 37291/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 37596/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 37987/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 38283/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 38656/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 39039/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 39591/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 40143/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 40695/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 41247/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 41799/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.3-70b-versatile. Skipping API call.
-backend-1  | [TokenTracker] repair_planner: prompt 9168/4000 | completion 3990/2000 | model=llama-3.3-70b-versatile
-backend-1  | SSE client disconnected for task e24322db-1cf3-438d-af64-f93cd5a6b427
-backend-1  | INFO:     127.0.0.1:47884 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:45574 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:51582 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:35260 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:54478 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:58344 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:36270 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:36814 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:36844 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:42196 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:51734 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:41378 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     172.18.0.3:55408 - "POST /api/analyze HTTP/1.1" 200 OK
-backend-1  | Cloning into '/tmp/repos/codesentinel_cm5sjrt7'...
-backend-1  | [LLMRouter] repo_mapper attempt 1 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 2 column 5 (char 6)
-backend-1  | [LLMRouter] repo_mapper attempt 2 failed (model=llama-3.1-8b-instant): Expecting property name enclosed in double quotes: line 2 column 5 (char 6)
-backend-1  | [LLMRouter] Escalating repo_mapper from llama-3.1-8b-instant → llama-3.3-70b-versatile
-backend-1  | [TokenTracker] repo_mapper: prompt 2240/4000 | completion 4192/1000 | model=llama-3.3-70b-versatile
-backend-1  | INFO:     172.18.0.3:55414 - "GET /api/stream?task_id=30edbbdf-67c0-4efe-a5bb-5baa020a3b72 HTTP/1.1" 200 OK
-backend-1  | [StaticAnalysis] sonar-scanner not found in PATH, skipping.
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 42106/6000 | completion 18047/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 42471/6000 | completion 18514/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 42799/6000 | completion 18951/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 43114/6000 | completion 19353/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 43436/6000 | completion 19771/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 43804/6000 | completion 20246/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 44098/6000 | completion 20714/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 44457/6000 | completion 21171/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 44850/6000 | completion 21695/2000 | model=llama-3.1-8b-instant
-backend-1  | INFO:     127.0.0.1:60190 - "GET /health HTTP/1.1" 200 OK
-backend-1  | [TokenTracker] bug_investigator: prompt 45224/6000 | completion 22180/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 45453/6000 | completion 22496/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 45685/6000 | completion 22821/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 45912/6000 | completion 23147/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 46139/6000 | completion 23480/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 46366/6000 | completion 23805/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 46602/6000 | completion 23805/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 46838/6000 | completion 23805/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 47074/6000 | completion 23805/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 47438/6000 | completion 24268/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 47807/6000 | completion 24729/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 48112/6000 | completion 24729/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 48446/6000 | completion 25187/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 48797/6000 | completion 25639/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 49335/6000 | completion 26280/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 49648/6000 | completion 26280/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 49988/6000 | completion 26722/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 50268/6000 | completion 27120/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 50642/6000 | completion 27598/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 50968/6000 | completion 28025/2000 | model=llama-3.1-8b-instant
-backend-1  | INFO:     127.0.0.1:51090 - "GET /health HTTP/1.1" 200 OK
-backend-1  | [TokenTracker] bug_investigator: prompt 51251/6000 | completion 28420/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 51557/6000 | completion 28816/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 51949/6000 | completion 29331/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 52246/6000 | completion 29740/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 52619/6000 | completion 29740/2000 | model=llama-3.1-8b-instant
-backend-1  | [LLMRouter] Cache hit for llama-3.1-8b-instant. Skipping API call.
-backend-1  | [TokenTracker] bug_investigator: prompt 53002/6000 | completion 29740/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 53555/6000 | completion 30398/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 54108/6000 | completion 31070/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 54661/6000 | completion 31741/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 55214/6000 | completion 32403/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] bug_investigator: prompt 55767/6000 | completion 33068/2000 | model=llama-3.1-8b-instant
-backend-1  | [TokenTracker] repair_planner: prompt 12213/4000 | completion 7802/2000 | model=llama-3.3-70b-versatile
-backend-1  | INFO:     172.18.0.3:55118 - "POST /api/approve/30edbbdf-67c0-4efe-a5bb-5baa020a3b72 HTTP/1.1" 200 OK
-backend-1  | [TokenTracker] code_generator: prompt 611/6000 | completion 711/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to ./.env
-backend-1  | [TokenTracker] code_generator: prompt 1555/6000 | completion 1725/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/auth.py
-backend-1  | [TokenTracker] code_generator: prompt 2515/6000 | completion 2980/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/auth.py
-backend-1  | [CodeGenerator] Target file '../../../app/backend/auth/auth.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/auth/auth.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 3937/6000 | completion 4565/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to backend/app/api.py
-backend-1  | [TokenTracker] code_generator: prompt 5337/6000 | completion 6118/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.99) in backend/app/api.py
-backend-1  | [CodeGenerator] Successfully applied patch to backend/app/api.py
-backend-1  | [TokenTracker] code_generator: prompt 6352/6000 | completion 7464/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on backend/database/database.py: Search block not found in backend/database/database.py:
-backend-1  | def get_user_by_username(username):
-backend-1  |     conn = get_connection()
-backend-1  |     cursor = conn.cursor()
-backend-1  |     query...
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 7315/6000 | completion 8542/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to frontend/src/App.jsx
-backend-1  | [TokenTracker] code_generator: prompt 8108/6000 | completion 9434/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to frontend/src/apiClient.js
-backend-1  | [TokenTracker] code_generator: prompt 8862/6000 | completion 10261/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/middleware.py
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 9769/6000 | completion 11260/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on ./.env: Search block not found in ./.env:
-backend-1  | STRIPE_API_KEY=sk_test_1234567890...
-backend-1  | [TokenTracker] code_generator: prompt 11118/6000 | completion 12700/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on backend/auth/auth.py: Search block not found in backend/auth/auth.py:
-backend-1  | ```
-backend-1  | SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
-backend-1  | ```...
-backend-1  | [TokenTracker] code_generator: prompt 12480/6000 | completion 14250/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.99) in backend/auth/auth.py
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/auth.py
-backend-1  | [CodeGenerator] Target file '../../../app/backend/auth/auth.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/auth/auth.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 14170/6000 | completion 16085/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.99) in backend/app/api.py
-backend-1  | [CodeGenerator] Successfully applied patch to backend/app/api.py
-backend-1  | [TokenTracker] code_generator: prompt 15848/6000 | completion 17923/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.99) in backend/app/api.py
-backend-1  | [CodeGenerator] Successfully applied patch to backend/app/api.py
-backend-1  | [TokenTracker] code_generator: prompt 17147/6000 | completion 19553/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on backend/database/database.py: Search block not found in backend/database/database.py:
-backend-1  | def get_user_by_username(username):
-backend-1  |     conn = get_connection()
-backend-1  |     cursor = conn.cursor()
-backend-1  |     query...
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 18420/6000 | completion 20950/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.88) in frontend/src/App.jsx
-backend-1  | [CodeGenerator] Successfully applied patch to frontend/src/App.jsx
-backend-1  | [TokenTracker] code_generator: prompt 19509/6000 | completion 22167/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on frontend/src/apiClient.js: Search block not found in frontend/src/apiClient.js:
-backend-1  | ```javascript
-backend-1  | const API_KEY = stripe?.apiKey;
-backend-1  | const response = await fetch(`${BASE_URL}/users/${user...
-backend-1  | [TokenTracker] code_generator: prompt 20544/6000 | completion 23280/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/middleware.py
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 21511/6000 | completion 24340/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on ./.env: Search block not found in ./.env:
-backend-1  | STRIPE_API_KEY=sk_test_1234567890abcdef...
-backend-1  | [TokenTracker] code_generator: prompt 22912/6000 | completion 25832/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on backend/auth/auth.py: Search block not found in backend/auth/auth.py:
-backend-1  | ```
-backend-1  | SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
-backend-1  | ```...
-backend-1  | [TokenTracker] code_generator: prompt 24326/6000 | completion 27638/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=1.00) in backend/auth/auth.py
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/auth.py
-backend-1  | [CodeGenerator] Target file '../../../app/backend/auth/auth.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/auth/auth.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 26091/6000 | completion 29572/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.99) in backend/app/api.py
-backend-1  | [CodeGenerator] Successfully applied patch to backend/app/api.py
-backend-1  | [TokenTracker] code_generator: prompt 27836/6000 | completion 31774/2500 | model=llama-3.3-70b-versatile
-backend-1  | [PatchApplier] Fuzzy match applied (ratio=0.94) in backend/app/api.py
-backend-1  | [CodeGenerator] Patch failed to apply on backend/app/api.py: Search block not found in backend/app/api.py:
-backend-1  | ```
-backend-1  | log_line = "Order " + str(order.get("id")) + " total: " + str(discounted)
-backend-1  | ```...
-backend-1  | [TokenTracker] code_generator: prompt 29195/6000 | completion 33452/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on backend/database/database.py: Search block not found in backend/database/database.py:
-backend-1  | def get_user_by_username(username):
-backend-1  |     conn = get_connection()
-backend-1  |     cursor = conn.cursor()
-backend-1  |     query...
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/backend/database/database.py' is missing or empty. Skipping.
-backend-1  | [TokenTracker] code_generator: prompt 30522/6000 | completion 34905/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Patch failed to apply on frontend/src/App.jsx: Search block not found in frontend/src/App.jsx:
-backend-1  | ```javascript
-backend-1  | function UserBio({ bio }) {
-backend-1  |   const sanitizedBio = DOMPurify.sanitize(bio);
-backend-1  |   return <...
-backend-1  | [TokenTracker] code_generator: prompt 31671/6000 | completion 36145/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to frontend/src/apiClient.js
-backend-1  | [TokenTracker] code_generator: prompt 32750/6000 | completion 37312/2500 | model=llama-3.3-70b-versatile
-backend-1  | [CodeGenerator] Successfully applied patch to backend/auth/middleware.py
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | [CodeGenerator] Target file '../../../app/tests/test_bugs.py' is missing or empty. Skipping.
-backend-1  | INFO:     127.0.0.1:43074 - "GET /health HTTP/1.1" 200 OK
-backend-1  | Switched to a new branch 'agent/fix-1781676107'
-backend-1  | [agent/fix-1781676107 3a4cfd7] Address High-Risk Security Vulnerabilities and Refactor Code
-backend-1  |  6 files changed, 30 insertions(+), 23 deletions(-)
-backend-1  | remote: 
-backend-1  | remote: Create a pull request for 'agent/fix-1781676107' on GitHub by visiting:        
-backend-1  | remote:      https://github.com/ugcoderz/buggy-repo/pull/new/agent/fix-1781676107        
-backend-1  | remote: 
-backend-1  | To https://github.com/ugcoderz/buggy-repo.git
-backend-1  |  * [new branch]      agent/fix-1781676107 -> agent/fix-1781676107
-backend-1  | branch 'agent/fix-1781676107' set up to track 'auth_origin/agent/fix-1781676107'.
-backend-1  | [TokenTracker] pr_author: prompt 813/4000 | completion 943/1000 | model=llama-3.1-8b-instant
-backend-1  | INFO:     127.0.0.1:42440 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:59758 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:33154 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:57116 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:37584 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:35664 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:47646 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:44654 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53216 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:52768 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:37350 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53102 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:51520 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:52752 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:55876 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:60822 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:38042 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53798 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:48352 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:52764 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:41652 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:33286 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:49726 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:49194 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:60840 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:49318 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:54518 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:57768 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:33576 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:45442 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:50566 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:40010 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:50038 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53870 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:42820 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:40266 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:47956 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:33694 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:43806 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53452 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53886 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:33886 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:39056 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:52164 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:46824 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:55324 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:55292 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:40408 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:51342 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:42510 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:53962 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:48646 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:37556 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:33820 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:42502 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:34196 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:39102 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:59080 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:45984 - "GET /health HTTP/1.1" 200 OK
-backend-1  | INFO:     127.0.0.1:56998 - "GET /health HTTP/1.1" 200 OK

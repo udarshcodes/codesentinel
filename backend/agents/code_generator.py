@@ -31,8 +31,26 @@ async def agent_code_generator(state: PipelineState):
         return {"patches": patches}
     
     new_patches = []
+    
+    # Extract failed issue IDs from validation/security results
+    failed_issue_ids = set()
+    if validation_results and not validation_results[-1].get("passed"):
+        failed_issue_ids.update(validation_results[-1].get("failed_issue_ids", [])) # Assuming it might exist
+    
+    # We always retry if it's the first time or if the issue explicitly failed or was never patched
     for plan in repair_plan:
-        issue = next((i for i in investigated_issues if i.get("id") == plan.get("issue_id")), {})
+        issue_id = plan.get("issue_id")
+        
+        # Check if already patched successfully in previous attempts
+        existing_patch = next((p for p in patches if p.get("patch_id") == issue_id), None)
+        if retry_count > 0 and existing_patch and existing_patch.get("applied"):
+            # It was applied. Did it fail validation or security?
+            if issue_id not in failed_issue_ids and not failure_context:
+                print(f"[CodeGenerator] Skipping already patched issue {issue_id}")
+                new_patches.append(existing_patch)
+                continue
+                
+        issue = next((i for i in investigated_issues if i.get("id") == issue_id), {})
         
         # Read the actual file content so the LLM can generate a precise fix
         target_file = ""
