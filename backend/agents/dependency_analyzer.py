@@ -69,7 +69,42 @@ async def agent_dependency_analyzer(state: PipelineState):
                             })
         except Exception as e:
             print(f"[DependencyAnalyzer] Failed to parse pom.xml: {e}")
-                
+
+    # Parse go.mod for Go dependencies
+    gomod_path = os.path.join(repo_local_path, "go.mod")
+    if os.path.exists(gomod_path):
+        try:
+            with open(gomod_path, "r") as f:
+                in_require_block = False
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("require ("):
+                        in_require_block = True
+                        continue
+                    if in_require_block and line == ")":
+                        in_require_block = False
+                        continue
+                    # Handle single-line require: require github.com/pkg v1.2.3
+                    if line.startswith("require ") and "(" not in line:
+                        parts = line.replace("require ", "").strip().split()
+                        if len(parts) >= 2:
+                            dependencies.append({
+                                "name": parts[0],
+                                "version": parts[1].lstrip("v"),
+                                "ecosystem": "Go"
+                            })
+                    elif in_require_block and line and not line.startswith("//"):
+                        # Inside require block: github.com/pkg v1.2.3
+                        parts = line.split()
+                        if len(parts) >= 2 and not parts[0].startswith("//"):
+                            dependencies.append({
+                                "name": parts[0],
+                                "version": parts[1].lstrip("v"),
+                                "ecosystem": "Go"
+                            })
+        except Exception as e:
+            print(f"[DependencyAnalyzer] Failed to parse go.mod: {e}")
+
     def is_outdated(current: str, latest: str) -> bool:
         if current == latest: return False
         try:
@@ -107,6 +142,13 @@ async def agent_dependency_analyzer(state: PipelineState):
                             latest = docs[0].get("latestVersion")
                             if latest and is_outdated(dep["version"], latest):
                                 return latest
+                elif dep["ecosystem"] == "Go":
+                    res = await client.get(f"https://proxy.golang.org/{dep['name']}/@latest", timeout=5)
+                    if res.status_code == 200:
+                        data = res.json()
+                        latest = data.get("Version", "").lstrip("v")
+                        if latest and is_outdated(dep["version"], latest):
+                            return latest
         except Exception as e:
             print(f"[DependencyAnalyzer] Registry check failed for {dep['name']}: {e}")
         return None
@@ -121,6 +163,8 @@ async def agent_dependency_analyzer(state: PipelineState):
                 file_name = "package.json"
             elif dep["ecosystem"] == "Maven":
                 file_name = "pom.xml"
+            elif dep["ecosystem"] == "Go":
+                file_name = "go.mod"
                 
             findings.append({
                 "file": file_name,
@@ -184,6 +228,8 @@ async def agent_dependency_analyzer(state: PipelineState):
                 file_name = "package.json"
             elif dep["ecosystem"] == "Maven":
                 file_name = "pom.xml"
+            elif dep["ecosystem"] == "Go":
+                file_name = "go.mod"
 
             findings.append({
                 "file": file_name,

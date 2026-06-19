@@ -1,7 +1,7 @@
 import os
 import tempfile
 from models.pipeline_state import PipelineState
-from config import GROQ_API_KEY
+from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools import context_cache
 
@@ -68,7 +68,7 @@ async def agent_repo_mapper(state: PipelineState):
                     pass
                 
     # 3. LLM analysis — Tier 1 (extracting rich knowledge graph)
-    if GROQ_API_KEY:
+    if GROQ_API_KEYS:
         prompt = f"""Analyze the following repository data to build a rich knowledge graph.
 File extensions: {extensions}
 Dependency files: {dep_files}
@@ -84,8 +84,9 @@ Extract the following:
 2. 'modules': Service boundary detection (group files into logical modules like auth, database, api based on structure).
 3. 'api_endpoints': List of objects with 'path', 'method', and 'handler_file'.
 4. 'db_interactions': List of objects mapping files to ORM models or DB tables.
+5. 'test_framework': The shell command to run the project's test suite (e.g. 'pytest', 'npm test', 'mvn test', 'go test ./...'). If unknown, use empty string.
 
-Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpoints', 'db_interactions'."""
+Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpoints', 'db_interactions', 'test_framework'."""
 
         try:
             knowledge_graph = invoke_llm(
@@ -95,12 +96,12 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpo
                 expect_json=True,
             )
             if not isinstance(knowledge_graph, dict) or knowledge_graph.get("error"):
-                knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": [], "api_endpoints": [], "db_interactions": []}
+                knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": [], "api_endpoints": [], "db_interactions": [], "test_framework": ""}
         except Exception as e:
             print(f"[RepoMapper] LLM error: {e}")
-            knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": [], "api_endpoints": [], "db_interactions": []}
+            knowledge_graph = {"language": "unknown", "framework": "unknown", "modules": [], "api_endpoints": [], "db_interactions": [], "test_framework": ""}
     else:
-        knowledge_graph = {"language": "Python (Mock)", "framework": "FastAPI", "modules": [], "api_endpoints": [], "db_interactions": []}
+        knowledge_graph = {"language": "Python (Mock)", "framework": "FastAPI", "modules": [], "api_endpoints": [], "db_interactions": [], "test_framework": "pytest"}
     
     # Cache the knowledge graph for downstream agents
     context_cache.store(repo_url, "knowledge_graph", knowledge_graph)
