@@ -125,10 +125,8 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
         except Exception as e:
             print(f"Error cleaning up temp dir: {e}")
             
-        # Cleanup queue and cache
-        if task_id in sse_queues:
-            del sse_queues[task_id]
-            
+        # Context cache cleanup (queue cleanup is handled by event_generator's finally block
+        # to avoid deleting the queue before the client reads the final event)
         from tools import context_cache
         context_cache.invalidate(repo_url)
 

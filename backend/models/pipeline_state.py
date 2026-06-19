@@ -22,3 +22,4 @@ class PipelineState(TypedDict, total=False):
     approval_decision: NotRequired[str]
     pr_error: NotRequired[str]
     task_id: NotRequired[str]
+    touched_symbols: NotRequired[dict]

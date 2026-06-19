@@ -153,15 +153,31 @@ async def agent_dependency_analyzer(state: PipelineState):
             # Look in severity array (e.g. CVSS_V3) or database_specific
             severity_arr = full_vuln.get('severity', [])
             if severity_arr:
-                # Find CVSS vector and compute severity if we want, or look for string. 
-                # Usually OSV provides "database_specific" -> "severity" in the detailed response
-                pass
+                for sev_entry in severity_arr:
+                    if isinstance(sev_entry, dict) and sev_entry.get('type') == 'CVSS_V3':
+                        score_str = sev_entry.get('score', '')
+                        # Extract base score from CVSS vector if present
+                        if ':' in score_str:
+                            # Parse CVSS vector — not a numeric score, keep default
+                            pass
+                        elif score_str:
+                            try:
+                                cvss_score = float(score_str)
+                                if cvss_score >= 9.0:
+                                    severity = "CRITICAL"
+                                elif cvss_score >= 7.0:
+                                    severity = "HIGH"
+                                elif cvss_score >= 4.0:
+                                    severity = "MEDIUM"
+                                else:
+                                    severity = "LOW"
+                            except ValueError:
+                                pass
+                        break
             
             db_spec = full_vuln.get("database_specific", {})
             if db_spec and db_spec.get("severity"):
                 severity = db_spec.get("severity").upper()
-            elif full_vuln.get("database_specific", {}).get("severity"):
-                 severity = full_vuln.get("database_specific", {}).get("severity").upper()
             
             file_name = "requirements.txt"
             if dep["ecosystem"] == "npm":
