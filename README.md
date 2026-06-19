@@ -48,7 +48,7 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners:** `Semgrep`, `SonarQube`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline. Also includes real-time OSV, NPM, PyPI, and Maven Central public registry checks.
+- **SAST Runners:** `Semgrep`, `SonarQube`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline. Also includes real-time OSV, NPM, PyPI, Maven Central, and Go Proxy public registry checks.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
 
@@ -117,8 +117,11 @@ npm run build
 ### 5. Environment Variables
 Create a `.env` file in the `backend/` directory:
 ```env
-# Required: Array of Groq API keys for automated round-robin rotation
-GROQ_API_KEYS=["gsk_abc123", "gsk_def456"]
+# Required: Comma-separated Groq API keys for automated round-robin rotation
+GROQ_API_KEY=gsk_abc123,gsk_def456,gsk_ghi789
+
+# Optional: Emergency key (activates only when all primary keys are exhausted)
+GROQ_EMERGENCY_KEY=gsk_emergency_key
 
 # Required: For cloning, pushing, and opening PRs
 GITHUB_TOKEN=ghp_your_personal_access_token
@@ -197,7 +200,7 @@ codesentinel/
 │   │   └── sse.py               # SSE streaming endpoint for pipeline observability
 │   ├── agents/                  # LangGraph Node Actors
 │   │   ├── repo_mapper.py       # Builds LLM architectural map of target repo
-│   │   ├── dependency_analyzer.py # Identifies outdated packages and CVEs
+│   │   ├── dependency_analyzer.py # Identifies outdated packages and CVEs (PyPI/npm/Maven/Go)
 │   │   ├── static_analysis.py   # Subprocess orchestration for SAST tools
 │   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
 │   │   ├── repair_planner.py    # Formulates fixes & requests human approval
@@ -208,13 +211,22 @@ codesentinel/
 │   ├── models/
 │   │   └── pipeline_state.py    # Strictly typed state schema
 │   ├── tools/
+│   │   ├── llm_router.py        # Multi-tier LLM routing with token budgets
+│   │   ├── key_dispatcher.py    # Round-robin API key rotation & emergency failover
 │   │   ├── patch_applier.py     # Pure Python search & replace patch engine
 │   │   ├── github_client.py     # PyGithub abstraction layer
+│   │   ├── vector_store.py      # ChromaDB fix memory (RAG store)
+│   │   ├── osv_client.py        # OSV.dev vulnerability batch query client
+│   │   ├── analysis_runner.py   # Scoped Semgrep/Bandit/Pylint/Flake8 runner
+│   │   ├── context_cache.py     # In-memory LRU session cache for repo context
+│   │   ├── context_pruner.py    # AST-aware function extraction & diff pruning
+│   │   ├── response_cache.py    # LLM response LRU cache with disk persistence
 │   │   └── prompt_cache.py      # Version-controlled system prompts
 │   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
 ├── ci-cd-template/              # Drop-in automation scripts for target repos
 │   └── .github/workflows/       
-│       └── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
+│       ├── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
+│       └── azure-container-apps.yml # Azure Container Apps deployment
 └── frontend/
     ├── src/
     │   ├── context/
@@ -222,7 +234,7 @@ codesentinel/
     │   ├── hooks/
     │   │   ├── usePipeline.js   # SSE connection management & auto-retry
     │   │   └── useApproval.js   # Async mutation hook for human intervention
-    │   ├── components/          # Reusable UI components (DiffViewer, PipelineView)
+    │   ├── components/          # Reusable UI components (DiffViewer, PipelineView, etc.)
     │   └── App.jsx              # Main UI Shell
     └── vite.config.js           # API proxy configuration
 ```
