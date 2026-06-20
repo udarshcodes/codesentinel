@@ -1,67 +1,61 @@
 import { useState } from 'react'
-import ApprovalModal from './components/ApprovalModal'
-import PRSummary from './components/PRSummary'
-import PipelineView from './components/PipelineView'
-import FindingsPanel from './components/FindingsPanel'
-import DiffViewer from './components/DiffViewer'
-import { usePipeline } from './hooks/usePipeline'
-import { useApproval } from './hooks/useApproval'
+import PipelineDashboard from './components/PipelineDashboard'
 
 function App() {
   const [repoUrlInput, setRepoUrlInput] = useState('')
   const [activeTaskId, setActiveTaskId] = useState(null)
-
-  const pipelineState = usePipeline(activeTaskId)
-  const approval = useApproval(activeTaskId)
-
-  const isAnalyzing = pipelineState.status === 'running'
-  const isComplete = pipelineState.status === 'complete' || pipelineState.status === 'validating_failed'
-
-  const syntheticEvents = [
-    ...pipelineState.agents.map(a => ({ event: 'agent_complete', data: a })),
-    ...(pipelineState.awaiting_approval ? [{ event: 'approval_required' }] : []),
-    ...(pipelineState.status === 'complete' || pipelineState.status === 'validating_failed' ? [{ event: 'pipeline_complete' }] : [])
-  ];
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [batchTasks, setBatchTasks] = useState([])
 
   const startAnalysis = async (e) => {
     e.preventDefault()
     if (!repoUrlInput) return
     
+    setErrorMsg(null)
+    setIsSubmitting(true)
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_url: repoUrlInput })
       })
+      
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`)
+      }
+      
       const data = await res.json()
-      // Use the UUID returned by the backend, fallback to URL if missing
-      setActiveTaskId(data.task_id || repoUrlInput)
+      
+      if (data.task_ids && data.task_ids.length > 0) {
+        const tasks = data.task_ids.map((id, index) => ({
+          task_id: id,
+          repo_url: data.repo_urls[index]
+        }))
+        setBatchTasks(tasks)
+        setActiveTaskId(tasks[0].task_id)
+      } else {
+        setBatchTasks([])
+        setActiveTaskId(data.task_id || repoUrlInput)
+      }
     } catch (error) {
       console.error(error)
+      setErrorMsg('Failed to start analysis. Is the backend running?')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const handleApprove = async () => {
-    await approval.approve()
-  }
 
-  const handleReject = async () => {
-    await approval.reject()
-  }
 
   return (
     <div className="container mx-auto px-4 pt-12 pb-4 relative z-10 min-h-screen flex flex-col">
-      <ApprovalModal 
-        isOpen={approval.awaitingApproval} 
-        agentData={approval.currentFix} 
-        onApprove={handleApprove} 
-        onReject={handleReject} 
-      />
+
 
       {/* Admin Dashboard Link */}
       <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-50 animate-fade-in-down">
         <a 
-          href="/admin" 
+          href="/admin/" 
           target="_blank" 
           rel="noopener noreferrer"
           className="flex items-center gap-2 bg-white/80 backdrop-blur-md border border-slate-200 hover:border-slate-400 text-slate-600 hover:text-slate-900 px-5 py-2.5 rounded-full font-semibold shadow-sm hover:shadow transition-all"
@@ -96,15 +90,15 @@ function App() {
               className="flex-1 bg-white border border-slate-300 rounded-full px-6 py-4 focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 placeholder-slate-400 text-lg transition-all"
               value={repoUrlInput}
               onChange={(e) => setRepoUrlInput(e.target.value)}
-              disabled={isAnalyzing}
+              disabled={isSubmitting}
               required
             />
             <button 
               type="submit"
-              disabled={isAnalyzing}
+              disabled={isSubmitting}
               className="bg-rose-500 hover:bg-rose-600 disabled:bg-slate-400 px-10 py-4 rounded-full font-bold text-lg text-white transition-all duration-200 shadow-lg shadow-rose-500/30 hover:shadow-rose-500/50"
             >
-              {isAnalyzing ? (
+              {isSubmitting ? (
                 <span className="flex items-center gap-2">
                   <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -115,24 +109,39 @@ function App() {
               ) : 'Analyze'}
             </button>
           </form>
+          {errorMsg && (
+            <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-xl border border-red-200">
+              {errorMsg}
+            </div>
+          )}
         </div>
 
-        {/* Beautiful Dynamic Components */}
-        {pipelineState.agents.length > 0 && (
-          <>
-            <PipelineView events={syntheticEvents} />
-            <FindingsPanel events={syntheticEvents} />
-            <DiffViewer events={syntheticEvents} />
-          </>
+        {batchTasks.length > 1 && (
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 max-w-6xl mx-auto">
+            {batchTasks.map(task => (
+              <button
+                key={task.task_id}
+                onClick={() => setActiveTaskId(task.task_id)}
+                className={`px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium transition-all ${activeTaskId === task.task_id ? 'bg-rose-500 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:border-rose-300'}`}
+              >
+                {task.repo_url.split('/').pop()}
+              </button>
+            ))}
+          </div>
         )}
 
-        {isComplete && (pipelineState.pr_url || pipelineState.pr_error) && (
-          <PRSummary 
-            prUrl={pipelineState.pr_url} 
-            confidenceScore={pipelineState.confidence_score}
-            prError={pipelineState.pr_error}
-          />
-        )}
+        {/* Dynamic Dashboards */}
+        {batchTasks.length > 0 ? (
+          batchTasks.map(task => (
+            <PipelineDashboard 
+              key={task.task_id} 
+              taskId={task.task_id} 
+              hidden={activeTaskId !== task.task_id} 
+            />
+          ))
+        ) : activeTaskId ? (
+          <PipelineDashboard taskId={activeTaskId} hidden={false} />
+        ) : null}
       </main>
       
       {/* Footer */}
