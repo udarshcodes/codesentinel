@@ -205,8 +205,10 @@ async def agent_validator(state: PipelineState):
     files_validated = len(patches)
     files_passed = sum(1 for l in logs_list if "[PASS]" in l)
     
+    last_patch_id = patches[-1].get("patch_id", 0) if patches else 0
+    
     new_validation_results.append({
-        "patch_id": patches[-1].get("patch_id", 0),
+        "patch_id": last_patch_id,
         "passed": all_passed,
         "unresolvable": unresolvable,
         "logs": "\n".join(logs_list) + "\n\nTest Results:\n" + test_logs,
@@ -215,7 +217,7 @@ async def agent_validator(state: PipelineState):
     })
     
     investigated_issues = state.get("investigated_issues", [])
-    issue = next((i for i in investigated_issues if i.get("id") == patches[-1].get("patch_id")), {})
+    issue = next((i for i in investigated_issues if i.get("id") == last_patch_id), {})
     issue_desc = issue.get("description", str(issue))
     
     async def compute_confidence(tests_passed, tests_total, security_clean, issue_desc) -> float:

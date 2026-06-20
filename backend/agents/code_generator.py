@@ -103,7 +103,7 @@ Current file content:
 ```"""
         
         try:
-            fixed_content = invoke_llm(
+            fixed_content = await invoke_llm(
                 prompt,
                 agent_name="code_generator",
                 tier=2,

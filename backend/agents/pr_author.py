@@ -28,7 +28,7 @@ Write a professional GitHub Pull Request title and description for these applied
 Return JSON: {{"title": "...", "description": "..."}}"""
     
     try:
-        pr_data = invoke_llm(
+        pr_data = await invoke_llm(
             prompt,
             agent_name="pr_author",
             tier=1,

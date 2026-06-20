@@ -180,17 +180,36 @@ async def agent_static_analysis(state: PipelineState):
                 text=True,
                 timeout=300
             )
-            # Typically SonarQube findings are uploaded to a server, but we can attempt to parse local reports if they exist
-            report_path = os.path.join(repo_local_path, ".scannerwork", "report-task.txt")
-            if os.path.exists(report_path) and result.returncode == 0:
-                print("[StaticAnalysis] SonarQube analysis completed successfully.")
+            # Attempt to parse the SonarQube issues report if available
+            issues_report = os.path.join(repo_local_path, ".scannerwork", "scanner-report", "issues-report.json")
+            if os.path.exists(issues_report) and result.returncode == 0:
+                try:
+                    with open(issues_report, "r") as f:
+                        sonar_data = json.loads(f.read())
+                    for issue in sonar_data if isinstance(sonar_data, list) else sonar_data.get("issues", []):
+                        findings.append({
+                            "file": issue.get("component", "").split(":")[-1] if ":" in issue.get("component", "") else issue.get("component", ""),
+                            "issue": issue.get("message", "SonarQube issue"),
+                            "rule": issue.get("rule", ""),
+                            "tool": "sonarqube",
+                            "severity": issue.get("severity", "MEDIUM"),
+                            "line": issue.get("line", 1),
+                            "category": "quality"
+                        })
+                except Exception as parse_err:
+                    print(f"[StaticAnalysis] SonarQube report parse error: {parse_err}")
+            elif result.returncode == 0:
+                print("[StaticAnalysis] SonarQube analysis completed but no local report found.")
         except Exception as e:
             print(f"SonarQube execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] sonar-scanner not found in PATH, skipping.")
 
-    # 7. Performance AST Checker (SQLAlchemy N+1)
+    # 7. Performance AST Checker (SQLAlchemy / ORM N+1)
     import ast
+    # ORM-related attribute patterns that suggest lazy-loaded relationships
+    _ORM_ATTR_HINTS = {'query', 'all', 'filter', 'get', 'first', 'one', 'items', 'values',
+                       'children', 'parent', 'relationship', 'related', 'objects', 'select'}
     for root, _, files in os.walk(repo_local_path):
         if "venv" in root or ".git" in root or "__pycache__" in root:
             continue
@@ -199,12 +218,19 @@ async def agent_static_analysis(state: PipelineState):
                 file_path = os.path.join(root, file)
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
-                        tree = ast.parse(f.read(), filename=file)
+                        source = f.read()
+                    tree = ast.parse(source, filename=file)
+                    
+                    # Quick check: skip files with no ORM indicators
+                    has_orm_indicators = any(kw in source for kw in [
+                        'SQLAlchemy', 'session', 'db.', 'Model', 'Base.', 'relationship',
+                        'Column(', 'ForeignKey', 'backref', 'orm'
+                    ])
+                    if not has_orm_indicators:
+                        continue
                     
                     for node in ast.walk(tree):
                         if isinstance(node, ast.For):
-                            # Check for attribute access inside the loop (potential lazy load)
-                            # Extract all loop variables to handle tuple unpacking
                             loop_vars = []
                             for target_node in ast.walk(node.target):
                                 if isinstance(target_node, ast.Name):
@@ -212,7 +238,7 @@ async def agent_static_analysis(state: PipelineState):
 
                             for child in ast.walk(node):
                                 if isinstance(child, ast.Attribute) and isinstance(child.value, ast.Name):
-                                    if child.value.id in loop_vars:
+                                    if child.value.id in loop_vars and child.attr.lower() in _ORM_ATTR_HINTS:
                                         rel_path = os.path.relpath(file_path, repo_local_path)
                                         findings.append({
                                             "file": rel_path,

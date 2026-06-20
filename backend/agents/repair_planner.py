@@ -32,7 +32,7 @@ Return ONLY valid JSON array:
 ]"""
     
     try:
-        repair_plan = invoke_llm(
+        repair_plan = await invoke_llm(
             prompt,
             agent_name="repair_planner",
             tier=2,

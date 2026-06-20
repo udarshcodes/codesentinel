@@ -22,6 +22,11 @@ async def agent_repo_mapper(state: PipelineState):
     import subprocess
     try:
         subprocess.run(["git", "clone", repo_url, temp_dir], check=True, timeout=300)
+        # If a specific commit SHA was requested (e.g., from CI/CD), checkout that commit
+        commit_sha = state.get("commit_sha", "")
+        if commit_sha:
+            subprocess.run(["git", "checkout", commit_sha], cwd=temp_dir, check=True, timeout=30)
+            print(f"[RepoMapper] Checked out commit {commit_sha}")
     except Exception as e:
         print(f"Error cloning repository: {e}")
         return {"repo_local_path": "", "knowledge_graph": {}}
@@ -89,7 +94,7 @@ Extract the following:
 Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpoints', 'db_interactions', 'test_framework'."""
 
         try:
-            knowledge_graph = invoke_llm(
+            knowledge_graph = await invoke_llm(
                 prompt,
                 agent_name="repo_mapper",
                 tier=1,

@@ -6,9 +6,9 @@ async def agent_security_verifier(state: PipelineState):
     validation_results = state.get("validation_results", [])
     existing_retries = state.get('retry_count', 0)
     if not validation_results or not validation_results[-1].get("passed"):
+        # Validation failed — don't increment retry_count here (validator already did)
         return {
             "security_verified": False,
-            "retry_count": existing_retries + 1
         }
         
     patches = state.get('patches', [])
@@ -37,7 +37,6 @@ async def agent_security_verifier(state: PipelineState):
     ]
     
     if still_vulnerable:
-        existing_retries = state.get('retry_count', 0)
         return {
             'security_verified': False,
             'security_retry_context': still_vulnerable,

@@ -52,7 +52,7 @@ If you find a bug, return valid JSON: {{"found": true, "id": 1, "description": "
 If no bugs, return: {{"found": false}}"""
                 
                 # Tier 1 for initial scanning, will auto-escalate on failure
-                result = invoke_llm(
+                result = await invoke_llm(
                     prompt,
                     agent_name="bug_investigator",
                     tier=1,
@@ -118,7 +118,7 @@ Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "..."
         
         try:
             # Tier 1 for investigation, auto-escalates on validation failure
-            issue_data = invoke_llm(
+            issue_data = await invoke_llm(
                 prompt,
                 agent_name="bug_investigator",
                 tier=1,
