@@ -1,6 +1,7 @@
 
 
 export default function ConfidenceScore({ score }) {
+  if (score == null || isNaN(score)) return null
   let colorClass = 'text-green-400'
   let bgClass = 'bg-green-400/10'
   let label = 'High Confidence'
@@ -23,7 +24,7 @@ export default function ConfidenceScore({ score }) {
         <p className={`text-lg font-bold ${colorClass}`}>{label}</p>
       </div>
       <div className={`text-3xl font-bold ${colorClass} ${bgClass} px-4 py-2 rounded-xl`}>
-        {score.toFixed(1)}%
+        {(score ?? 0).toFixed(1)}%
       </div>
     </div>
   )

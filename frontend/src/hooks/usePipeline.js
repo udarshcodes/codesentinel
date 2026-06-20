@@ -4,11 +4,12 @@ import { PipelineContext } from '../context/PipelineContext';
 export function usePipeline(taskId) {
   const { state, dispatch } = useContext(PipelineContext);
   const eventSourceRef = useRef(null);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef(null);
+  const MAX_RETRIES = 5;
 
   useEffect(() => {
     if (!taskId) return;
-
-    let retryTimeout;
 
     const connectSSE = () => {
       if (eventSourceRef.current) {
@@ -19,6 +20,7 @@ export function usePipeline(taskId) {
       eventSourceRef.current = es;
 
       dispatch({ type: 'AGENT_START' });
+      retryCountRef.current = 0; // Reset retries on successful connection
 
       es.addEventListener('agent_complete', (e) => {
         try {
@@ -58,21 +60,32 @@ export function usePipeline(taskId) {
       });
 
       es.addEventListener('error', (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          dispatch({ type: 'PIPELINE_ERROR', payload: data });
-          es.close();
-        } catch (err) {
-          console.error('Error parsing error event data', err);
+        // Server-sent named 'error' events have e.data; native errors don't
+        if (e.data) {
+          try {
+            const data = JSON.parse(e.data);
+            dispatch({ type: 'PIPELINE_ERROR', payload: data });
+            es.close();
+          } catch (err) {
+            console.error('Error parsing error event data', err);
+          }
         }
+        // Native EventSource errors are handled by onerror below
       });
 
       es.onerror = () => {
-        console.error('SSE connection error, retrying in 3 seconds...');
         es.close();
-        retryTimeout = setTimeout(() => {
+        retryCountRef.current += 1;
+        if (retryCountRef.current > MAX_RETRIES) {
+          console.error('SSE max retries reached, giving up.');
+          dispatch({ type: 'PIPELINE_ERROR', payload: { error: 'Connection lost. Please refresh.' } });
+          return;
+        }
+        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
+        console.error(`SSE connection error, retry ${retryCountRef.current}/${MAX_RETRIES} in ${delay}ms...`);
+        retryTimeoutRef.current = setTimeout(() => {
           connectSSE();
-        }, 3000);
+        }, delay);
       };
     };
 
@@ -82,11 +95,12 @@ export function usePipeline(taskId) {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
       }
     };
   }, [taskId, dispatch]);
 
   return state;
 }
+
