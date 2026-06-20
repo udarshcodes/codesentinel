@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 import os
+import re
 import httpx
 import uuid
 from api.sse import run_pipeline_worker
@@ -16,6 +17,12 @@ class AnalyzeRequest(BaseModel):
 @router.post("/analyze") # Backward compatibility
 async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     repo_url = request.repo_url
+
+    # Validate repo_url format
+    if not repo_url.endswith("/*"):
+        if not re.match(r'^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(?:\.git)?$', repo_url):
+            raise HTTPException(400, "Invalid repository URL. Only GitHub HTTPS URLs are accepted (e.g., https://github.com/owner/repo).")
+
     repos_to_analyze = [repo_url]
     
     # Handle Multi-Repository Mode (github.com/org/*)
@@ -43,7 +50,7 @@ async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTa
         task_ids.append(task_id)
         
         # Fire and forget the background task
-        background_tasks.add_task(run_pipeline_worker, task_id, r_url)
+        background_tasks.add_task(run_pipeline_worker, task_id, r_url, request.commit_sha)
 
     # If it was a single repo, return just that task_id for backward compatibility
     # But also include the array of task_ids for Multi-Repo mode

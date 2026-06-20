@@ -19,10 +19,11 @@ def make_serializable(obj):
     else:
         return str(obj)
 
-async def run_pipeline_worker(task_id: str, repo_url: str):
+async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = None):
     state = {
         "task_id": task_id,
         "repo_url": repo_url,
+        "commit_sha": commit_sha or "",
         "repo_local_path": "",
         "knowledge_graph": {},
         "dependency_findings": [],
@@ -57,7 +58,7 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
     final_pr_error = ""
     final_confidence = 0.0
     
-    metrics.queue_depth += 1
+    metrics.increment('queue_depth')
     start_time = time.time()
     
     try:
@@ -110,12 +111,12 @@ async def run_pipeline_worker(task_id: str, repo_url: str):
         import traceback
         traceback.print_exc()
         await emit("error", {"error": str(e)})
-        metrics.failed_jobs += 1
+        metrics.increment('failed_jobs')
     finally:
-        metrics.queue_depth = max(0, metrics.queue_depth - 1)
-        metrics.scan_duration_ms = int((time.time() - start_time) * 1000)
+        metrics.decrement('queue_depth')
+        metrics.set_val('scan_duration_ms', int((time.time() - start_time) * 1000))
         if final_pr_url or final_confidence > 0:
-            metrics.completed_jobs += 1
+            metrics.increment('completed_jobs')
             
         try:
             repo_local_path = state.get("repo_local_path")
@@ -155,11 +156,7 @@ async def event_generator(task_id: str):
             del sse_queues[task_id]
 
 @router.get("/stream")
-async def stream_pipeline(repo_url: str = None, task_id: str = None):
-    # Support backward compatibility
-    if not task_id and repo_url:
-        task_id = repo_url.split('/')[-1]
-    
+async def stream_pipeline(task_id: str = None):
     if not task_id:
         return {"error": "Missing task_id"}
         

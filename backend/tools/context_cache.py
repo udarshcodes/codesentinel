@@ -72,10 +72,25 @@ def get_localized_graph(repo_url: str, target_file: str) -> dict:
         if isinstance(m, str) and _is_related(m, target_file)
     ]
     
+    # Include API endpoints and DB interactions relevant to this file
+    api_endpoints = kg.get("api_endpoints") or []
+    relevant_endpoints = [
+        ep for ep in api_endpoints
+        if isinstance(ep, dict) and _is_related(ep.get("handler_file", ""), target_file)
+    ][:5]
+    
+    db_interactions = kg.get("db_interactions") or []
+    relevant_db = [
+        db for db in db_interactions
+        if isinstance(db, dict) and _is_related(str(db), target_file)
+    ][:5]
+    
     return {
         "language": kg.get("language", "unknown"),
         "framework": kg.get("framework", "unknown"),
         "relevant_modules": relevant_modules[:5],  # Cap to 5
+        "api_endpoints": relevant_endpoints,
+        "db_interactions": relevant_db,
     }
 
 

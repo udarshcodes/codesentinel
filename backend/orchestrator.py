@@ -11,6 +11,81 @@ from agents.validator import agent_validator
 from agents.security_verifier import agent_security_verifier
 from agents.pr_author import agent_pr_author
 
+# --- Agent 10: Orchestrator Agent ---
+# The Orchestrator is an intelligent meta-agent that controls the pipeline.
+# It makes dynamic decisions at conditional edges using heuristics and
+# logs its reasoning for observability.
+
+class OrchestratorAgent:
+    """
+    Intelligent orchestrator that controls what runs next, what retries,
+    and what fails. Implements the 'Agent 10 — Orchestrator Agent' from
+    the specification.
+    """
+    
+    @staticmethod
+    def route_after_validator(state: PipelineState) -> str:
+        """Decide whether to retry code generation or proceed to security verification."""
+        validation_results = state.get('validation_results', [])
+        retry_count = state.get('retry_count', 0)
+        unresolvable_fixes = state.get('unresolvable_fixes', [])
+        patches = state.get('patches', [])
+        
+        if not validation_results:
+            print("[Orchestrator] No validation results — proceeding to security verification.")
+            return 'security_verifier'
+        
+        latest = validation_results[-1]
+        
+        if latest.get('passed'):
+            print("[Orchestrator] Validation PASSED — proceeding to security verification.")
+            return 'security_verifier'
+        
+        if latest.get('unresolvable') or retry_count >= 3:
+            print(f"[Orchestrator] Validation FAILED after {retry_count} retries — "
+                  f"marking as unresolvable and proceeding to security verification.")
+            return 'security_verifier'
+        
+        # Check if there are any applied patches worth retrying
+        applied_patches = [p for p in patches if p.get('applied')]
+        if not applied_patches:
+            print("[Orchestrator] No patches were successfully applied — skipping retry, "
+                  "proceeding to security verification.")
+            return 'security_verifier'
+        
+        files_passed = latest.get('files_passed', 0)
+        files_validated = latest.get('files_validated', 1)
+        pass_ratio = files_passed / max(files_validated, 1)
+        
+        print(f"[Orchestrator] Validation FAILED (pass ratio: {pass_ratio:.0%}, "
+              f"retry {retry_count}/3) — routing back to code_generator for retry.")
+        return 'code_generator'
+    
+    @staticmethod
+    def route_after_security(state: PipelineState) -> str:
+        """Decide whether to retry after security verification failure or proceed to PR."""
+        security_verified = state.get('security_verified')
+        retry_count = state.get('retry_count', 0)
+        security_retry_context = state.get('security_retry_context', [])
+        
+        if security_verified:
+            print("[Orchestrator] Security verification PASSED — proceeding to PR author.")
+            return 'pr_author'
+        
+        if retry_count >= 3:
+            remaining_vulns = len(security_retry_context)
+            print(f"[Orchestrator] Security verification FAILED after {retry_count} retries "
+                  f"({remaining_vulns} vulnerabilities remain) — proceeding to PR author anyway.")
+            return 'pr_author'
+        
+        remaining_vulns = len(security_retry_context)
+        print(f"[Orchestrator] Security verification FAILED ({remaining_vulns} vulnerabilities "
+              f"still present, retry {retry_count}/3) — routing back to code_generator.")
+        return 'code_generator'
+
+
+orchestrator = OrchestratorAgent()
+
 # --- Graph Definition ---
 
 workflow = StateGraph(PipelineState)
@@ -35,25 +110,11 @@ workflow.add_edge("bug_investigator", "repair_planner")
 workflow.add_edge("repair_planner", "code_generator")
 workflow.add_edge("code_generator", "validator")
 
-def route_after_validator(state: PipelineState) -> str:
-    validation_results = state.get('validation_results', [])
-    if validation_results and not validation_results[-1].get('passed'):
-        if state.get('retry_count', 0) >= 3:
-            return 'security_verifier'
-        return 'code_generator'
-    return 'security_verifier'
-
-workflow.add_conditional_edges("validator", route_after_validator, 
+# Orchestrator-controlled conditional routing
+workflow.add_conditional_edges("validator", orchestrator.route_after_validator, 
     {"security_verifier": "security_verifier", "code_generator": "code_generator"})
 
-def route_after_security(state: PipelineState) -> str:
-    if state.get('security_verified'):
-        return 'pr_author'
-    if state.get('retry_count', 0) >= 3:
-        return 'pr_author' # Skip after max retries
-    return 'code_generator' # Loop back
-
-workflow.add_conditional_edges('security_verifier', route_after_security,
+workflow.add_conditional_edges('security_verifier', orchestrator.route_after_security,
     {'pr_author': 'pr_author', 'code_generator': 'code_generator'})
     
 workflow.add_edge("pr_author", END)

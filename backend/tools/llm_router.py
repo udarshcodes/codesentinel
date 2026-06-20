@@ -5,6 +5,7 @@ per-agent token budgets, retry/fallback logic, and telemetry.
 
 import json
 import re
+import asyncio
 import tiktoken
 from langchain_groq import ChatGroq
 from config import GROQ_API_KEYS
@@ -89,7 +90,7 @@ def _record(agent_name: str, prompt_tokens: int, completion_tokens: int,
 # ---------------------------------------------------------------------------
 # Core invoke function
 # ---------------------------------------------------------------------------
-def invoke_llm(
+async def invoke_llm(
     prompt: str,
     agent_name: str,
     *,
@@ -175,7 +176,7 @@ def invoke_llm(
         )
         
         try:
-            res = llm.invoke(prompt)
+            res = await asyncio.to_thread(llm.invoke, prompt)
             raw = res.content.strip()
             
             # Extract actual token usage from the Groq API response if available

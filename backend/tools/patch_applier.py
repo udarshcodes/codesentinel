@@ -1,4 +1,5 @@
 import os
+import shutil
 import difflib
 import re
 import ast
@@ -34,6 +35,10 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
     try:
         with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
+
+        # Create backup before patching
+        backup_path = full_path + ".bak"
+        shutil.copy2(full_path, backup_path)
             
         # Very basic parse for <<<SEARCH>>> and <<<REPLACE>>>
         # Split by <<<SEARCH>>>
@@ -129,4 +134,8 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
         return {"success": True, "stderr": ""}
         
     except Exception as e:
+        # Attempt rollback from backup
+        backup_path = full_path + ".bak"
+        if os.path.exists(backup_path):
+            shutil.copy2(backup_path, full_path)
         return {"success": False, "stderr": str(e)}

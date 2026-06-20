@@ -46,16 +46,19 @@ def get_next_key() -> tuple[str, int]:
 
 def _fire_alert():
     """Non-blocking webhook call. Never raises — alert failure must not break the pipeline."""
-    import os, requests
-    webhook = os.getenv("ALERT_WEBHOOK_URL", "")
-    if not webhook:
-        return
-    try:
-        requests.post(webhook, json={
-            "text": "CodeSentinel: all 5 primary Groq keys exhausted. Emergency key 6 is now active."
-        }, timeout=3)
-    except Exception:
-        pass
+    import os
+    def _send():
+        import requests
+        webhook = os.getenv("ALERT_WEBHOOK_URL", "")
+        if not webhook:
+            return
+        try:
+            requests.post(webhook, json={
+                "text": "CodeSentinel: all 5 primary Groq keys exhausted. Emergency key 6 is now active."
+            }, timeout=3)
+        except Exception:
+            pass
+    threading.Thread(target=_send, daemon=True).start()
 
 def record_usage(key_index: int, tokens_used: int):
     """Track tokens consumed. key_index of -1 means emergency key."""

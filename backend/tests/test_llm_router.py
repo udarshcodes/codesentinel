@@ -17,6 +17,5 @@ def test_select_api_key_empty(monkeypatch):
     monkeypatch.setattr("tools.key_dispatcher.GROQ_API_KEYS", [])
     monkeypatch.setattr("tools.key_dispatcher.GROQ_EMERGENCY_KEY", None)
     
-    import pytest
     with pytest.raises(RuntimeError):
         get_next_key()
