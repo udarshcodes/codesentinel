@@ -1,19 +1,15 @@
-# Virtual environments
-venv/
-venv_win/
-wsl_venv*/
-temp_venv/
-env/
 .env
-
-# Cache and compiled files
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.pytest_cache/
-.chroma_data/
+.git/
+.gitignore
 chroma_data/
-
-# Temp directories
-/tmp/repos/
+.response_cache.json
+*.bak
+venv/
+.venv/
+tests/
+*.md

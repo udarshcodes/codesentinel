@@ -30,7 +30,7 @@ fi
 
 if [ -d "backend/admin_dashboard" ] && [ -f "backend/admin_dashboard/package.json" ]; then
     echo "--> Installing Admin Dashboard Node dependencies..."
-    cd backend/admin_dashboard && npm install && cd ..
+    cd backend/admin_dashboard && npm install && cd ../..
 fi
 
 # 4. Environment Verification
