@@ -37,9 +37,12 @@ function DashboardInner({ taskId }) {
         onReject={handleReject} 
       />
 
+      {pipelineState.status !== 'idle' && (
+        <PipelineView events={syntheticEvents} />
+      )}
+
       {pipelineState.agents.length > 0 && (
         <>
-          <PipelineView events={syntheticEvents} />
           <FindingsPanel events={syntheticEvents} />
           <DiffViewer events={syntheticEvents} />
         </>

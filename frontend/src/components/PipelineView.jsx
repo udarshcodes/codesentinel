@@ -43,7 +43,7 @@ export default function PipelineView({ events }) {
   })
 
   // The active agent is the first one not in completedAgents
-  if (!currentAgent && !isError && events.length > 0 && events[events.length - 1].event !== 'pipeline_complete') {
+  if (!currentAgent && !isError && (events.length === 0 || events[events.length - 1].event !== 'pipeline_complete')) {
     currentAgent = AGENT_ORDER.find(a => !completedAgents.has(a))
   }
 
