@@ -108,8 +108,7 @@ async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = Non
         })
         
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        print(f"Pipeline crashed: {e}")
         await emit("error", {"error": str(e)})
         metrics.increment('failed_jobs')
     finally:
