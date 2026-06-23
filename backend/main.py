@@ -23,7 +23,8 @@ async def lifespan(app):
         raise RuntimeError("CRITICAL: semgrep not found in PATH")
     if not shutil.which("bandit"):
         raise RuntimeError("CRITICAL: bandit not found in PATH")
-    temp_repo = os.getenv("TEMP_REPO_PATH", "/tmp/repos")
+    import tempfile
+    temp_repo = os.getenv("TEMP_REPO_PATH", os.path.join(tempfile.gettempdir(), "repos"))
     os.makedirs(temp_repo, exist_ok=True)
     if not os.access(temp_repo, os.W_OK):
         raise RuntimeError(f"CRITICAL: {temp_repo} is not writable")
