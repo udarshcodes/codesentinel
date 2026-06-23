@@ -11,7 +11,10 @@ async def agent_validator(state: PipelineState):
     validation_results = state.get("validation_results", [])
     
     if not patches or not repo_local_path:
-        return {"validation_results": validation_results}
+        retry_count = state.get("retry_count", 0)
+        if state.get("repair_plan"):
+            retry_count += 1
+        return {"validation_results": validation_results, "retry_count": retry_count}
     
     # Since code_generator now writes fixes directly to disk,
     # we validate by checking if the files are syntactically correct.
