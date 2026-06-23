@@ -64,6 +64,10 @@ class OrchestratorAgent:
     @staticmethod
     def route_after_security(state: PipelineState) -> str:
         """Decide whether to retry after security verification failure or proceed to PR."""
+        if state.get('approval_decision') == 'rejected':
+            print("[Orchestrator] Repair plan was REJECTED — proceeding to PR author.")
+            return 'pr_author'
+            
         security_verified = state.get('security_verified')
         retry_count = state.get('retry_count', 0)
         security_retry_context = state.get('security_retry_context', [])
