@@ -4,6 +4,7 @@ import threading
 approval_events: dict[str, dict] = {}
 sse_queues: dict[str, asyncio.Queue] = {}
 
+
 class Metrics:
     def __init__(self):
         self._lock = threading.Lock()
@@ -24,7 +25,9 @@ class Metrics:
         with self._lock:
             setattr(self, attr, value)
 
+
 metrics = Metrics()
+
 
 async def broadcast_sse(task_id: str, payload: dict):
     if task_id in sse_queues:

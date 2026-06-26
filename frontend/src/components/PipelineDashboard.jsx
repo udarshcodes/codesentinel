@@ -1,4 +1,3 @@
-import React from 'react'
 import ApprovalModal from './ApprovalModal'
 import PRSummary from './PRSummary'
 import PipelineView from './PipelineView'

@@ -48,6 +48,13 @@ export function usePipeline(taskId) {
         }
       });
 
+      es.addEventListener('approval_resolved', (e) => {
+        try {
+          dispatch({ type: 'APPROVAL_RESOLVED' });
+        } catch (err) {
+          console.error('Error parsing approval_resolved data', err);
+        }
+      });
 
       es.addEventListener('pipeline_complete', (e) => {
         try {

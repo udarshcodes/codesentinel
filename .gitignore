@@ -21,3 +21,5 @@ temp.patch
 .response_cache.json
 *.bak
 *.log
+.pytest_cache/
+scripts/

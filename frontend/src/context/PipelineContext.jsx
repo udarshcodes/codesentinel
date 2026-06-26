@@ -10,6 +10,7 @@ const initialState = {
   patches: [],
   confidence_score: null,
   pr_url: null,
+  pr_error: null,
   awaiting_approval: false,
   current_fix: null
 };

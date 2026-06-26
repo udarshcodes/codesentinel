@@ -36,7 +36,7 @@ function App() {
         setActiveTaskId(tasks[0].task_id)
       } else {
         setBatchTasks([])
-        setActiveTaskId(data.task_id || repoUrlInput)
+        setActiveTaskId(data.task_id || null)
       }
     } catch (error) {
       console.error(error)

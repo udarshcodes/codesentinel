@@ -4,8 +4,11 @@ WORKDIR /app
 
 # Install system dependencies needed for SAST tools and worker tasks
 RUN apt-get update && \
-    apt-get install -y git build-essential nodejs npm maven curl && \
+    apt-get install -y git build-essential nodejs npm maven curl golang-go && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Sonar Scanner
+RUN npm install -g sonarqube-scanner
 
 # Install Semgrep globally
 RUN pip install --no-cache-dir semgrep

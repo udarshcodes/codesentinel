@@ -8,6 +8,7 @@ import time
 
 router = APIRouter()
 
+
 def make_serializable(obj):
     """Recursively convert non-serializable objects to strings."""
     if isinstance(obj, dict):
@@ -18,6 +19,7 @@ def make_serializable(obj):
         return obj
     else:
         return str(obj)
+
 
 async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = None):
     state = {
@@ -38,13 +40,14 @@ async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = Non
         "retry_count": 0,
         "awaiting_approval": False,
         "confidence_score": 0.0,
+        "dependency_graph": {},
     }
-    
+
     # We create the queue here if it doesn't exist, so that manual SSE events like approval
     # can be injected via the orchestrator.
     if task_id not in sse_queues:
         sse_queues[task_id] = asyncio.Queue()
-        
+
     async def emit(event: str, data: dict):
         if task_id in sse_queues:
             try:
@@ -53,95 +56,100 @@ async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = Non
                 pass
 
     await emit("pipeline_started", {"repo_url": repo_url})
-    
+
     final_pr_url = ""
     final_pr_error = ""
     final_confidence = 0.0
-    
-    metrics.increment('queue_depth')
+
+    metrics.increment("queue_depth")
     start_time = time.time()
-    
+
     try:
         # We need to run astream and concurrently poll the queue for manual events
         # like we did in the old code to support the approval_resolved event
         astream_iter = langgraph_app.astream(state)
         astream_task = asyncio.create_task(anext(astream_iter, None))
-        
+
         while True:
             done, pending = await asyncio.wait(
-                {astream_task},
-                return_when=asyncio.FIRST_COMPLETED
+                {astream_task}, return_when=asyncio.FIRST_COMPLETED
             )
-            
+
             if astream_task in done:
                 output = astream_task.result()
-                if output is None: # End of stream
+                if output is None:  # End of stream
                     break
-                    
+
                 for node_name, state_update in output.items():
                     safe_update = make_serializable(state_update)
-                    
+
                     if "pr_url" in safe_update:
                         final_pr_url = safe_update["pr_url"]
                     if "pr_error" in safe_update:
                         final_pr_error = safe_update["pr_error"]
                     if "confidence_score" in safe_update:
                         final_confidence = safe_update["confidence_score"]
-                        
+
                     if "repo_local_path" in safe_update:
                         state["repo_local_path"] = safe_update["repo_local_path"]
-                        
+
                     event_data = {
                         "agent": node_name,
                         "status": "success",
-                        "data": safe_update
+                        "data": safe_update,
                     }
                     await emit("agent_complete", event_data)
-                    
+
                 astream_task = asyncio.create_task(anext(astream_iter, None))
-                
-        await emit("pipeline_complete", {
-            "status": "done",
-            "pr_url": final_pr_url,
-            "pr_error": final_pr_error,
-            "confidence_score": final_confidence
-        })
-        
+
+        await emit(
+            "pipeline_complete",
+            {
+                "status": "done",
+                "pr_url": final_pr_url,
+                "pr_error": final_pr_error,
+                "confidence_score": final_confidence,
+            },
+        )
+
     except Exception as e:
         print(f"Pipeline crashed: {e}")
         await emit("error", {"error": str(e)})
-        metrics.increment('failed_jobs')
+        metrics.increment("failed_jobs")
     finally:
-        metrics.decrement('queue_depth')
-        metrics.set_val('scan_duration_ms', int((time.time() - start_time) * 1000))
+        metrics.decrement("queue_depth")
+        metrics.set_val("scan_duration_ms", int((time.time() - start_time) * 1000))
         if final_pr_url or final_confidence > 0:
-            metrics.increment('completed_jobs')
-            
+            metrics.increment("completed_jobs")
+
         try:
             repo_local_path = state.get("repo_local_path")
             if repo_local_path and "codesentinel_" in repo_local_path:
                 import shutil
+
                 shutil.rmtree(repo_local_path, ignore_errors=True)
         except Exception as e:
             print(f"Error cleaning up temp dir: {e}")
-            
+
         # Context cache cleanup (queue cleanup is handled by event_generator's finally block
         # to avoid deleting the queue before the client reads the final event)
         from tools import context_cache
+
         context_cache.invalidate(repo_url)
+
 
 async def event_generator(task_id: str):
     if task_id not in sse_queues:
         sse_queues[task_id] = asyncio.Queue()
-        
+
     q = sse_queues[task_id]
-    
+
     try:
         while True:
             payload = await q.get()
             yield {
                 "event": payload.get("event", "message"),
-                "data": json.dumps(payload.get("data", payload))
+                "data": json.dumps(payload.get("data", payload)),
             }
             if payload.get("event") in ["pipeline_complete", "error"]:
                 break
@@ -154,9 +162,10 @@ async def event_generator(task_id: str):
         if task_id in sse_queues:
             del sse_queues[task_id]
 
+
 @router.get("/stream")
 async def stream_pipeline(task_id: str = None):
     if not task_id:
         return {"error": "Missing task_id"}
-        
+
     return EventSourceResponse(event_generator(task_id))

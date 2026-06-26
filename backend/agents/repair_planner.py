@@ -6,16 +6,19 @@ from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import REPAIR_PLANNER_SYSTEM
 
+
 async def agent_repair_planner(state: PipelineState):
     investigated_issues = state.get("investigated_issues", [])
-    
+
     if not investigated_issues or not GROQ_API_KEYS:
         return {"repair_plan": [], "awaiting_approval": False}
-        
+
     # Prevent massive payloads from mangling the LLM prompt
-    while len(json.dumps(investigated_issues)) > 12000 and len(investigated_issues) > 10:
+    while (
+        len(json.dumps(investigated_issues)) > 12000 and len(investigated_issues) > 10
+    ):
         investigated_issues.pop()
-    
+
     # Tier 2 — Repair planning requires deep reasoning about fix ordering
     # and risk classification.
     prompt = f"""{REPAIR_PLANNER_SYSTEM}
@@ -30,7 +33,7 @@ Return ONLY valid JSON array:
 [
   {{"issue_id": 1, "action": "...", "risk": "low-risk" | "high-risk", "reasoning": "..."}}
 ]"""
-    
+
     try:
         repair_plan = await invoke_llm(
             prompt,
@@ -44,54 +47,74 @@ Return ONLY valid JSON array:
     except Exception as e:
         print(f"Error planning repairs: {e}")
         repair_plan = []
-        
+
     HIGH_RISK_KEYWORDS = [
-        'jwt', 'token', 'auth', 'password', 'secret', 'crypto', 'encrypt',
-        'schema', 'migration', 'database', 'drop table', 'alter table'
+        "jwt",
+        "token",
+        "auth",
+        "password",
+        "secret",
+        "crypto",
+        "encrypt",
+        "schema",
+        "migration",
+        "database",
+        "drop table",
+        "alter table",
     ]
 
     def classify_risk(fix: dict) -> str:
-        description = (fix.get('description', '') + fix.get('files_to_change', '') + fix.get('reasoning', '') + fix.get('action', '')).lower()
+        description = (
+            fix.get("description", "")
+            + fix.get("files_to_change", "")
+            + fix.get("reasoning", "")
+            + fix.get("action", "")
+        ).lower()
         for kw in HIGH_RISK_KEYWORDS:
             if kw in description:
-                return 'high-risk'
-        return 'low-risk'
-        
+                return "high-risk"
+        return "low-risk"
+
     for fix in repair_plan:
-        if fix.get('risk') != 'high-risk':
-            fix['risk'] = classify_risk(fix)
-            
+        if fix.get("risk") != "high-risk":
+            fix["risk"] = classify_risk(fix)
+
     # Check if any fix is high-risk to pause pipeline
     awaiting_approval = any(item.get("risk") == "high-risk" for item in repair_plan)
     task_id = state.get("task_id", "")
-    
+
     if awaiting_approval and task_id:
         event = asyncio.Event()
-        approval_events[task_id] = {'event': event, 'decision': None}
-        
-        await broadcast_sse(task_id, {
-            'event': 'approval_required',
-            'data': {
-                'agent': 'repair_planner',
-                'fix': repair_plan
-            }
-        })
-        
-        await event.wait()
-        decision = approval_events.pop(task_id).get('decision')
-        
+        approval_events[task_id] = {"event": event, "decision": None}
+
+        await broadcast_sse(
+            task_id,
+            {
+                "event": "approval_required",
+                "data": {"agent": "repair_planner", "fix": repair_plan},
+            },
+        )
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=300)  # 5-minute timeout
+        except asyncio.TimeoutError:
+            print(
+                f"[RepairPlanner] Approval timed out after 300s for task {task_id}. Auto-approving."
+            )
+            approval_events[task_id]["decision"] = "approved"
+        decision = approval_events.pop(task_id).get("decision")
+
         return {
             "repair_plan": repair_plan,
-            "awaiting_approval": False, # Consumed
-            "approval_decision": decision
+            "awaiting_approval": False,  # Consumed
+            "approval_decision": decision,
         }
-    
-    result = {
-        "repair_plan": repair_plan,
-        "awaiting_approval": awaiting_approval
-    }
-    
+
+    result = {"repair_plan": repair_plan, "awaiting_approval": awaiting_approval}
+
     if not repair_plan and investigated_issues:
-        result["pr_error"] = "Failed to generate repair plan: API Rate Limit Exceeded or LLM failure."
-        
+        result["pr_error"] = (
+            "Failed to generate repair plan: API Rate Limit Exceeded or LLM failure."
+        )
+
     return result

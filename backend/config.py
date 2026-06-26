@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 _raw_keys = os.getenv("GROQ_API_KEY", "")
 GROQ_API_KEYS: list[str] = [k.strip() for k in _raw_keys.split(",") if k.strip()]
@@ -17,4 +17,7 @@ GROQ_TOKENS_PER_KEY_PER_DAY = int(os.getenv("GROQ_TOKENS_PER_KEY", "100000"))
 GROQ_TOTAL_DAILY_BUDGET = GROQ_TOKENS_PER_KEY_PER_DAY * len(GROQ_API_KEYS)
 
 import tempfile
-TEMP_REPO_PATH = os.getenv("TEMP_REPO_PATH", os.path.join(tempfile.gettempdir(), "repos"))
+
+TEMP_REPO_PATH = os.getenv(
+    "TEMP_REPO_PATH", os.path.join(tempfile.gettempdir(), "repos")
+)

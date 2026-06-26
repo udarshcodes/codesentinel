@@ -4,10 +4,7 @@ uvicorn[standard]
 langchain
 langchain-core
 langchain-groq
-langchain-huggingface
-sentence-transformers
 PyGithub
-gitpython
 chromadb
 pydantic
 python-dotenv

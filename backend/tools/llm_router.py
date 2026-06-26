@@ -4,7 +4,6 @@ per-agent token budgets, retry/fallback logic, and telemetry.
 """
 
 import json
-import re
 import asyncio
 import tiktoken
 from langchain_groq import ChatGroq
@@ -15,20 +14,20 @@ from tools.response_cache import get_cached, set_cached
 # ---------------------------------------------------------------------------
 # Model tiers
 # ---------------------------------------------------------------------------
-TIER1_MODEL = "llama-3.1-8b-instant"       # Fast & cheap — scanning, mapping
-TIER2_MODEL = "llama-3.3-70b-versatile"     # Reasoning — repair planning, code gen
+TIER1_MODEL = "llama-3.1-8b-instant"  # Fast & cheap — scanning, mapping
+TIER2_MODEL = "llama-3.3-70b-versatile"  # Reasoning — repair planning, code gen
 
 # ---------------------------------------------------------------------------
 # Per-agent token budgets  (prompt_limit, completion_limit)
 # ---------------------------------------------------------------------------
 AGENT_BUDGETS = {
-    "repo_mapper":        {"prompt": 4000, "completion": 1000},
-    "bug_investigator":   {"prompt": 6000, "completion": 2000},
-    "repair_planner":     {"prompt": 4000, "completion": 2000},
-    "code_generator":     {"prompt": 6000, "completion": 2500},
-    "validator":          {"prompt": 3000, "completion": 1000},
-    "security_verifier":  {"prompt": 3000, "completion": 1000},
-    "pr_author":          {"prompt": 4000, "completion": 1000},
+    "repo_mapper": {"prompt": 4000, "completion": 1000},
+    "bug_investigator": {"prompt": 6000, "completion": 2000},
+    "repair_planner": {"prompt": 4000, "completion": 2000},
+    "code_generator": {"prompt": 6000, "completion": 2500},
+    "validator": {"prompt": 3000, "completion": 1000},
+    "security_verifier": {"prompt": 3000, "completion": 1000},
+    "pr_author": {"prompt": 4000, "completion": 1000},
 }
 
 # Escalation threshold — if pre-flight token count exceeds this,
@@ -61,8 +60,9 @@ def get_telemetry() -> dict:
     return dict(_telemetry)
 
 
-def _record(agent_name: str, prompt_tokens: int, completion_tokens: int,
-            model_used: str):
+def _record(
+    agent_name: str, prompt_tokens: int, completion_tokens: int, model_used: str
+):
     """Accumulate token usage for an agent."""
     if agent_name not in _telemetry:
         budget = AGENT_BUDGETS.get(agent_name, {"prompt": 6000, "completion": 2000})
@@ -152,35 +152,35 @@ async def invoke_llm(
         completion_tokens = 0
     else:
         res_content = None
-        
+
     total_attempts = MAX_RETRIES_PER_TIER * (len(GROQ_API_KEYS) + 1)
-    
+
     raw = ""
     completion_tokens = 0
-    
+
     # --- Retry loop with deterministic escalation ---
     for attempt in range(1, total_attempts + 1):
         if res_content is not None:
             # We had a cache hit, skip the API call
             raw = res_content.strip()
             break
-            
+
         api_key, key_idx = get_next_key()
         if key_idx == -1:
             print(f"[LLMRouter] Using emergency key (attempt {attempt})")
-            
+
         llm = ChatGroq(
             model=current_model,
             api_key=api_key,
             max_tokens=budget["completion"],
         )
-        
+
         try:
             res = await asyncio.to_thread(llm.invoke, prompt)
             raw = res.content.strip()
-            
+
             # Extract actual token usage from the Groq API response if available
-            tokens = getattr(res, "usage_metadata", {}).get("total_tokens", 0)
+            tokens = (getattr(res, "usage_metadata", None) or {}).get("total_tokens", 0)
             if tokens:
                 record_usage(key_idx, tokens)
                 completion_tokens = tokens
@@ -190,17 +190,24 @@ async def invoke_llm(
 
             if expect_json:
                 cleaned = raw.replace("```json", "").replace("```", "").strip()
-                if json_array:
-                    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
-                else:
-                    match = re.search(r'\{.*\}', cleaned, re.DOTALL)
-                if not match:
-                    raise ValueError("No JSON block found in response")
-                # Ensure it parses successfully
-                json.loads(match.group(0))
-                
+                try:
+                    if json_array:
+                        start_idx = cleaned.find("[")
+                        end_idx = cleaned.rfind("]")
+                    else:
+                        start_idx = cleaned.find("{")
+                        end_idx = cleaned.rfind("}")
+
+                    if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
+                        raise ValueError("No JSON block found in response")
+
+                    json_str = cleaned[start_idx : end_idx + 1]
+                    json.loads(json_str)
+                except Exception as e:
+                    raise ValueError(f"JSON parse error: {e}")
+
             break
-            
+
         except Exception as e:
             err_str = str(e).lower()
             if "rate limit" in err_str or "429" in err_str:
@@ -209,7 +216,7 @@ async def invoke_llm(
                     print("[LLMRouter] Emergency key also rate limited. Aborting.")
                     break
                 continue
-                
+
             print(
                 f"[LLMRouter] {agent_name} attempt {attempt} failed "
                 f"(model={current_model}): {e}"
@@ -240,25 +247,28 @@ async def invoke_llm(
             # --- JSON schema validation ---
             cleaned = raw.replace("```json", "").replace("```", "").strip()
             if json_array:
-                match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+                start_idx = cleaned.find("[")
+                end_idx = cleaned.rfind("]")
             else:
-                match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+                start_idx = cleaned.find("{")
+                end_idx = cleaned.rfind("}")
 
-            if not match:
+            if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
                 raise ValueError(f"No JSON found in response: {cleaned[:200]}")
 
-            parsed = json.loads(match.group(0))
-            
+            json_str = cleaned[start_idx : end_idx + 1]
+            parsed = json.loads(json_str)
+
             # Cache the raw string only if it successfully parses!
             if res_content is None:
                 set_cached(prompt, current_model, raw)
-                
+
             return parsed
 
         except Exception as e:
             # JSON parse failed
             print(f"[LLMRouter] {agent_name} JSON parse failed: {e}")
-            # If we wanted to loop on JSON failures, we'd do it here. 
+            # If we wanted to loop on JSON failures, we'd do it here.
             # But since we broke out of the attempt loop, we'll just fall through to the abort below.
 
     # All retries exhausted across both tiers — graceful degradation

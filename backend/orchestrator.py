@@ -16,76 +16,92 @@ from agents.pr_author import agent_pr_author
 # It makes dynamic decisions at conditional edges using heuristics and
 # logs its reasoning for observability.
 
+
 class OrchestratorAgent:
     """
     Intelligent orchestrator that controls what runs next, what retries,
     and what fails. Implements the 'Agent 10 — Orchestrator Agent' from
     the specification.
     """
-    
+
     @staticmethod
     def route_after_validator(state: PipelineState) -> str:
         """Decide whether to retry code generation or proceed to security verification."""
-        validation_results = state.get('validation_results', [])
-        retry_count = state.get('retry_count', 0)
-        unresolvable_fixes = state.get('unresolvable_fixes', [])
-        patches = state.get('patches', [])
-        
+        validation_results = state.get("validation_results", [])
+        retry_count = state.get("retry_count", 0)
+        patches = state.get("patches", [])
+
         if not validation_results:
-            print("[Orchestrator] No validation results — proceeding to security verification.")
-            return 'security_verifier'
-        
+            print(
+                "[Orchestrator] No validation results — proceeding to security verification."
+            )
+            return "security_verifier"
+
         latest = validation_results[-1]
-        
-        if latest.get('passed'):
-            print("[Orchestrator] Validation PASSED — proceeding to security verification.")
-            return 'security_verifier'
-        
-        if latest.get('unresolvable') or retry_count >= 3:
-            print(f"[Orchestrator] Validation FAILED after {retry_count} retries — "
-                  f"marking as unresolvable and proceeding to security verification.")
-            return 'security_verifier'
-        
+
+        if latest.get("passed"):
+            print(
+                "[Orchestrator] Validation PASSED — proceeding to security verification."
+            )
+            return "security_verifier"
+
+        if latest.get("unresolvable") or retry_count >= 3:
+            print(
+                f"[Orchestrator] Validation FAILED after {retry_count} retries — "
+                f"marking as unresolvable and proceeding to security verification."
+            )
+            return "security_verifier"
+
         # Check if there are any applied patches worth retrying
-        applied_patches = [p for p in patches if p.get('applied')]
+        applied_patches = [p for p in patches if p.get("applied")]
         if not applied_patches:
-            print("[Orchestrator] No patches were successfully applied — skipping retry, "
-                  "proceeding to security verification.")
-            return 'security_verifier'
-        
-        files_passed = latest.get('files_passed', 0)
-        files_validated = latest.get('files_validated', 1)
+            print(
+                "[Orchestrator] No patches were successfully applied — skipping retry, "
+                "proceeding to security verification."
+            )
+            return "security_verifier"
+
+        files_passed = latest.get("files_passed", 0)
+        files_validated = latest.get("files_validated", 1)
         pass_ratio = files_passed / max(files_validated, 1)
-        
-        print(f"[Orchestrator] Validation FAILED (pass ratio: {pass_ratio:.0%}, "
-              f"retry {retry_count}/3) — routing back to code_generator for retry.")
-        return 'code_generator'
-    
+
+        print(
+            f"[Orchestrator] Validation FAILED (pass ratio: {pass_ratio:.0%}, "
+            f"retry {retry_count}/3) — routing back to code_generator for retry."
+        )
+        return "code_generator"
+
     @staticmethod
     def route_after_security(state: PipelineState) -> str:
         """Decide whether to retry after security verification failure or proceed to PR."""
-        if state.get('approval_decision') == 'rejected':
+        if state.get("approval_decision") == "rejected":
             print("[Orchestrator] Repair plan was REJECTED — proceeding to PR author.")
-            return 'pr_author'
-            
-        security_verified = state.get('security_verified')
-        retry_count = state.get('retry_count', 0)
-        security_retry_context = state.get('security_retry_context', [])
-        
+            return "pr_author"
+
+        security_verified = state.get("security_verified")
+        retry_count = state.get("retry_count", 0)
+        security_retry_context = state.get("security_retry_context", [])
+
         if security_verified:
-            print("[Orchestrator] Security verification PASSED — proceeding to PR author.")
-            return 'pr_author'
-        
+            print(
+                "[Orchestrator] Security verification PASSED — proceeding to PR author."
+            )
+            return "pr_author"
+
         if retry_count >= 3:
             remaining_vulns = len(security_retry_context)
-            print(f"[Orchestrator] Security verification FAILED after {retry_count} retries "
-                  f"({remaining_vulns} vulnerabilities remain) — proceeding to PR author anyway.")
-            return 'pr_author'
-        
+            print(
+                f"[Orchestrator] Security verification FAILED after {retry_count} retries "
+                f"({remaining_vulns} vulnerabilities remain) — proceeding to PR author anyway."
+            )
+            return "pr_author"
+
         remaining_vulns = len(security_retry_context)
-        print(f"[Orchestrator] Security verification FAILED ({remaining_vulns} vulnerabilities "
-              f"still present, retry {retry_count}/3) — routing back to code_generator.")
-        return 'code_generator'
+        print(
+            f"[Orchestrator] Security verification FAILED ({remaining_vulns} vulnerabilities "
+            f"still present, retry {retry_count}/3) — routing back to code_generator."
+        )
+        return "code_generator"
 
 
 orchestrator = OrchestratorAgent()
@@ -115,12 +131,18 @@ workflow.add_edge("repair_planner", "code_generator")
 workflow.add_edge("code_generator", "validator")
 
 # Orchestrator-controlled conditional routing
-workflow.add_conditional_edges("validator", orchestrator.route_after_validator, 
-    {"security_verifier": "security_verifier", "code_generator": "code_generator"})
+workflow.add_conditional_edges(
+    "validator",
+    orchestrator.route_after_validator,
+    {"security_verifier": "security_verifier", "code_generator": "code_generator"},
+)
 
-workflow.add_conditional_edges('security_verifier', orchestrator.route_after_security,
-    {'pr_author': 'pr_author', 'code_generator': 'code_generator'})
-    
+workflow.add_conditional_edges(
+    "security_verifier",
+    orchestrator.route_after_security,
+    {"pr_author": "pr_author", "code_generator": "code_generator"},
+)
+
 workflow.add_edge("pr_author", END)
 
 # Compile the graph

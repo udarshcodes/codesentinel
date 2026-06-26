@@ -13,7 +13,6 @@ fragmentation.
 import hashlib
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Session-scoped cache (dict keyed by repo hash)
 # ---------------------------------------------------------------------------
@@ -48,43 +47,39 @@ def invalidate(repo_url: str) -> None:
     _cache.pop(h, None)
 
 
-def invalidate_all() -> None:
-    """Clear the entire cache (e.g., on server restart)."""
-    _cache.clear()
-
-
 def get_localized_graph(repo_url: str, target_file: str) -> dict:
     """
     Return only the first-degree dependencies of `target_file` from the
     cached knowledge graph, rather than the full graph.
-    
+
     This drastically reduces the token count injected into prompts.
     """
     kg = get(repo_url, "knowledge_graph", {})
     if not kg:
         return {}
-    
+
     # Return a minimal subset: language, framework, and only modules
     # relevant to the target file.
     modules = kg.get("modules") or []
     relevant_modules = [
-        m for m in modules
-        if isinstance(m, str) and _is_related(m, target_file)
+        m for m in modules if isinstance(m, str) and _is_related(m, target_file)
     ]
-    
+
     # Include API endpoints and DB interactions relevant to this file
     api_endpoints = kg.get("api_endpoints") or []
     relevant_endpoints = [
-        ep for ep in api_endpoints
+        ep
+        for ep in api_endpoints
         if isinstance(ep, dict) and _is_related(ep.get("handler_file", ""), target_file)
     ][:5]
-    
+
     db_interactions = kg.get("db_interactions") or []
     relevant_db = [
-        db for db in db_interactions
+        db
+        for db in db_interactions
         if isinstance(db, dict) and _is_related(str(db), target_file)
     ][:5]
-    
+
     return {
         "language": kg.get("language", "unknown"),
         "framework": kg.get("framework", "unknown"),

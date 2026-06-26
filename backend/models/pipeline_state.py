@@ -24,3 +24,4 @@ class PipelineState(TypedDict, total=False):
     pr_error: NotRequired[str]
     task_id: NotRequired[str]
     touched_symbols: NotRequired[dict]
+    dependency_graph: NotRequired[dict]
