@@ -1,8 +1,9 @@
 <div align="center">
   <br />
-  <a href="https://github.com/yourusername/codesentinel" style="display: flex; justify-content: center; align-items: center; gap: 20px; text-decoration: none;">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=45&pause=1500&color=00D2FF&center=true&vCenter=true&width=1000&height=120&lines=CodeSentinel;Autonomous+AI+Code+Remediation;Stop+drowning+in+alerts;Automate+your+remediation" alt="CodeSentinel Typing SVG" />
+  <a href="https://github.com/udarshcodes/codesentinel" style="text-decoration: none;">
     <img src="frontend/public/logo.jpg" alt="CodeSentinel Logo" width="120" height="120" style="border-radius: 50%;" />
+    <br />
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=45&pause=1500&color=00D2FF&center=true&vCenter=true&width=1000&height=120&lines=CodeSentinel;Autonomous+AI+Code+Remediation;Stop+drowning+in+alerts;Automate+your+remediation" alt="CodeSentinel Typing SVG" />
   </a>
   <br />
 </div>
@@ -28,17 +29,21 @@ Today's modern CI/CD pipelines are exceptional at finding problems and almost us
 > The problem isn't that scanners don't find the bugs.
 > It's that finding a bug and fixing it correctly are two completely different jobs.
 
-**CodeSentinel** is an autonomous agent mesh that closes that gap. It does not just flag issues, it reads your repository like an engineer would, plans a fix, writes the patch, tests it, re-scans it for the original vulnerability, and opens a pull request ready for human review.
+**CodeSentinel** is a proactive, autonomous site reliability engineer (SRE) and security researcher that closes that gap. It does not just flag issues, it reads your repository like an engineer would, plans a fix, writes the patch, tests it, re-scans it for the original vulnerability, and opens a pull request ready for human review.
 
 Instead of adding another dashboard of red warnings, CodeSentinel turns those warnings into shipped code.
+
+**Key Feature:** CodeSentinel includes a fully implemented Multi-Repository wildcard execution engine. You can trigger analysis across an entire GitHub organization (e.g., `github.com/org/*`), automatically discovering and scanning all repositories within that scope. For more details, see [PRODUCT.md](./PRODUCT.md).
 
 ---
 
 ## Tech Stack & Architecture
 
+> **Note:** For deeper technical specifications, system architectural flows, and a comprehensive feature catalog, please refer to [PRODUCT.md](./PRODUCT.md).
+
 ### Backend
 - **Python 3.10+ & FastAPI:** Asynchronous speed, Pydantic validation, and Server-Sent Events (SSE). Utilizes `fastapi.BackgroundTasks` to execute headless pipelines suitable for robust CI/CD webhook triggers.
-- **LangGraph:** Robust Directed Acyclic Graph (DAG) state machine orchestrating discrete AI agents, enabling cyclic validation loops (test -> fail -> fix -> test).
+- **LangGraph:** Robust directed graph state machine orchestrating discrete AI agents, with controlled cyclic loops for iterative repair (test -> fail -> fix -> test).
 - **ChromaDB:** Lightweight embedded vector database storing and retrieving past validated fixes via RAG.
 - **Groq API:** Multi-tier routing sending simple tasks to rapid models and complex code generation to 70B+ parameters.
 
@@ -48,8 +53,8 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners & Analyzers:** `Semgrep`, `SonarQube`, `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy` serve as the deterministic baseline. Also features custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
-- **Dependency & Registry Checks:** Real-time vulnerability batch queries via OSV.dev and live registry queries across NPM, PyPI, Maven Central, Go Proxy, and Crates.io.
+- **SAST Runners & Analyzers:** `Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy` serve as the deterministic baseline. Also features 13 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
+- **Dependency & Registry Checks:** Real-time vulnerability queries via OSV.dev and live registry queries across NPM, PyPI, Maven Central, Go Proxy, and Crates.io.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
 
@@ -65,17 +70,17 @@ graph TD
     subgraph Agentic Pipeline
     C --> D[Repo Mapper]
     D --> DA[Dependency Analyzer]
-    D --> SA[Static Analysis]
-    DA --> F[Bug Investigator]
-    SA --> F
+    DA --> SA[Static Analysis]
+    SA --> F[Bug Investigator]
     F -.->|Query| G[(ChromaDB Vector Store)]
     F --> H[Repair Planner]
-    H -->|SSE Pause| I((Human Approval))
-    I -->|POST /api/approve| J[Code Generator]
+    H -->|If High Risk: SSE Pause| I((Human Approval))
+    H -->|If Low Risk| J[Code Generator]
+    I -->|POST /api/approve/{task_id}| J
     J --> K[Validator]
     K -->|If Build or Tests Fail| J
     K -->|If Tests Pass| SV[Security Verifier]
-    SV -->|If Still Vulnerable| J
+    SV -->|If Still Vulnerable, Return to Generator| J
     SV -->|If Secure| L[PR Author]
     end
     
@@ -90,14 +95,20 @@ graph TD
 ### 1. Prerequisites
 - Python 3.10+
 - Node.js 18+
-- Git and standard SAST tools (`semgrep`, `bandit`, `flake8`, `pylint`, `eslint`).
+- Git and standard SAST tools.
+
+**Required Tools Installation:**
+```bash
+pip install semgrep bandit flake8 pylint
+```
+*Note: `eslint`, `go vet`, and `cargo clippy` must exist in the target repository being analyzed, not in the CodeSentinel environment. `sonar-scanner` (SonarQube) is optional and the pipeline gracefully degrades without it.*
 
 ### 2. Clone & Backend Setup
 ```bash
-git clone https://github.com/yourusername/codesentinel.git
+git clone https://github.com/udarshcodes/codesentinel.git
 cd codesentinel/backend
 
-python -m venv venv
+python3.10 -m venv venv  # Or python --version to check and use python3 if needed
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
@@ -150,7 +161,7 @@ Navigate to `http://localhost:5173` to use the app.
 
 ---
 
-## 🔌 API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -164,7 +175,7 @@ Navigate to `http://localhost:5173` to use the app.
 
 ---
 
-## 🤖 CI/CD Integration (GitHub Actions)
+## CI/CD Integration (GitHub Actions)
 
 CodeSentinel comes with a pre-configured GitHub Actions workflow template located in `ci-cd-template/.github/workflows/codesentinel.yml`.
 
@@ -183,7 +194,7 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 ## Security Considerations
 
 1. **Deterministic Patching:** The custom Python patch engine ensures exactly what the AI suggests is applied, bypassing brittle system patch limits while maintaining strict character matching and forbidding LLM abbreviations.
-2. **Ephemeral Sandboxing:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit.
+2. **Ephemeral Branching:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit. Note: Code execution during validation runs directly on the host, not in an isolated sandbox. Future updates plan to shift this execution into ephemeral, isolated Docker containers to prevent malicious LLM code generation from executing arbitrary operations.
 3. **Secret Management & Transport:** LLM API keys and GitHub tokens are strictly confined to the backend environment. Tokens are handled securely via local git configuration (`http.extraheader`) rather than command-line remote URLs, ensuring they never leak into process logs or `.git/config`.
 4. **Input Validation:** All repository URLs are strictly validated against allowlist regex patterns to prevent Server-Side Request Forgery (SSRF) and command injection before any cloning occurs.
 
@@ -208,7 +219,7 @@ codesentinel/
 │   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
 │   │   ├── repair_planner.py    # Formulates fixes & requests human approval
 │   │   ├── code_generator.py    # Generates Search/Replace blocks
-│   │   ├── validator.py         # Dynamic test suite execution & retry loops
+│   │   ├── validator.py         # Pre-test build verification & dynamic test suite execution
 │   │   ├── security_verifier.py # Re-runs SAST to verify vulnerabilities are fixed
 │   │   └── pr_author.py         # Pull Request synthesizer
 │   ├── models/
@@ -222,7 +233,7 @@ codesentinel/
 │   │   ├── vector_store.py      # ChromaDB fix memory (RAG store)
 │   │   ├── osv_client.py        # OSV.dev vulnerability batch query client
 │   │   ├── analysis_runner.py   # Scoped Semgrep/Bandit/Pylint/Flake8 runner
-│   │   ├── confidence_calc.py   # Unified 4-part confidence score calculation engine
+│   │   ├── confidence_calc.py   # Unified 4-part confidence score engine used by validator and pr_author
 │   │   ├── knowledge_graph.py   # AST import dependency graph & circular cycle detector
 │   │   ├── context_cache.py     # In-memory LRU session cache for repo context
 │   │   ├── context_pruner.py    # AST-aware function extraction & diff pruning
@@ -230,13 +241,13 @@ codesentinel/
 │   │   └── prompt_cache.py      # Version-controlled system prompts
 │   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
 ├── ci-cd-template/              # Drop-in automation scripts for target repos
+│   └── .github/workflows/       
+│       ├── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
+│       └── azure-container-apps.yml # Azure Container Apps deployment
 ├── scripts/
 │   └── setup.sh                 # Environment setup and setup helper script
 ├── docker-compose.yml           # Multi-container orchestration configuration
 ├── nginx.conf                   # Reverse proxy routing configuration
-│   └── .github/workflows/       
-│       ├── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
-│       └── azure-container-apps.yml # Azure Container Apps deployment
 └── frontend/
     ├── src/
     │   ├── context/
