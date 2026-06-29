@@ -34,15 +34,15 @@ CodeSentinel is built on a modern, decoupled architecture prioritizing extreme f
   - *Validator:* Executes an automated build verification step followed by dynamic testing and security reverification.
   
 - **Intelligent Tooling & Routing (`backend/tools/`):** 
-  The proprietary LLM and operational infrastructure layer. Features a highly optimized `llm_router` capable of dynamic model tiering (fast/cheap vs. slow/reasoning), automatic JSON schema extraction, a highly resilient `key_dispatcher` for token budget load balancing, and a unified `analysis_runner` for executing subprocess scanning tools.
+  The proprietary LLM and operational infrastructure layer. Features a highly optimized `llm_router` capable of dynamic model tiering (fast/cheap vs. slow/reasoning), automatic JSON schema extraction, a highly resilient `key_dispatcher` for token budget load balancing, a unified `analysis_runner` for executing subprocess scanning tools, a `confidence_calc` engine for weighted pipeline scoring, and a `knowledge_graph` module that builds AST import dependency graphs and detects circular import cycles.
 
 ## 5. Data Flow (System Telemetry)
 
 The data flow ensures context is preserved and strictly typed throughout the execution lifecycle.
 1. **Ingestion & Triggering:** A webhook or API call initiates the pipeline. The orchestrator initializes a strictly typed `PipelineState` object containing `repo_url`, `retry_count`, and `confidence_score`.
-2. **Analysis Execution:** `static_analysis` and `dependency_analyzer` agents extract raw findings using external tools (OSV, Bandit, Semgrep, SonarQube) and real-time public registry checks (NPM/PyPI/Maven/Go Proxy), injecting them into the state.
+2. **Analysis Execution:** `static_analysis` and `dependency_analyzer` agents extract raw findings using external tools (OSV, Bandit, Semgrep, SonarQube, Go Vet, Cargo Clippy) and real-time public registry checks (NPM, PyPI, Maven Central, Go Proxy, and Crates.io), injecting them into the state.
 3. **LLM Triage & Context Retrieval:** The `bug_investigator` agent queries the ChromaDB Vector Store for historical fixes of similar bugs, filtering out false positives using an LLM.
-4. **Planning & Approval:** The `repair_planner` formulates a patch strategy. If modifications hit sensitive paths (e.g., `auth/`, `db/`), it transitions the pipeline to an `awaiting_approval` state, broadcasting an SSE event and pausing the graph until a `/api/v1/approve` webhook is received.
+4. **Planning & Approval:** The `repair_planner` formulates a patch strategy. If modifications hit sensitive paths (e.g., `auth/`, `db/`), it transitions the pipeline to an `awaiting_approval` state, broadcasting an SSE event and pausing the graph until a `/api/approve` webhook is received.
 5. **Execution Loop:** The `code_generator` executes file I/O to apply patches. The `validator` inspects syntax and test outputs. If tests fail, the graph cycles back. 
 6. **Security Verification Loop:** Post-validation, `security_verifier` executes targeted Semgrep/Bandit scans strictly on modified files. If the original vulnerability rule fires again, the `security_retry_context` is updated and the graph routes back to `code_generator`.
 7. **Commit & PR:** Upon successful validation and security clearance, the `pr_author` synthesizes the diffs and interactions into a comprehensive Pull Request via the PyGithub SDK.
@@ -93,9 +93,9 @@ CodeSentinel optimizes cost and latency by routing tasks to appropriately sized 
 For maximum safety, `repair_planner.py` uses heuristic `classify_risk` checks. If high-risk changes are detected, execution pauses dynamically via `asyncio.Event`. The FastAPI backend streams an `approval_required` SSE event to the React frontend, displaying an Approval Modal. `asyncio.wait` with `FIRST_COMPLETED` ensures telemetry and incoming webhooks don't cause thread deadlocks while the main graph is sleeping.
 
 ### Code Quality & Performance Scans
-Beyond basic security checks, the `static_analysis.py` agent enforces high structural code quality. Findings are tagged with specific categories (`security`, `quality`, `performance`, `functional`).
-- **Quality:** Enforces thresholds for long methods, duplicate code blocks, and detects dead imports utilizing strict Pylint configurations.
-- **Performance:** Executes lightweight Python AST matching to detect N+1 query structures targeting SQLAlchemy ORM patterns, and JS/TS regex parsing for Prisma and Mongoose inefficient database loads.
+Beyond basic security checks, the `static_analysis.py` agent enforces high structural code quality across 18 specialized scanning modules. Findings are tagged with specific categories (`security`, `quality`, `performance`, `functional`).
+- **Quality & Dead Code:** Enforces thresholds for long methods (50 lines) and duplicate code blocks, identifies circular dependencies via `knowledge_graph`, detects built-in hardcoded secrets, and flags unused functions, classes, and files across Python, JS/TS, HTML, and CSS.
+- **Performance & Leak Detection:** Executes AST matching to detect N+1 query structures in SQLAlchemy, Prisma, Mongoose, Go, Rust, and Java. Identifies memory and resource leaks such as unclosed Python `open()` calls, uncleaned JS/TS event listeners/intervals, Go unclosed resources, and Java unclosed streams.
 
 ### Pre-Test Build Verification
 Before running dynamic test suites, the `validator.py` agent executes a mandatory build verification step. It intelligently detects the project type (`package.json`, `pom.xml`, `pyproject.toml`) and runs the associated build command (`npm run build`, `mvn package`, `python -m build`). If the build fails, the pipeline immediately short-circuits back to the `code_generator`, saving valuable compute time that would otherwise be wasted on fundamentally broken syntax.
@@ -104,7 +104,7 @@ Before running dynamic test suites, the `validator.py` agent executes a mandator
 Rather than executing blind fixes, CodeSentinel ensures cryptographic proof of remediation. The `security_verifier.py` isolates newly generated patches and runs `semgrep` and `bandit` strictly on modified files. If the patch fails to clear the initial rule ID, the system injects `security_retry_context` back into the graph, feeding the exact tool failure logs back to the `code_generator` for a secondary attempt.
 
 ### ChromaDB Fix Memory & Confidence Scoring
-CodeSentinel learns from its successes. The `validator.py` calculates a weighted confidence score `(tests_ratio * 0.5) + (static_clean * 0.3) + (chroma_score * 0.2)`. Every successfully validated patch is hashed and embedded into a local `validated_fixes` ChromaDB collection. Future runs by the `bug_investigator` query this vector store via RAG to inject context from previously successful architectural repairs.
+CodeSentinel learns from its successes. Using `confidence_calc.py`, the `validator.py` and `pr_author.py` agents calculate a unified 4-part confidence score: `(tests_ratio * 40.0) + (static_clean * 30.0) + (patches_ratio * 20.0) + (chroma_ratio * 10.0)`. Every successfully validated patch is hashed and embedded into a local `validated_fixes` ChromaDB collection. Future runs by the `bug_investigator` query this vector store via RAG to inject context from previously successful architectural repairs.
 
 ### API Key Dispatcher & Token Budgeting (`key_dispatcher.py`)
 To bypass rate limits and token exhaustion, the system implements a proprietary load-balancer tracking daily token budgets across an array of API keys. Upon exhaustion or HTTP 429 errors, it seamlessly rolls over to the next key, eventually failing over to a highly restricted Emergency Key.
@@ -113,9 +113,9 @@ To bypass rate limits and token exhaustion, the system implements a proprietary 
 To provide a massive leap in User Experience (UX), the FastAPI backend streams LangGraph state transitions directly to the React frontend via SSE. The pipeline execution is completely decoupled into a headless `fastapi.BackgroundTasks` runner generating a unique `task_id`. The `event_generator` drains background `asyncio.Queue` objects asynchronously based on this ID, allowing the UI to safely disconnect and reconnect without interrupting the robust CI/CD execution pipeline.
 
 ## 8. API Design Decisions
-- **Asynchronous Execution:** Long-running AI agents are executed in isolated asynchronous event loops. The `/api/v1/analyze` endpoint immediately returns a `TaskID`, preventing HTTP timeouts.
+- **Asynchronous Execution:** Long-running AI agents are executed in isolated asynchronous event loops. The `/api/analyze` endpoint immediately returns a `TaskID`, preventing HTTP timeouts.
 - **RESTful + Streaming:** Standard operations utilize REST, while active pipeline execution relies exclusively on SSE for real-time telemetry. This inherently supports strict corporate firewalls better than stateful WebSockets.
-- **Unblocking Mechanisms:** The `/api/v1/approve/{task_id}` webhook interacts directly with the orchestration memory space to set thread events, elegantly waking sleeping graph nodes.
+- **Unblocking Mechanisms:** The `/api/approve/{task_id}` webhook interacts directly with the orchestration memory space to set thread events, elegantly waking sleeping graph nodes.
 
 ## 9. Scalability Strategy
 - **Stateless Agents:** LangGraph nodes process purely functional transformations on a `PipelineState` TypedDict. This allows the computational load of individual agents to be distributed across horizontally scaled worker nodes or serverless architectures (like AWS Lambda or Celery workers).
@@ -129,6 +129,6 @@ To provide a massive leap in User Experience (UX), the FastAPI backend streams L
 - **Strict Input Validation:** All external inputs, specifically target repository URLs, are scrubbed and validated via strict regex allowlists to thwart Server-Side Request Forgery (SSRF) and command injection vectors prior to cloning.
 
 ## 11. Future Roadmap
-1. **Advanced Distributed Tracing:** Expanding the `repo_mapper` to trace vulnerabilities across microservice boundaries via OpenTelemetry integrations, building on top of the newly implemented Multi-Repository wildcard execution engine.
+1. **Advanced Distributed Tracing:** Expanding the `repo_mapper` to trace vulnerabilities across runtime microservice boundaries via OpenTelemetry integrations, building on top of the already implemented Multi-Repository wildcard execution engine (`github.com/org/*`) and AST `KnowledgeGraph` service boundary mappings.
 2. **IDE Integration:** Exposing the FastAPI backend via a Language Server Protocol (LSP) to allow the LangGraph pipeline to operate directly within VSCode/JetBrains environments.
 3. **Advanced Self-Healing via MCTS:** Implementing Monte Carlo Tree Search (MCTS) within the `validator` loop to explore multiple repair pathways simultaneously, testing competing branches and selecting the one with the highest terminal confidence score.

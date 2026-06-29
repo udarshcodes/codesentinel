@@ -6,8 +6,7 @@ export function useApproval(taskId) {
 
   const submitDecision = async (decision) => {
     try {
-      const actualTaskId = taskId.split('/').pop();
-      const response = await fetch(`/api/approve/${encodeURIComponent(actualTaskId)}`, {
+      const response = await fetch(`/api/approve/${encodeURIComponent(taskId)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

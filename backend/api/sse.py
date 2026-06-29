@@ -116,11 +116,12 @@ async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = Non
         print(f"Pipeline crashed: {e}")
         await emit("error", {"error": str(e)})
         metrics.increment("failed_jobs")
+    else:
+        # Only reached if no exception — count as completed regardless of whether a PR was opened
+        metrics.increment("completed_jobs")
     finally:
         metrics.decrement("queue_depth")
         metrics.set_val("scan_duration_ms", int((time.time() - start_time) * 1000))
-        if final_pr_url or final_confidence > 0:
-            metrics.increment("completed_jobs")
 
         try:
             repo_local_path = state.get("repo_local_path")

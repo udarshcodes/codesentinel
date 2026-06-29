@@ -11,12 +11,12 @@ function DashboardInner({ taskId }) {
   const pipelineState = usePipeline(taskId)
   const approval = useApproval(taskId)
 
-  const isComplete = pipelineState.status === 'complete' || pipelineState.status === 'validating_failed'
+  const isComplete = pipelineState.status === 'complete'
 
   const syntheticEvents = [
     ...pipelineState.agents.map(a => ({ event: 'agent_complete', data: a })),
     ...(pipelineState.awaiting_approval ? [{ event: 'approval_required' }] : []),
-    ...(pipelineState.status === 'complete' || pipelineState.status === 'validating_failed' ? [{ event: 'pipeline_complete' }] : [])
+    ...(pipelineState.status === 'complete' ? [{ event: 'pipeline_complete' }] : [])
   ];
 
   const handleApprove = async () => {

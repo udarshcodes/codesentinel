@@ -7,9 +7,10 @@ async def agent_security_verifier(state: PipelineState):
     validation_results = state.get("validation_results", [])
     existing_retries = state.get("retry_count", 0)
     if not validation_results or not validation_results[-1].get("passed"):
-        # Validation failed — don't increment retry_count here (validator already did)
+        # Validation failed — pass through retry_count so orchestrator can track retries
         return {
             "security_verified": False,
+            "retry_count": existing_retries,
         }
 
     patches = state.get("patches", [])
@@ -26,8 +27,8 @@ async def agent_security_verifier(state: PipelineState):
     if not modified_files:
         return {"security_verified": True}
 
-    new_semgrep = run_semgrep_on_files(modified_files)
-    new_bandit = run_bandit_on_files(modified_files)
+    new_semgrep = run_semgrep_on_files(modified_files, cwd=repo_local_path or None)
+    new_bandit = run_bandit_on_files(modified_files, cwd=repo_local_path or None)
 
     all_new = []
     for f in new_semgrep:

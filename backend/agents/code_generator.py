@@ -5,6 +5,28 @@ from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import CODE_GENERATOR_SYSTEM
+from tools.context_pruner import extract_function_context
+
+
+def _smart_truncate(file_content: str, issue: dict, target_file: str) -> str:
+    """Use context pruner to extract relevant code around the bug, falling back to truncation."""
+    changed_lines = []
+    # Try to extract line numbers from the issue
+    if isinstance(issue, dict):
+        if issue.get("line"):
+            changed_lines = [int(issue["line"])]
+        elif issue.get("affected_lines"):
+            changed_lines = [int(x) for x in issue["affected_lines"]]
+
+    if changed_lines:
+        result = extract_function_context(file_content, changed_lines, target_file)
+        if result and len(result) > 50:
+            return result[:6000]
+
+    # Fallback: if file is small enough, return it whole; otherwise truncate
+    if len(file_content) <= 6000:
+        return file_content
+    return file_content[:6000] + "\n```\n[FILE TRUNCATED — showing first 6000 chars]\n"
 
 
 async def agent_code_generator(state: PipelineState):
@@ -42,7 +64,13 @@ async def agent_code_generator(state: PipelineState):
     if validation_results and not validation_results[-1].get("passed"):
         failed_issue_ids.update(
             validation_results[-1].get("failed_issue_ids", [])
-        )  # Assuming it might exist
+        )
+    if security_retry_context:
+        for sec in security_retry_context:
+            sec_file = sec.get("file", sec.get("path", ""))
+            for i in investigated_issues:
+                if sec_file and any(f == sec_file or f.endswith(sec_file) for f in i.get("affected_files", [])):
+                    failed_issue_ids.add(i.get("id"))
 
     # We always retry if it's the first time or if the issue explicitly failed or was never patched
     for plan in repair_plan:
@@ -54,7 +82,7 @@ async def agent_code_generator(state: PipelineState):
         )
         if retry_count > 0 and existing_patch and existing_patch.get("applied"):
             # It was applied. Did it fail validation or security?
-            if issue_id not in failed_issue_ids and not failure_context:
+            if issue_id not in failed_issue_ids and not touched_symbols.get(issue_id, {}).get("last_failure_reason"):
                 print(f"[CodeGenerator] Skipping already patched issue {issue_id}")
                 new_patches.append(existing_patch)
                 continue
@@ -113,7 +141,7 @@ Original Issue Context: {json.dumps(issue)}
 File path: {target_file}
 Current file content:
 ```
-{file_content[:4000]}
+{_smart_truncate(file_content, issue, target_file)}
 ```"""
 
         try:
@@ -152,6 +180,8 @@ Current file content:
                     with open(full_path, "r", errors="ignore") as f:
                         new_content = f.read()
                     diff = _generate_diff(file_content, new_content, target_file)
+                    if not diff.strip():
+                        diff = fixed_content
 
                     issue_id = plan.get("issue_id")
                     touched_symbols[issue_id] = {

@@ -1,16 +1,30 @@
 
 
 export default function FindingsPanel({ events }) {
-  // Extract findings from the bug_investigator or static_analysis events
-  let investigatedIssues = []
+  // Extract findings from static_analysis or bug_investigator events
+  let allIssues = []
   
   events.forEach(e => {
+    if (e.event === 'agent_complete' && e.data?.agent === 'static_analysis') {
+      const sf = e.data?.data?.static_findings || []
+      sf.forEach(f => {
+        allIssues.push({
+          title: `[${f.tool || 'Static'}] ${f.rule || 'Finding'}`,
+          severity: f.severity || 'low',
+          root_cause: f.issue || f.description || 'Static analysis finding.',
+          affected_files: f.file ? [f.file] : []
+        })
+      })
+    }
     if (e.event === 'agent_complete' && e.data?.agent === 'bug_investigator') {
-      investigatedIssues = e.data?.data?.investigated_issues || []
+      const bi = e.data?.data?.investigated_issues || []
+      if (bi.length > 0) {
+        allIssues = bi
+      }
     }
   })
 
-  if (investigatedIssues.length === 0) return null
+  if (allIssues.length === 0) return null
 
   const getSeverityBadge = (severity) => {
     const s = severity?.toLowerCase() || 'low'
@@ -36,7 +50,7 @@ export default function FindingsPanel({ events }) {
       </h2>
 
       <div className="grid gap-4">
-        {investigatedIssues.map((issue, idx) => (
+        {allIssues.map((issue, idx) => (
           <div key={idx} className="bg-white hover:bg-slate-50 transition-colors border border-slate-200 rounded-[1.5rem] p-5 shadow-lg shadow-slate-200/50 group">
             <div className="flex justify-between items-start mb-3">
               <h3 className="text-lg font-bold text-slate-900 transition-colors">{issue.title || `Issue #${idx + 1}`}</h3>

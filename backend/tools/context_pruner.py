@@ -32,6 +32,8 @@ def extract_function_context(
         result = _extract_go_functions(file_content, changed_lines)
     elif ext == ".java":
         result = _extract_java_functions(file_content, changed_lines)
+    elif ext == ".rs":
+        result = _extract_rust_functions(file_content, changed_lines)
     else:
         result = None
 
@@ -166,6 +168,24 @@ def _extract_java_functions(file_content: str, changed_lines: list[int]) -> str 
 
 
 # ---------------------------------------------------------------------------
+# Rust — Regex + brace matching
+# ---------------------------------------------------------------------------
+
+_RUST_FUNC_PATTERNS = [
+    # fn name(...) -> ... {
+    re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+\w+"),
+    # impl blocks: impl Type { or impl Trait for Type {
+    re.compile(r"^\s*(?:pub\s+)?impl\s+"),
+]
+
+
+def _extract_rust_functions(file_content: str, changed_lines: list[int]) -> str | None:
+    return _extract_brace_blocks(
+        file_content, changed_lines, _RUST_FUNC_PATTERNS, "Function"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Generic brace-matching extractor (shared by JS/TS, Go, Java)
 # ---------------------------------------------------------------------------
 
@@ -215,9 +235,12 @@ def _extract_brace_blocks(
             # Track braces to find closing
             brace_depth = 0
             end = start
+            seen_opening = False
             for j in range(start, len(lines)):
+                if "{" in lines[j]:
+                    seen_opening = True
                 brace_depth += lines[j].count("{") - lines[j].count("}")
-                if brace_depth <= 0 and found_opening and j > start:
+                if brace_depth <= 0 and seen_opening and j > start:
                     end = j
                     break
             else:

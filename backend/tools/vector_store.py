@@ -2,7 +2,10 @@ import os
 import hashlib
 import chromadb
 
-CHROMA_PERSIST_PATH = os.getenv("CHROMA_PERSIST_PATH", "./chroma_data")
+CHROMA_PERSIST_PATH = os.getenv(
+    "CHROMA_PERSIST_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chroma_data"),
+)
 client = None
 fixes_collection = None
 

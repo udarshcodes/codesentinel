@@ -6,8 +6,6 @@ export const PipelineContext = createContext();
 const initialState = {
   status: 'idle',
   agents: [],
-  findings: [],
-  patches: [],
   confidence_score: null,
   pr_url: null,
   pr_error: null,
@@ -21,10 +19,6 @@ function pipelineReducer(state, action) {
       return { ...initialState, status: 'running' };
     case 'AGENT_COMPLETE':
       return { ...state, agents: [...state.agents, action.payload] };
-    case 'FINDINGS_UPDATED':
-      return { ...state, findings: action.payload };
-    case 'PATCHES_UPDATED':
-      return { ...state, patches: action.payload };
     case 'APPROVAL_REQUIRED':
       return { ...state, awaiting_approval: true, current_fix: action.payload };
     case 'APPROVAL_RESOLVED':
@@ -41,8 +35,6 @@ function pipelineReducer(state, action) {
     case 'PIPELINE_ERROR':
       return { ...state, status: 'error', pipeline_error: action.payload?.error };
 
-    case 'RESET':
-      return initialState;
     default:
       return state;
   }

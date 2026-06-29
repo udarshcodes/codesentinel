@@ -56,13 +56,13 @@ def _fire_alert():
     import os
 
     def _send():
-        import requests
+        import httpx
 
         webhook = os.getenv("ALERT_WEBHOOK_URL", "")
         if not webhook:
             return
         try:
-            requests.post(
+            httpx.post(
                 webhook,
                 json={
                     "text": "CodeSentinel: all 5 primary Groq keys exhausted. Emergency key 6 is now active."

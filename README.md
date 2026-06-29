@@ -48,7 +48,8 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners:** `Semgrep`, `SonarQube`, `Bandit`, `Flake8`, `Pylint`, and `ESLint` serve as the deterministic baseline. Also includes real-time OSV, NPM, PyPI, Maven Central, and Go Proxy public registry checks.
+- **SAST Runners & Analyzers:** `Semgrep`, `SonarQube`, `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy` serve as the deterministic baseline. Also features custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
+- **Dependency & Registry Checks:** Real-time vulnerability batch queries via OSV.dev and live registry queries across NPM, PyPI, Maven Central, Go Proxy, and Crates.io.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
 
@@ -70,7 +71,7 @@ graph TD
     F -.->|Query| G[(ChromaDB Vector Store)]
     F --> H[Repair Planner]
     H -->|SSE Pause| I((Human Approval))
-    I -->|POST /api/v1/approve| J[Code Generator]
+    I -->|POST /api/approve| J[Code Generator]
     J --> K[Validator]
     K -->|If Build or Tests Fail| J
     K -->|If Tests Pass| SV[Security Verifier]
@@ -153,9 +154,11 @@ Navigate to `http://localhost:5173` to use the app.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/analyze` | Initiates the headless pipeline for a given `repo_url` (or a wildcard list of repos), returning a unique UUID `task_id` without blocking the HTTP response. |
+| `POST` | `/api/analyze` (or `/api/v1/analyze`) | Initiates the headless pipeline for a single `repo_url` or multi-repository organization wildcard (`github.com/org/*`), returning unique UUID `task_id`(s) without blocking HTTP response. |
 | `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads, filterable by `task_id`. |
-| `POST` | `/api/v1/approve/{task_id}` | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
+| `POST` | `/api/approve/{task_id}` (or `/api/v1/approve/{task_id}`) | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
+| `POST` | `/api/webhook/github` (or `/api/v1/webhook/github`) | Automated CI/CD webhook endpoint triggering analysis on GitHub push and PR events with HMAC SHA-256 signature verification (`X-Hub-Signature-256`). |
+| `GET`  | `/health`, `/live`, `/ready`, `/metrics` | Observability endpoints returning system health status, liveness, readiness, and queue/execution job metrics. |
 | `GET`  | `/admin/token-usage` | Protected endpoint returning LLM key rotation stats. Requires `X-Admin-Token` header. |
 | `GET`  | `/admin` | Serves the statically built React Admin Dashboard. |
 
@@ -210,6 +213,7 @@ codesentinel/
 │   │   └── pr_author.py         # Pull Request synthesizer
 │   ├── models/
 │   │   └── pipeline_state.py    # Strictly typed state schema
+│   ├── tests/                   # Automated unit and integration test suite (11 test files)
 │   ├── tools/
 │   │   ├── llm_router.py        # Multi-tier LLM routing with token budgets
 │   │   ├── key_dispatcher.py    # Round-robin API key rotation & emergency failover
@@ -218,12 +222,18 @@ codesentinel/
 │   │   ├── vector_store.py      # ChromaDB fix memory (RAG store)
 │   │   ├── osv_client.py        # OSV.dev vulnerability batch query client
 │   │   ├── analysis_runner.py   # Scoped Semgrep/Bandit/Pylint/Flake8 runner
+│   │   ├── confidence_calc.py   # Unified 4-part confidence score calculation engine
+│   │   ├── knowledge_graph.py   # AST import dependency graph & circular cycle detector
 │   │   ├── context_cache.py     # In-memory LRU session cache for repo context
 │   │   ├── context_pruner.py    # AST-aware function extraction & diff pruning
 │   │   ├── response_cache.py    # LLM response LRU cache with disk persistence
 │   │   └── prompt_cache.py      # Version-controlled system prompts
 │   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
 ├── ci-cd-template/              # Drop-in automation scripts for target repos
+├── scripts/
+│   └── setup.sh                 # Environment setup and setup helper script
+├── docker-compose.yml           # Multi-container orchestration configuration
+├── nginx.conf                   # Reverse proxy routing configuration
 │   └── .github/workflows/       
 │       ├── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
 │       └── azure-container-apps.yml # Azure Container Apps deployment

@@ -7,6 +7,10 @@ RUN apt-get update && \
     apt-get install -y git build-essential nodejs npm maven curl golang-go && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Rust toolchain (for cargo clippy support)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component clippy
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Install Sonar Scanner
 RUN npm install -g sonarqube-scanner
 

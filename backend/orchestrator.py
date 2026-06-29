@@ -27,6 +27,10 @@ class OrchestratorAgent:
     @staticmethod
     def route_after_validator(state: PipelineState) -> str:
         """Decide whether to retry code generation or proceed to security verification."""
+        if state.get("approval_decision") == "rejected":
+            print("[Orchestrator] Repair plan was REJECTED — proceeding to PR author.")
+            return "pr_author"
+
         validation_results = state.get("validation_results", [])
         retry_count = state.get("retry_count", 0)
         patches = state.get("patches", [])
@@ -48,9 +52,9 @@ class OrchestratorAgent:
         if latest.get("unresolvable") or retry_count >= 3:
             print(
                 f"[Orchestrator] Validation FAILED after {retry_count} retries — "
-                f"marking as unresolvable and proceeding to security verification."
+                f"marking as unresolvable and proceeding to PR author."
             )
-            return "security_verifier"
+            return "pr_author"
 
         # Check if there are any applied patches worth retrying
         applied_patches = [p for p in patches if p.get("applied")]
@@ -121,7 +125,7 @@ workflow.add_node("validator", agent_validator)
 workflow.add_node("security_verifier", agent_security_verifier)
 workflow.add_node("pr_author", agent_pr_author)
 
-# Edges (DAG with conditional cycles for validation and security retries)
+# Edges (sequential pipeline with conditional cycles for validation and security retries)
 workflow.set_entry_point("repo_mapper")
 workflow.add_edge("repo_mapper", "dependency_analyzer")
 workflow.add_edge("dependency_analyzer", "static_analysis")
@@ -134,7 +138,7 @@ workflow.add_edge("code_generator", "validator")
 workflow.add_conditional_edges(
     "validator",
     orchestrator.route_after_validator,
-    {"security_verifier": "security_verifier", "code_generator": "code_generator"},
+    {"security_verifier": "security_verifier", "code_generator": "code_generator", "pr_author": "pr_author"},
 )
 
 workflow.add_conditional_edges(

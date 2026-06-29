@@ -207,6 +207,39 @@ def _parse_java_imports(content: str) -> list[str]:
     return imports
 
 
+def _parse_rust_imports(content: str) -> list[str]:
+    """Extract use/mod/extern crate targets from Rust files."""
+    imports = []
+    # use statements: use crate::module::item;
+    for m in re.finditer(r"use\s+(?:crate::)?([a-zA-Z0-9_:]+)", content):
+        imports.append(m.group(1))
+    # mod declarations: mod module_name;
+    for m in re.finditer(r"mod\s+([a-zA-Z0-9_]+)\s*;", content):
+        imports.append(m.group(1))
+    # extern crate: extern crate name;
+    for m in re.finditer(r"extern\s+crate\s+([a-zA-Z0-9_]+)", content):
+        imports.append(m.group(1))
+    return imports
+
+
+def _parse_html_imports(content: str) -> list[str]:
+    """Extract script src and stylesheet link href from HTML files."""
+    imports = []
+    for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE):
+        imports.append(m.group(1))
+    for m in re.finditer(r'<link[^>]+href=["\']([^"\']+)["\']', content, re.IGNORECASE):
+        imports.append(m.group(1))
+    return imports
+
+
+def _parse_css_imports(content: str) -> list[str]:
+    """Extract @import url(...) or @import "..." from CSS files."""
+    imports = []
+    for m in re.finditer(r'@import\s+(?:url\()?["\']?([^"\')\s]+)["\']?\)?', content, re.IGNORECASE):
+        imports.append(m.group(1))
+    return imports
+
+
 # ---------------------------------------------------------------------------
 # Resolve import string → relative file path
 # ---------------------------------------------------------------------------
@@ -219,6 +252,9 @@ _EXTENSION_MAP = {
     ".tsx": [".js", ".jsx", ".ts", ".tsx"],
     ".go": [".go"],
     ".java": [".java"],
+    ".rs": [".rs"],
+    ".html": [".html", ".htm"],
+    ".css": [".css"],
 }
 
 
@@ -258,19 +294,34 @@ def _resolve_import(
             return None  # npm package
     elif source_ext == ".go":
         # Go: internal imports contain the module path
-        # We can only resolve same-package imports easily
         parts = import_str.split("/")
-        if len(parts) >= 2:
-            candidates.append("/".join(parts) + ".go")
-        return None  # Most Go imports are external
+        candidates.append("/".join(parts) + ".go")
+        if len(parts) >= 1:
+            candidates.append(parts[-1] + ".go")
     elif source_ext == ".java":
         # Java: com.example.Class → com/example/Class.java
         candidates.append(import_str.replace(".", "/") + ".java")
+    elif source_ext == ".rs":
+        # Rust: crate::module → module.rs or module/mod.rs
+        mod_path = import_str.replace("::", "/")
+        candidates.append(mod_path + ".rs")
+        candidates.append(mod_path + "/mod.rs")
+    elif source_ext in (".html", ".css"):
+        source_dir = os.path.dirname(source_file)
+        clean_imp = import_str.lstrip("/")
+        resolved_rel = os.path.normpath(os.path.join(source_dir, import_str)).replace("\\", "/")
+        candidates.append(resolved_rel)
+        candidates.append(clean_imp)
 
     for candidate in candidates:
-        normalized = candidate.replace("\\", "/")
+        normalized = candidate.replace("\\", "/").lstrip("/")
         if normalized in all_files:
             return normalized
+        for f in all_files:
+            if f == normalized or f.endswith("/" + normalized):
+                return f
+            if f.startswith(normalized + "/") or ("/" + normalized + "/") in ("/" + f):
+                return f
 
     return None
 
@@ -311,7 +362,7 @@ def build_knowledge_graph(repo_root: str) -> KnowledgeGraph:
         ]
         for fname in files:
             ext = os.path.splitext(fname)[1]
-            if ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java"):
+            if ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rs", ".html", ".css"):
                 abs_path = os.path.join(root, fname)
                 rel_path = os.path.relpath(abs_path, repo_root).replace("\\", "/")
                 all_files.add(rel_path)
@@ -337,6 +388,12 @@ def build_knowledge_graph(repo_root: str) -> KnowledgeGraph:
             raw_imports = _parse_go_imports(content)
         elif ext == ".java":
             raw_imports = _parse_java_imports(content)
+        elif ext == ".rs":
+            raw_imports = _parse_rust_imports(content)
+        elif ext == ".html":
+            raw_imports = _parse_html_imports(content)
+        elif ext == ".css":
+            raw_imports = _parse_css_imports(content)
         else:
             continue
 

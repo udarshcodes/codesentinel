@@ -1,11 +1,13 @@
 import os
 import sys
 import subprocess
+import shutil
 import asyncio
 import json
 import shlex
 from models.pipeline_state import PipelineState
 from tools.vector_store import query_similar_fixes, store_validated_fix
+from tools.confidence_calc import calculate_pipeline_confidence
 
 # Whitelist of allowed test commands to prevent command injection from LLM output
 ALLOWED_TEST_COMMANDS = {
@@ -13,7 +15,7 @@ ALLOWED_TEST_COMMANDS = {
     "npm test",
     "npm run test",
     "npx jest",
-    "go test ./...",
+    "go test",
     "mvn test",
     "gradle test",
     "cargo test",
@@ -24,10 +26,21 @@ ALLOWED_TEST_COMMANDS = {
 }
 
 
+def _is_allowed_cmd(cmd_str: str) -> bool:
+    cleaned = cmd_str.strip()
+    for allowed in ALLOWED_TEST_COMMANDS:
+        if cleaned == allowed or cleaned.startswith(allowed + " "):
+            return True
+    return False
+
+
 async def agent_validator(state: PipelineState):
+    validation_results = state.get("validation_results", [])
+    if state.get("approval_decision") == "rejected":
+        return {"validation_results": validation_results}
+
     repo_local_path = state.get("repo_local_path", "")
     patches = state.get("patches", [])
-    validation_results = state.get("validation_results", [])
 
     if not patches or not repo_local_path:
         retry_count = state.get("retry_count", 0)
@@ -40,8 +53,10 @@ async def agent_validator(state: PipelineState):
 
     all_passed = True
     logs_list = []
+    failed_issue_ids = []
 
     for patch in patches:
+        logs_len_before = len(logs_list)
         target_file = patch.get("file", "")
         full_path = os.path.join(repo_local_path, target_file)
 
@@ -73,8 +88,8 @@ async def agent_validator(state: PipelineState):
             except Exception as e:
                 logs_list.append(f"[WARN] {target_file} - could not validate: {e}")
 
-        # JS/TS/JSX files: basic syntax check with node --check (will fail gracefully on JSX, caught by build step)
-        elif target_file.endswith((".js", ".mjs", ".jsx", ".tsx")):
+        # JS files: syntax check with node --check (only plain JS, not JSX/TSX which node can't parse)
+        elif target_file.endswith((".js", ".mjs")):
             try:
                 result = subprocess.run(
                     ["node", "--check", full_path],
@@ -91,6 +106,81 @@ async def agent_validator(state: PipelineState):
                 logs_list.append(
                     f"[SKIP] {target_file} - node not available for syntax check: {e}"
                 )
+
+        # JSX/TSX files: skip node --check (Node.js can't parse JSX), validated by build step instead
+        elif target_file.endswith((".jsx", ".tsx")):
+            logs_list.append(f"[SKIP] {target_file} - JSX/TSX validated by build step")
+
+        # TypeScript files: syntax check with tsc --noEmit
+        elif target_file.endswith(".ts"):
+            try:
+                result = subprocess.run(
+                    ["npx", "--yes", "tsc", "--noEmit", "--allowJs", "--checkJs", full_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    shell=(os.name == "nt"),
+                )
+                if result.returncode == 0:
+                    logs_list.append(f"[PASS] {target_file} - TypeScript syntax OK")
+                else:
+                    logs_list.append(f"[FAIL] {target_file} - {result.stderr[:300]}")
+                    all_passed = False
+            except Exception as e:
+                logs_list.append(
+                    f"[SKIP] {target_file} - TypeScript compiler not available: {e}"
+                )
+
+        # Go files: syntax check with go vet
+        elif target_file.endswith(".go"):
+            try:
+                go_dir = os.path.dirname(target_file)
+                go_vet_path = "./" + go_dir + "/..." if go_dir else "./..."
+                result = subprocess.run(
+                    ["go", "vet", go_vet_path],
+                    cwd=repo_local_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if result.returncode == 0:
+                    logs_list.append(f"[PASS] {target_file} - Go vet OK")
+                else:
+                    logs_list.append(f"[FAIL] {target_file} - {result.stderr[:300]}")
+                    all_passed = False
+            except Exception as e:
+                logs_list.append(
+                    f"[SKIP] {target_file} - go vet not available: {e}"
+                )
+
+        # Java files: syntax check with javac (dry run)
+        elif target_file.endswith(".java"):
+            try:
+                import tempfile as _tmpmod
+                _javac_tmp = _tmpmod.mkdtemp(prefix="cs_javac_")
+                try:
+                    result = subprocess.run(
+                        ["javac", "-d", _javac_tmp, full_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if result.returncode == 0:
+                        logs_list.append(f"[PASS] {target_file} - Java syntax OK")
+                    else:
+                        logs_list.append(f"[FAIL] {target_file} - {result.stderr[:300]}")
+                        all_passed = False
+                finally:
+                    import shutil as _shutil
+                    _shutil.rmtree(_javac_tmp, ignore_errors=True)
+            except Exception as e:
+                logs_list.append(
+                    f"[SKIP] {target_file} - javac not available: {e}"
+                )
+
+        # Rust files: validated by cargo build step
+        elif target_file.endswith(".rs"):
+            logs_list.append(f"[SKIP] {target_file} - Rust validated by cargo build step")
 
         # HTML files: basic structure check
         elif target_file.endswith((".html", ".htm")):
@@ -128,6 +218,9 @@ async def agent_validator(state: PipelineState):
 
         else:
             logs_list.append(f"[SKIP] {target_file} - no validator for this file type")
+
+        if any("[FAIL]" in log for log in logs_list[logs_len_before:]):
+            failed_issue_ids.append(patch.get("patch_id"))
 
     # Build verification stage
     build_passed = True
@@ -206,6 +299,64 @@ async def agent_validator(state: PipelineState):
         except Exception as e:
             logs_list.append(f"[WARN] pom.xml build error: {e}")
 
+    elif os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
+        try:
+            gradle_cmd = ["./gradlew", "assemble"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "assemble"]
+            res = subprocess.run(
+                gradle_cmd,
+                cwd=repo_local_path,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if res.returncode != 0:
+                build_passed = False
+                logs_list.append(
+                    f"[FAIL] Build verification failed ({' '.join(gradle_cmd)}):\n{res.stdout[-500:]}"
+                )
+            else:
+                logs_list.append(f"[PASS] Build verification passed ({' '.join(gradle_cmd)})")
+        except Exception as e:
+            logs_list.append(f"[WARN] Gradle build error: {e}")
+
+    elif os.path.exists(os.path.join(repo_local_path, "go.mod")):
+        try:
+            res = subprocess.run(
+                ["go", "build", "./..."],
+                cwd=repo_local_path,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if res.returncode != 0:
+                build_passed = False
+                logs_list.append(
+                    f"[FAIL] Build verification failed (go build):\n{res.stderr[:500]}"
+                )
+            else:
+                logs_list.append("[PASS] Build verification passed (go build)")
+        except Exception as e:
+            logs_list.append(f"[WARN] go.mod build error: {e}")
+
+    elif os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
+        try:
+            res = subprocess.run(
+                ["cargo", "build"],
+                cwd=repo_local_path,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if res.returncode != 0:
+                build_passed = False
+                logs_list.append(
+                    f"[FAIL] Build verification failed (cargo build):\n{res.stderr[:500]}"
+                )
+            else:
+                logs_list.append("[PASS] Build verification passed (cargo build)")
+        except Exception as e:
+            logs_list.append(f"[WARN] Cargo.toml build error: {e}")
+
     test_logs = ""
     if not build_passed:
         all_passed = False
@@ -215,7 +366,7 @@ async def agent_validator(state: PipelineState):
         knowledge_graph = state.get("knowledge_graph", {})
         test_framework = knowledge_graph.get("test_framework", "")
 
-        if test_framework and test_framework.strip() in ALLOWED_TEST_COMMANDS:
+        if test_framework and _is_allowed_cmd(test_framework):
             cmd = shlex.split(test_framework)
             try:
                 res = subprocess.run(
@@ -230,23 +381,55 @@ async def agent_validator(state: PipelineState):
                     f"Failed to execute dynamic test suite '{test_framework}': {e}"
                 )
         else:
-            # Fallback to pytest if not specified
+            # Intelligent fallback based on repository language detection
+            ext_counts = {}
+            for r_dir, r_dirs, r_files in os.walk(repo_local_path):
+                r_dirs[:] = [d for d in r_dirs if d not in (".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build", "target")]
+                for fname in r_files:
+                    ext = os.path.splitext(fname)[1]
+                    if ext in (".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".rs"):
+                        ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+            py_count = ext_counts.get(".py", 0)
+            js_ts_count = sum(ext_counts.get(e, 0) for e in (".js", ".ts", ".jsx", ".tsx"))
+            go_count = ext_counts.get(".go", 0)
+            java_count = ext_counts.get(".java", 0)
+            rs_count = ext_counts.get(".rs", 0)
+
+            fallback_cmd = [sys.executable, "-m", "unittest", "discover", "-s", "tests"]
+            if py_count >= max(js_ts_count, go_count, java_count, rs_count, 1):
+                if shutil.which("pytest"):
+                    fallback_cmd = [sys.executable, "-m", "pytest", "--tb=short", "-q"]
+                else:
+                    fallback_cmd = [sys.executable, "-m", "unittest", "discover"]
+            elif js_ts_count >= max(py_count, go_count, java_count, rs_count, 1):
+                fallback_cmd = ["npm", "test"]
+            elif go_count >= max(py_count, js_ts_count, java_count, rs_count, 1):
+                fallback_cmd = ["go", "test", "./..."]
+            elif java_count >= max(py_count, js_ts_count, go_count, rs_count, 1):
+                if os.path.exists(os.path.join(repo_local_path, "gradlew")):
+                    fallback_cmd = ["./gradlew", "test"]
+                elif os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
+                    fallback_cmd = ["gradle", "test"]
+                else:
+                    fallback_cmd = ["mvn", "test"]
+            elif rs_count >= max(py_count, js_ts_count, go_count, java_count, 1):
+                fallback_cmd = ["cargo", "test"]
+
             try:
                 res = subprocess.run(
-                    [sys.executable, "-m", "pytest", "--tb=short", "-q"],
+                    fallback_cmd,
                     cwd=repo_local_path,
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=60,
                 )
                 test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
                 if res.returncode != 0:
-                    if "not found" not in test_logs.lower():
+                    if "not found" not in test_logs.lower() and "no tests ran" not in test_logs.lower() and "zero tests" not in test_logs.lower():
                         all_passed = False
             except Exception as e:
-                test_logs = (
-                    f"No test suite found (pytest not available or timed out): {e}"
-                )
+                test_logs = f"No test suite executed successfully ({' '.join(fallback_cmd)}): {e}"
 
     retry_count = state.get("retry_count", 0)
     unresolvable = False
@@ -273,6 +456,9 @@ async def agent_validator(state: PipelineState):
 
     last_patch_id = patches[-1].get("patch_id", 0) if patches else 0
 
+    if not all_passed and not failed_issue_ids and patches:
+        failed_issue_ids.append(last_patch_id)
+
     new_validation_results.append(
         {
             "patch_id": last_patch_id,
@@ -281,6 +467,7 @@ async def agent_validator(state: PipelineState):
             "logs": "\n".join(logs_list) + "\n\nTest Results:\n" + test_logs,
             "files_validated": files_validated,
             "files_passed": files_passed,
+            "failed_issue_ids": failed_issue_ids,
         }
     )
 
@@ -288,29 +475,25 @@ async def agent_validator(state: PipelineState):
     issue = next((i for i in investigated_issues if i.get("id") == last_patch_id), {})
     issue_desc = issue.get("description", str(issue))
 
-    async def compute_confidence(
-        tests_passed, tests_total, security_clean, issue_desc
-    ) -> float:
-        tests_ratio = tests_passed / tests_total if tests_total > 0 else 0.0
-        static_clean = 1.0 if security_clean else 0.0
-
-        similar = await asyncio.to_thread(query_similar_fixes, issue_desc, 1)
-        chroma_score = similar[0].get("confidence", 0.0) if similar else 0.0
-
-        return round(
-            ((tests_ratio * 0.5) + (static_clean * 0.3) + (chroma_score * 0.2)) * 100, 1
-        )
-
     security_clean = state.get("security_verified", False)
-    confidence = await compute_confidence(
-        files_passed, files_validated, security_clean, issue_desc
+    similar = await asyncio.to_thread(query_similar_fixes, issue_desc, 1)
+    chroma_score = similar[0].get("confidence", 0.0) if similar else 0.0
+    confidence = calculate_pipeline_confidence(
+        state,
+        tests_passed=files_passed,
+        tests_total=files_validated,
+        security_clean=security_clean,
+        chroma_score=chroma_score,
     )
 
     if all_passed:
         for patch in patches:
+            p_id = patch.get("patch_id")
+            p_issue = next((i for i in investigated_issues if i.get("id") == p_id), {})
+            p_desc = p_issue.get("description", patch.get("file", issue_desc))
             await asyncio.to_thread(
                 store_validated_fix,
-                issue_description=issue_desc,
+                issue_description=p_desc,
                 patch=patch.get("diff", ""),
                 confidence=confidence,
             )

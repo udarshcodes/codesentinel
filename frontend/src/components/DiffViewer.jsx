@@ -21,6 +21,15 @@ export default function DiffViewer({ events }) {
 
   // Parse unified diff into old/new strings
   const parseDiff = (patchStr) => {
+    if (!patchStr) return { oldString: '', newString: '' }
+
+    if (patchStr.includes('<<<SEARCH>>>') && patchStr.includes('<<<REPLACE>>>')) {
+      const parts = patchStr.split('<<<REPLACE>>>')
+      const searchPart = parts[0].split('<<<SEARCH>>>')[1] || ''
+      const replacePart = parts[1] ? parts[1].split('<<<')[0] : ''
+      return { oldString: searchPart.trim(), newString: replacePart.trim() }
+    }
+
     const lines = patchStr.split('\n')
     let oldVal = []
     let newVal = []

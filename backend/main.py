@@ -87,8 +87,7 @@ def ready_check():
     return {"status": "ready"}
 
 
-ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
-if not ADMIN_SECRET:
+if not os.getenv("ADMIN_SECRET", ""):
     print(
         "[WARNING] ADMIN_SECRET not set! The /admin/token-usage endpoint will reject all requests."
     )
@@ -96,17 +95,22 @@ if not ADMIN_SECRET:
 
 @app.get("/admin/token-usage")
 def token_usage(x_admin_token: str = Header(None)):
-    if not ADMIN_SECRET or x_admin_token != ADMIN_SECRET:
+    admin_secret = os.getenv("ADMIN_SECRET", "")
+    if not admin_secret or x_admin_token != admin_secret:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return get_usage_report()
 
 
 # Mount the admin dashboard (StaticFiles with html=True handles index.html automatically)
 try:
-    if os.path.exists("admin_dashboard/dist"):
+    admin_dist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "admin_dashboard", "dist")
+    if not os.path.exists(admin_dist_path) and os.path.exists("admin_dashboard/dist"):
+        admin_dist_path = "admin_dashboard/dist"
+
+    if os.path.exists(admin_dist_path):
         app.mount(
             "/admin",
-            StaticFiles(directory="admin_dashboard/dist", html=True),
+            StaticFiles(directory=admin_dist_path, html=True),
             name="admin",
         )
     else:
@@ -114,7 +118,7 @@ try:
         @app.get("/admin")
         def admin_dashboard():
             return {
-                "error": "Dashboard not built yet. Run npm run build in admin_dashboard."
+                "error": f"Dashboard not built yet at {admin_dist_path}. Run npm run build in admin_dashboard."
             }
 
 except Exception as e:

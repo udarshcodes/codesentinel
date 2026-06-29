@@ -41,14 +41,17 @@ async def fetch_vuln_details(vuln_ids: list[str]) -> dict:
     """Fetch full details for a list of vulnerability IDs."""
     import asyncio
 
+    sem = asyncio.Semaphore(10)
+
     async def fetch_one(client, vid):
-        try:
-            r = await client.get(f"https://api.osv.dev/v1/vulns/{vid}", timeout=10.0)
-            if r.status_code == 200:
-                return vid, r.json()
-        except Exception as e:
-            print(f"[OSVClient] Error fetching vuln {vid}: {e}")
-        return vid, None
+        async with sem:
+            try:
+                r = await client.get(f"https://api.osv.dev/v1/vulns/{vid}", timeout=10.0)
+                if r.status_code == 200:
+                    return vid, r.json()
+            except Exception as e:
+                print(f"[OSVClient] Error fetching vuln {vid}: {e}")
+            return vid, None
 
     async with httpx.AsyncClient() as client:
         pairs = await asyncio.gather(*(fetch_one(client, vid) for vid in vuln_ids))

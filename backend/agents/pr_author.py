@@ -4,6 +4,7 @@ from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import PR_AUTHOR_SYSTEM
+from tools.confidence_calc import calculate_pipeline_confidence
 
 
 async def agent_pr_author(state: PipelineState):
@@ -12,10 +13,17 @@ async def agent_pr_author(state: PipelineState):
     repair_plan = state.get("repair_plan", [])
     security_verified = state.get("security_verified", False)
 
+    if state.get("approval_decision") == "rejected":
+        return {
+            "pr_url": "",
+            "confidence_score": _calculate_confidence(state, security_verified),
+            "pr_error": "Repair plan was rejected by a human reviewer.",
+        }
+
     if not GROQ_API_KEYS:
         return {
             "pr_url": "",
-            "confidence_score": 95.0,
+            "confidence_score": 0.0,
             "pr_error": "No GROQ_API_KEY set.",
         }
 
@@ -90,6 +98,17 @@ Return JSON: {{"title": "...", "description": "..."}}"""
 
             # 3. Commit and push
             title = pr_data.get("title", "Automated Security Fixes")
+            
+            validation_results = state.get("validation_results", [])
+            validation_failed = False
+            if validation_results and not validation_results[-1].get("passed", True):
+                validation_failed = True
+            if state.get("unresolvable_fixes"):
+                validation_failed = True
+
+            if validation_failed:
+                title = f"[NEEDS WORK] {title}"
+
             has_changes = commit_and_push(
                 local_path=repo_local_path,
                 branch_name=github_data["branch_name"],
@@ -113,6 +132,20 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 desc = "- " + "\n- ".join(desc) if desc else "Fixed vulnerabilities."
             elif not isinstance(desc, str):
                 desc = str(desc)
+
+            if validation_failed:
+                desc = "### ⚠️ Automated Validation Failed\nThe unit tests or syntax verification did not pass after maximum retries. This PR is submitted for manual developer review and remediation.\n\n" + desc
+
+            if state.get("security_retry_context"):
+                unresolved = state.get("security_retry_context", [])
+                desc += "\n\n### ⚠️ Unresolved Security Risks\nThe following security issues could not be automatically verified/repaired after 3 retries:\n"
+                for u in unresolved:
+                    desc += f"- **{u.get('severity', 'Risk')}**: {u.get('description', str(u))}\n"
+
+            desc += "\n\n### 📦 Modified Files\n"
+            for patch in patches:
+                if patch.get("applied") and patch.get("file"):
+                    desc += f"- `{patch['file']}`\n"
 
             pr_url = open_pull_request(
                 repo_name=github_data["repo_name"],
@@ -146,43 +179,9 @@ Return JSON: {{"title": "...", "description": "..."}}"""
 
 def _calculate_confidence(state, security_verified):
     """
-    Calculate a dynamic confidence score (0-100) based on:
-    - How many issues were found and fixed
-    - Whether patches applied successfully
-    - Whether validation passed
-    - Whether security re-verification passed
+    Calculate unified dynamic confidence score (0-100).
     """
-    score = 0.0
-
-    investigated_issues = state.get("investigated_issues", [])
-    repair_plan = state.get("repair_plan", [])
-    patches = state.get("patches", [])
-    validation_results = state.get("validation_results", [])
-
-    # Base: 30 points for having a complete pipeline run
-    if repair_plan:
-        score += 30.0
-
-    # Coverage: up to 25 points based on how many issues got patches
-    if investigated_issues:
-        coverage = len(patches) / max(len(investigated_issues), 1)
-        score += min(coverage, 1.0) * 25.0
-
-    # Validation: up to 25 points based on validation results
-    if validation_results:
-        latest = validation_results[-1]
-        if latest.get("passed"):
-            score += 25.0
-        else:
-            # Partial credit if some files passed
-            files_passed = latest.get("files_passed", 0)
-            files_total = latest.get("files_validated", 1)
-            score += (files_passed / max(files_total, 1)) * 15.0
-
-    # Security: 20 points if security re-verification passed
-    if security_verified:
-        score += 20.0
-    else:
-        score += 5.0  # Small credit for completing the step
-
-    return round(min(score, 100.0), 1)
+    existing_chroma = state.get("confidence_score", 0.0)
+    return calculate_pipeline_confidence(
+        state, security_clean=security_verified, chroma_score=existing_chroma
+    )

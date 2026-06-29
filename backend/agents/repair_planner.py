@@ -65,10 +65,10 @@ Return ONLY valid JSON array:
 
     def classify_risk(fix: dict) -> str:
         description = (
-            fix.get("description", "")
-            + fix.get("files_to_change", "")
-            + fix.get("reasoning", "")
-            + fix.get("action", "")
+            str(fix.get("description", ""))
+            + str(fix.get("files_to_change", ""))
+            + str(fix.get("reasoning", ""))
+            + str(fix.get("action", ""))
         ).lower()
         for kw in HIGH_RISK_KEYWORDS:
             if kw in description:

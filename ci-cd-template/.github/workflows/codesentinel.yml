@@ -26,8 +26,8 @@ jobs:
 
           echo "Triggering CodeSentinel analysis for $REPO_URL at $SHA..."
           
-          # We call the /api/v1/analyze endpoint to queue the repository.
-          RESPONSE=$(curl -s -X POST "$API_URL/api/v1/analyze" \
+          # We call the /api/analyze endpoint to queue the repository.
+          RESPONSE=$(curl -s -X POST "$API_URL/api/analyze" \
                -H "Content-Type: application/json" \
                -d "{\"repo_url\": \"$REPO_URL\", \"commit_sha\": \"$SHA\"}")
           

@@ -17,7 +17,7 @@ class PipelineState(TypedDict, total=False):
     retry_count: int
     awaiting_approval: bool
     confidence_score: float
-    security_retry_context: NotRequired[dict]
+    security_retry_context: NotRequired[list]
     unresolvable_fixes: NotRequired[list]
     approval_payload: NotRequired[dict]
     approval_decision: NotRequired[str]

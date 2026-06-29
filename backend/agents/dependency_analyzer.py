@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import httpx
 from models.pipeline_state import PipelineState
 
@@ -14,6 +15,8 @@ async def agent_dependency_analyzer(state: PipelineState):
     req_path = os.path.join(repo_local_path, "requirements.txt")
     pkg_path = os.path.join(repo_local_path, "package.json")
     pom_path = os.path.join(repo_local_path, "pom.xml")
+    gradle_path = os.path.join(repo_local_path, "build.gradle")
+    gradle_kts_path = os.path.join(repo_local_path, "build.gradle.kts")
 
     dependencies = []
 
@@ -23,33 +26,34 @@ async def agent_dependency_analyzer(state: PipelineState):
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
-                if any(op in line for op in ["==", ">=", "<=", "~=", ">", "<"]):
-                    try:
-                        import re
-
-                        # Split on the first occurrence of any version operator
+                try:
+                    if any(op in line for op in ["==", ">=", "<=", "~=", ">", "<"]):
                         parts = re.split(r"==|>=|<=|~=|>|<", line, 1)
                         pkg = parts[0].strip()
                         ver = parts[1].strip()
-                        if pkg and ver:
-                            dependencies.append(
-                                {"name": pkg, "version": ver, "ecosystem": "PyPI"}
-                            )
-                    except (ValueError, IndexError) as e:
-                        print(
-                            f"[DependencyAnalyzer] Skipping malformed line: {line!r} ({e})"
+                    else:
+                        pkg = line.split()[0].strip()
+                        ver = "latest"
+                    if pkg:
+                        dependencies.append(
+                            {"name": pkg, "version": ver, "ecosystem": "PyPI"}
                         )
+                except (ValueError, IndexError) as e:
+                    print(
+                        f"[DependencyAnalyzer] Skipping malformed line: {line!r} ({e})"
+                    )
 
     if os.path.exists(pkg_path):
         with open(pkg_path, "r") as f:
             try:
                 data = json.load(f)
-                deps = data.get("dependencies", {})
-                for pkg, ver in deps.items():
-                    ver = ver.replace("^", "").replace("~", "")
-                    dependencies.append(
-                        {"name": pkg, "version": ver, "ecosystem": "npm"}
-                    )
+                for dep_section in ("dependencies", "devDependencies"):
+                    deps = data.get(dep_section, {})
+                    for pkg, ver in deps.items():
+                        ver = ver.replace("^", "").replace("~", "")
+                        dependencies.append(
+                            {"name": pkg, "version": ver, "ecosystem": "npm"}
+                        )
             except Exception as e:
                 print(f"[DependencyAnalyzer] Failed to parse package.json: {e}")
 
@@ -82,6 +86,22 @@ async def agent_dependency_analyzer(state: PipelineState):
                             )
         except Exception as e:
             print(f"[DependencyAnalyzer] Failed to parse pom.xml: {e}")
+
+    for gpath in (gradle_path, gradle_kts_path):
+        if os.path.exists(gpath):
+            try:
+                with open(gpath, "r", encoding="utf-8") as f:
+                    gcontent = f.read()
+                for match in re.finditer(r"""(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*(?:\(\s*)?["']([^:"']+):([^:"']+):([^:"']+)["']""", gcontent):
+                    grp, art, ver = match.groups()
+                    if not ver.startswith("$"):
+                        dependencies.append({
+                            "name": f"{grp}:{art}",
+                            "version": ver,
+                            "ecosystem": "Maven",
+                        })
+            except Exception as e:
+                print(f"[DependencyAnalyzer] Failed to parse Gradle file: {e}")
 
     # Parse go.mod for Go dependencies
     gomod_path = os.path.join(repo_local_path, "go.mod")
@@ -122,8 +142,59 @@ async def agent_dependency_analyzer(state: PipelineState):
         except Exception as e:
             print(f"[DependencyAnalyzer] Failed to parse go.mod: {e}")
 
+    # Parse Cargo.toml for Rust dependencies
+    cargo_path = os.path.join(repo_local_path, "Cargo.toml")
+    if os.path.exists(cargo_path):
+        try:
+            with open(cargo_path, "r") as f:
+                in_deps = False
+                for line in f:
+                    line = line.strip()
+                    if line in ("[dependencies]", "[dev-dependencies]", "[build-dependencies]"):
+                        in_deps = True
+                        continue
+                    if line.startswith("[") and in_deps:
+                        in_deps = False
+                        continue
+                    if in_deps and "=" in line and not line.startswith("#"):
+                        parts = line.split("=", 1)
+                        pkg = parts[0].strip()
+                        ver_raw = parts[1].strip().strip('"').strip("'")
+                        # Handle inline table: { version = "1.0", features = [...] }
+                        if ver_raw.startswith("{"):
+                            ver_match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', ver_raw)
+                            ver = ver_match.group(1) if ver_match else "latest"
+                        else:
+                            ver = ver_raw.lstrip("^~>=")
+                        if pkg:
+                            dependencies.append(
+                                {"name": pkg, "version": ver, "ecosystem": "crates.io"}
+                            )
+        except Exception as e:
+            print(f"[DependencyAnalyzer] Failed to parse Cargo.toml: {e}")
+
+    # Parse HTML files for CDN libraries (e.g. unpkg.com, cdn.jsdelivr.net)
+    for root_dir, dirs, fnames in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "dist", "build", "venv")]
+        for fname in fnames:
+            if fname.endswith(".html"):
+                fpath = os.path.join(root_dir, fname)
+                rel_path = os.path.relpath(fpath, repo_local_path)
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    for m in re.finditer(r'https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/([a-zA-Z0-9_-]+)@([0-9.]+)', content):
+                        dependencies.append({
+                            "name": m.group(1),
+                            "version": m.group(2),
+                            "ecosystem": "npm",
+                            "file": rel_path
+                        })
+                except Exception:
+                    pass
+
     def is_outdated(current: str, latest: str) -> bool:
-        if current == latest:
+        if current == latest or current in ("latest", "unknown", "*", ""):
             return False
         try:
             c_val = current.lstrip("vV")
@@ -157,15 +228,17 @@ async def agent_dependency_analyzer(state: PipelineState):
                         if latest and is_outdated(dep["version"], latest):
                             return latest
                 elif dep["ecosystem"] == "Maven":
-                    grp, art = dep["name"].split(":")
-                    url = f"https://search.maven.org/solrsearch/select?q=g:{grp}+AND+a:{art}&rows=1&wt=json"
-                    res = await client.get(url, timeout=5)
-                    if res.status_code == 200:
-                        docs = res.json().get("response", {}).get("docs", [])
-                        if docs:
-                            latest = docs[0].get("latestVersion")
-                            if latest and is_outdated(dep["version"], latest):
-                                return latest
+                    parts = dep["name"].split(":")
+                    if len(parts) >= 2:
+                        grp, art = parts[0], parts[1]
+                        url = f"https://search.maven.org/solrsearch/select?q=g:{grp}+AND+a:{art}&rows=1&wt=json"
+                        res = await client.get(url, timeout=5)
+                        if res.status_code == 200:
+                            docs = res.json().get("response", {}).get("docs", [])
+                            if docs:
+                                latest = docs[0].get("latestVersion")
+                                if latest and is_outdated(dep["version"], latest):
+                                    return latest
                 elif dep["ecosystem"] == "Go":
                     res = await client.get(
                         f"https://proxy.golang.org/{dep['name']}/@latest", timeout=5
@@ -173,6 +246,15 @@ async def agent_dependency_analyzer(state: PipelineState):
                     if res.status_code == 200:
                         data = res.json()
                         latest = data.get("Version", "").lstrip("v")
+                        if latest and is_outdated(dep["version"], latest):
+                            return latest
+                elif dep["ecosystem"] == "crates.io":
+                    res = await client.get(
+                        f"https://crates.io/api/v1/crates/{dep['name']}", timeout=5,
+                        headers={"User-Agent": "CodeSentinel/1.0"}
+                    )
+                    if res.status_code == 200:
+                        latest = res.json().get("crate", {}).get("max_version")
                         if latest and is_outdated(dep["version"], latest):
                             return latest
         except Exception as e:
@@ -185,13 +267,16 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     for dep, latest in zip(dependencies, outdated_results):
         if latest:
-            file_name = "requirements.txt"
-            if dep["ecosystem"] == "npm":
-                file_name = "package.json"
-            elif dep["ecosystem"] == "Maven":
-                file_name = "pom.xml"
-            elif dep["ecosystem"] == "Go":
-                file_name = "go.mod"
+            file_name = dep.get("file", "requirements.txt")
+            if not dep.get("file"):
+                if dep["ecosystem"] == "npm":
+                    file_name = "package.json"
+                elif dep["ecosystem"] == "Maven":
+                    file_name = "pom.xml"
+                elif dep["ecosystem"] == "Go":
+                    file_name = "go.mod"
+                elif dep["ecosystem"] == "crates.io":
+                    file_name = "Cargo.toml"
 
             findings.append(
                 {
@@ -255,13 +340,16 @@ async def agent_dependency_analyzer(state: PipelineState):
             if db_spec and db_spec.get("severity"):
                 severity = db_spec.get("severity").upper()
 
-            file_name = "requirements.txt"
-            if dep["ecosystem"] == "npm":
-                file_name = "package.json"
-            elif dep["ecosystem"] == "Maven":
-                file_name = "pom.xml"
-            elif dep["ecosystem"] == "Go":
-                file_name = "go.mod"
+            file_name = dep.get("file", "requirements.txt")
+            if not dep.get("file"):
+                if dep["ecosystem"] == "npm":
+                    file_name = "package.json"
+                elif dep["ecosystem"] == "Maven":
+                    file_name = "pom.xml"
+                elif dep["ecosystem"] == "Go":
+                    file_name = "go.mod"
+                elif dep["ecosystem"] == "crates.io":
+                    file_name = "Cargo.toml"
 
             findings.append(
                 {
@@ -272,5 +360,18 @@ async def agent_dependency_analyzer(state: PipelineState):
                     "severity": severity,
                 }
             )
+
+    cycles = state.get("dependency_graph", {}).get("cycles", []) or state.get("knowledge_graph", {}).get("dependency_graph_summary", {}).get("cycles", [])
+    for cycle in cycles:
+        cycle_str = " -> ".join(cycle)
+        findings.append(
+            {
+                "file": cycle[0] if cycle else "Architecture",
+                "issue": f"Circular import detected: {cycle_str}",
+                "cve": "N/A",
+                "package": "Internal Architecture",
+                "severity": "MEDIUM",
+            }
+        )
 
     return {"dependency_findings": findings}

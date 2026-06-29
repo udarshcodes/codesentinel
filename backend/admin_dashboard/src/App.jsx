@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, Key, ShieldAlert, Zap, Clock, Lock } from 'lucide-react';
 
 export default function App() {
@@ -8,7 +8,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  const fetchUsage = async () => {
+  const fetchUsage = useCallback(async () => {
     try {
       const res = await fetch('/admin/token-usage', {
         headers: { 'x-admin-token': secret }
@@ -27,7 +27,7 @@ export default function App() {
     } catch (err) {
       setError(err.message);
     }
-  };
+  }, [secret]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -35,7 +35,7 @@ export default function App() {
       const interval = setInterval(fetchUsage, 30000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, secret]);
+  }, [isAuthenticated, fetchUsage]);
 
   const handleLogin = (e) => {
     e.preventDefault();

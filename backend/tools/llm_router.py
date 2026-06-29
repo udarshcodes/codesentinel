@@ -153,10 +153,11 @@ async def invoke_llm(
     else:
         res_content = None
 
-    total_attempts = MAX_RETRIES_PER_TIER * (len(GROQ_API_KEYS) + 1)
+    total_attempts = MAX_RETRIES_PER_TIER * 2  # One set of retries per tier
 
     raw = ""
     completion_tokens = 0
+    parsed_json = None  # Store parsed result from validation inside the loop
 
     # --- Retry loop with deterministic escalation ---
     for attempt in range(1, total_attempts + 1):
@@ -202,7 +203,7 @@ async def invoke_llm(
                         raise ValueError("No JSON block found in response")
 
                     json_str = cleaned[start_idx : end_idx + 1]
-                    json.loads(json_str)
+                    parsed_json = json.loads(json_str)
                 except Exception as e:
                     raise ValueError(f"JSON parse error: {e}")
 
@@ -243,8 +244,14 @@ async def invoke_llm(
                 set_cached(prompt, current_model, raw)
             return raw
 
+        if parsed_json is not None:
+            # JSON was already validated and parsed in the retry loop
+            if res_content is None:
+                set_cached(prompt, current_model, raw)
+            return parsed_json
+
+        # Fallback: raw exists but parsed_json is None (cache hit path)
         try:
-            # --- JSON schema validation ---
             cleaned = raw.replace("```json", "").replace("```", "").strip()
             if json_array:
                 start_idx = cleaned.find("[")
@@ -259,17 +266,13 @@ async def invoke_llm(
             json_str = cleaned[start_idx : end_idx + 1]
             parsed = json.loads(json_str)
 
-            # Cache the raw string only if it successfully parses!
             if res_content is None:
                 set_cached(prompt, current_model, raw)
 
             return parsed
 
         except Exception as e:
-            # JSON parse failed
             print(f"[LLMRouter] {agent_name} JSON parse failed: {e}")
-            # If we wanted to loop on JSON failures, we'd do it here.
-            # But since we broke out of the attempt loop, we'll just fall through to the abort below.
 
     # All retries exhausted across both tiers — graceful degradation
     print(f"[LLMRouter] ABORT: {agent_name} exhausted all retries.")
@@ -281,3 +284,4 @@ async def invoke_llm(
             "status": "failed",
         }
     return ""
+

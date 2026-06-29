@@ -20,7 +20,10 @@ class AnalyzeRequest(BaseModel):
 @router.post("/v1/analyze")
 @router.post("/analyze")  # Backward compatibility
 async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTasks):
-    repo_url = request.repo_url
+    repo_url = request.repo_url.strip()
+    if repo_url.startswith("github.com/"):
+        repo_url = "https://" + repo_url
+        request.repo_url = repo_url
 
     # Validate repo_url format
     if not repo_url.endswith("/*"):
@@ -42,9 +45,9 @@ async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTa
         if github_token:
             headers["Authorization"] = f"token {github_token}"
 
+        fetched_repos = []
         try:
             async with httpx.AsyncClient() as client:
-                # Try orgs/ endpoint first (for GitHub Organizations), fallback to users/
                 res = await client.get(
                     f"https://api.github.com/orgs/{org_name}/repos?sort=updated&per_page=10",
                     headers=headers,
@@ -56,11 +59,18 @@ async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTa
                     )
                 if res.status_code == 200:
                     repos = res.json()
-                    repos_to_analyze = [
+                    fetched_repos = [
                         r["html_url"] for r in repos if not r.get("archived")
                     ]
         except Exception as e:
             print(f"Error fetching org repos: {e}")
+
+        if not fetched_repos:
+            raise HTTPException(
+                400,
+                f"Could not find any active public repositories for organization/user '{org_name}'.",
+            )
+        repos_to_analyze = fetched_repos
 
     task_ids = []
     for r_url in repos_to_analyze:
@@ -136,7 +146,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
         body_bytes = await request.body()
         expected_sig = (
             "sha256="
-            + hmac.new(webhook_secret.encode(), body_bytes, hashlib.sha256).hexdigest()
+            + hmac.HMAC(webhook_secret.encode(), body_bytes, hashlib.sha256).hexdigest()
         )
 
         if not hmac.compare_digest(expected_sig, signature_header):
@@ -172,8 +182,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
             commit_sha = payload.get("pull_request", {}).get("head", {}).get("sha")
 
     if should_analyze:
-        import uuid
-
         task_id = str(uuid.uuid4())
         background_tasks.add_task(run_pipeline_worker, task_id, repo_url, commit_sha)
         return {"status": "accepted", "task_id": task_id, "repo_url": repo_url}

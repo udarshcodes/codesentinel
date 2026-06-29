@@ -9,7 +9,10 @@ from tools import context_cache
 async def agent_repo_mapper(state: PipelineState):
     import re
 
-    repo_url = state["repo_url"]
+    repo_url = state["repo_url"].strip()
+    if repo_url.startswith("github.com/"):
+        repo_url = "https://" + repo_url
+        state["repo_url"] = repo_url
 
     # 0. Validate repo_url to prevent command injection and SSRF
     if not re.match(
@@ -106,13 +109,13 @@ async def agent_repo_mapper(state: PipelineState):
             ext = os.path.splitext(file)[1]
             if ext:
                 extensions[ext] = extensions.get(ext, 0) + 1
-            if file in ["requirements.txt", "package.json", "pom.xml", "go.mod"]:
+            if file in ["requirements.txt", "package.json", "pom.xml", "build.gradle", "build.gradle.kts", "go.mod", "Cargo.toml"]:
                 dep_files.append(rel_path)
 
             file_tree.append("  " + file)
 
             # Extract content for API and DB mapping if it's a source file
-            if ext in [".py", ".js", ".ts", ".go", ".java"]:
+            if ext in [".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".rs", ".html", ".css"]:
                 try:
                     with open(os.path.join(root, file), "r", encoding="utf-8") as f:
                         content = f.read(5000)  # Read up to 5000 chars to save context

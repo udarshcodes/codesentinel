@@ -22,4 +22,3 @@ temp.patch
 *.bak
 *.log
 .pytest_cache/
-scripts/
