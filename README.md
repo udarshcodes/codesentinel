@@ -76,7 +76,7 @@ graph TD
     F --> H[Repair Planner]
     H -->|If High Risk: SSE Pause| I((Human Approval))
     H -->|If Low Risk| J[Code Generator]
-    I -->|POST /api/approve/{task_id}| J
+    I -->|"POST /api/approve/{task_id}"| J
     J --> K[Validator]
     K -->|If Build or Tests Fail| J
     K -->|If Tests Pass| SV[Security Verifier]
