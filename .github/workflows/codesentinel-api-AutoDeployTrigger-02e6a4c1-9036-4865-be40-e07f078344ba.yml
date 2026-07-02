@@ -43,5 +43,9 @@ jobs:
           containerAppName: codesentinel-api
           resourceGroup: CodeSentinel-RG
           imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.sha }}
-
-
+          environmentVariables: |
+            GROQ_API_KEY=secretref:groq-api-key
+            GITHUB_TOKEN=secretref:github-token
+            ADMIN_SECRET=secretref:admin-secret
+            PORT=8000
+            CORS_ORIGINS=https://salmon-ground-0362fac00.7.azurestaticapps.net
