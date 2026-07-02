@@ -187,7 +187,7 @@ async def agent_static_analysis(state: PipelineState):
     if flake8_path:
         try:
             result = subprocess.run(
-                [flake8_path, "."],
+                [flake8_path, "--select=E9,F63,F7,F82", "."],
                 cwd=repo_local_path,
                 capture_output=True,
                 text=True,
@@ -1507,6 +1507,8 @@ async def agent_static_analysis(state: PipelineState):
     deduped_findings = []
     seen = set()
     for f in findings:
+        if f.get("file", "").endswith(".css"):
+            continue
         key = f"{f['file']}:{f['line']}:{f['tool']}"
         if key not in seen:
             seen.add(key)

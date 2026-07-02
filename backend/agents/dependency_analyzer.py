@@ -336,35 +336,31 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     for dep in dependencies:
         cves = cves_map.get(dep["name"], [])
+        if not cves:
+            continue
+        
+        highest_severity = "LOW"
+        cve_ids = []
         for vuln in cves:
             vid = vuln.get("id", "Unknown")
+            cve_ids.append(vid)
             # Extract severity from full details
             severity = "HIGH"
             full_vuln = vuln_details.get(vid, {})
-            # Look in severity array (e.g. CVSS_V3) or database_specific
             severity_arr = full_vuln.get("severity", [])
             if severity_arr:
                 for sev_entry in severity_arr:
-                    if (
-                        isinstance(sev_entry, dict)
-                        and sev_entry.get("type") == "CVSS_V3"
-                    ):
+                    if isinstance(sev_entry, dict) and sev_entry.get("type") == "CVSS_V3":
                         score_str = sev_entry.get("score", "")
-                        # Extract base score from CVSS vector if present
                         if ":" in score_str:
-                            # Parse CVSS vector — not a numeric score, keep default
                             pass
                         elif score_str:
                             try:
                                 cvss_score = float(score_str)
-                                if cvss_score >= 9.0:
-                                    severity = "CRITICAL"
-                                elif cvss_score >= 7.0:
-                                    severity = "HIGH"
-                                elif cvss_score >= 4.0:
-                                    severity = "MEDIUM"
-                                else:
-                                    severity = "LOW"
+                                if cvss_score >= 9.0: severity = "CRITICAL"
+                                elif cvss_score >= 7.0: severity = "HIGH"
+                                elif cvss_score >= 4.0: severity = "MEDIUM"
+                                else: severity = "LOW"
                             except ValueError:
                                 pass
                         break
@@ -372,27 +368,28 @@ async def agent_dependency_analyzer(state: PipelineState):
             db_spec = full_vuln.get("database_specific", {})
             if db_spec and db_spec.get("severity"):
                 severity = db_spec.get("severity").upper()
+            
+            # Keep track of highest severity
+            severity_levels = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+            if severity_levels.get(severity, 0) > severity_levels.get(highest_severity, 0):
+                highest_severity = severity
 
-            file_name = dep.get("file", "requirements.txt")
-            if not dep.get("file"):
-                if dep["ecosystem"] == "npm":
-                    file_name = "package.json"
-                elif dep["ecosystem"] == "Maven":
-                    file_name = "pom.xml"
-                elif dep["ecosystem"] == "Go":
-                    file_name = "go.mod"
-                elif dep["ecosystem"] == "crates.io":
-                    file_name = "Cargo.toml"
+        file_name = dep.get("file", "requirements.txt")
+        if not dep.get("file"):
+            if dep["ecosystem"] == "npm": file_name = "package.json"
+            elif dep["ecosystem"] == "Maven": file_name = "pom.xml"
+            elif dep["ecosystem"] == "Go": file_name = "go.mod"
+            elif dep["ecosystem"] == "crates.io": file_name = "Cargo.toml"
 
-            findings.append(
-                {
-                    "file": file_name,
-                    "issue": f"Vulnerable dependency: {dep['name']} {dep['version']}. CVE: {vuln.get('id', 'Unknown')}. Update to a secure version.",
-                    "cve": vuln.get("id", "Unknown"),
-                    "package": dep["name"],
-                    "severity": severity,
-                }
-            )
+        findings.append(
+            {
+                "file": file_name,
+                "issue": f"Vulnerable dependency: {dep['name']} {dep['version']}. CVEs: {', '.join(cve_ids)}. Update to a secure version.",
+                "cve": ", ".join(cve_ids),
+                "package": dep["name"],
+                "severity": highest_severity,
+            }
+        )
 
     cycles = state.get("dependency_graph", {}).get("cycles", []) or state.get(
         "knowledge_graph", {}
