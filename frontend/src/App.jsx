@@ -62,7 +62,7 @@ function App() {
       <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-50 animate-fade-in-down flex items-center gap-4">
         <ThemeToggle />
         <a 
-          href="/admin/" 
+          href="https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io/admin/" 
           target="_blank" 
           rel="noopener noreferrer"
           className="flex items-center gap-2 bg-card/80 backdrop-blur-md border border-border hover:border-primary text-foreground hover:bg-accent px-5 py-2.5 rounded-full font-semibold shadow-sm hover:shadow transition-all"

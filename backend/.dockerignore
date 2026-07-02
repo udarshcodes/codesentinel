@@ -15,3 +15,6 @@ tests/
 *.md
 self_scan.py
 self_scan_results.json
+**/node_modules/
+**/dist/
+.DS_Store

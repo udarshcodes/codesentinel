@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
@@ -33,7 +33,7 @@ jobs:
           subscription-id: ${{ secrets.CODESENTINELAPI_AZURE_SUBSCRIPTION_ID }}
 
       - name: Build and push container image to registry
-        uses: azure/container-apps-deploy-action@v2
+        uses: azure/container-apps-deploy-action@v3
         with:
           appSourcePath: ${{ github.workspace }}/backend
           dockerfilePath: Dockerfile
@@ -42,7 +42,8 @@ jobs:
           registryPassword: ${{ secrets.CODESENTINELAPI_REGISTRY_PASSWORD }}
           containerAppName: codesentinel-api
           resourceGroup: CodeSentinel-RG
-          imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.sha }}
+          imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.sha }}
+
           ingress: external
           targetPort: 8000
           environmentVariables: GROQ_API_KEY=secretref:groq-api-key GITHUB_TOKEN=secretref:github-token ADMIN_SECRET=secretref:admin-secret PORT=8000 CORS_ORIGINS=https://salmon-ground-0362fac00.7.azurestaticapps.net
