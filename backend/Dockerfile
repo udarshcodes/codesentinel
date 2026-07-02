@@ -2,6 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# Link the package to the github repository so it shows up in the UI
+LABEL org.opencontainers.image.source="https://github.com/udarshcodes/codesentinel"
+
 # Ensure Python output is logged immediately in Azure
 ENV PYTHONUNBUFFERED=1
 
