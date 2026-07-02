@@ -2,6 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# Ensure Python output is logged immediately in Azure
+ENV PYTHONUNBUFFERED=1
+
 # Install system dependencies needed for SAST tools and worker tasks
 RUN apt-get update && \
     apt-get install -y git build-essential nodejs npm maven curl golang-go && \
