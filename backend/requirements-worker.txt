@@ -1,0 +1,11 @@
+# Dependencies required only for the GitHub Actions ephemeral worker
+langchain
+langchain-core
+langchain-groq
+langgraph
+PyGithub
+bandit
+pylint
+flake8
+tiktoken
+# Semgrep is installed globally in worker.yml via pip install semgrep

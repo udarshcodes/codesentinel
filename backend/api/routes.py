@@ -6,9 +6,9 @@ import hmac
 import hashlib
 import httpx
 import uuid
-from api.sse import run_pipeline_worker
 from state import approval_events
 from limiter import limiter
+from api.job_manager import JobManager
 
 router = APIRouter()
 
@@ -81,9 +81,13 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
         task_id = str(uuid.uuid4())
         task_ids.append(task_id)
 
-        # Fire and forget the background task
+        # 1. Create Job in Database
+        JobManager.create_job(task_id, r_url)
+
+        # 2. Trigger GitHub Action (Workflow Dispatch)
+        # We fire and forget this async call so we don't block the API
         background_tasks.add_task(
-            run_pipeline_worker, task_id, r_url, body.commit_sha
+            trigger_github_worker, task_id, r_url, body.commit_sha
         )
 
     # If it was a single repo, return just that task_id for backward compatibility
@@ -96,6 +100,83 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
         "task_ids": task_ids,
         "repo_urls": repos_to_analyze,
     }
+
+
+async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = None):
+    # This triggers the worker.yml in the CodeSentinel repo.
+    # It assumes the action is stored in the same repo we are running from,
+    # or a central worker repo defined by WORKER_REPO_URL.
+    github_token = os.getenv("GITHUB_TOKEN", "")
+    worker_repo = os.getenv("WORKER_REPO", "udarshcodes/codesentinel")
+    
+    # Robustly handle if the user accidentally put the full URL in WORKER_REPO
+    if "github.com/" in worker_repo:
+        worker_repo = worker_repo.split("github.com/")[-1].strip("/")
+
+    backend_url = os.getenv("BACKEND_URL", "http://codesentinel-api") # Fallback for local
+    
+    if not github_token:
+        print("Warning: No GITHUB_TOKEN set. Cannot trigger worker action.")
+        JobManager.add_event(task_id, 0, JobManager.FAILED, "error", {"error": "No GITHUB_TOKEN configured on backend."}, datetime.utcnow().isoformat())
+        return
+
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "Authorization": f"token {github_token}",
+    }
+    
+    inputs = {
+        "task_id": task_id,
+        "repo_url": repo_url,
+        "backend_url": backend_url
+    }
+    if commit_sha:
+        inputs["commit_sha"] = commit_sha
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                f"https://api.github.com/repos/{worker_repo}/actions/workflows/worker.yml/dispatches",
+                headers=headers,
+                json={"ref": "main", "inputs": inputs},
+                timeout=10.0
+            )
+            if res.status_code >= 400:
+                print(f"Error triggering worker: {res.status_code} - {res.text}")
+                JobManager.add_event(task_id, 0, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {res.text}"}, datetime.utcnow().isoformat())
+        except Exception as e:
+            print(f"Exception triggering worker: {e}")
+            JobManager.add_event(task_id, 0, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {e}"}, datetime.utcnow().isoformat())
+
+
+# --- WORKER WEBHOOK ENDPOINTS ---
+
+class WorkerEvent(BaseModel):
+    sequence: int
+    status: str
+    event: str
+    data: dict
+    timestamp: str
+
+@router.post("/v1/job/{task_id}/event")
+async def worker_event_webhook(task_id: str, event: WorkerEvent):
+    """Called by the GitHub Action worker to stream granular state updates."""
+    success = JobManager.add_event(
+        task_id, event.sequence, event.status, event.event, event.data, event.timestamp
+    )
+    # If the event was a final complete event, we also need to persist patches to ChromaDB.
+    # The worker packages patches into the data object of pipeline_complete.
+    if event.event == "pipeline_complete" and event.status == JobManager.COMPLETED:
+        from tools import vector_store
+        # The worker should pass validated_fixes in the data payload
+        validated_fixes = event.data.get("validated_fixes", [])
+        for fix in validated_fixes:
+            vector_store.store_validated_fix(fix["issue"], fix["patch"], fix["confidence"])
+            
+    if success:
+        return {"status": "ok"}
+    else:
+        return {"status": "ignored_duplicate"}
 
 
 @router.post("/v1/approve/{task_id}")

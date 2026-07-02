@@ -3,7 +3,7 @@ import json
 import asyncio
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
-from tools.vector_store import query_similar_fixes
+
 from tools.llm_router import invoke_llm
 from tools import context_cache
 from tools.prompt_cache import BUG_INVESTIGATOR_SYSTEM
@@ -114,15 +114,7 @@ If no bugs, return: {{"found": false}}"""
         else:
             pruned_content = file_content[:3000]
 
-        # Query ChromaDB for past successful fixes in a background thread to prevent blocking
-        past_context = await asyncio.to_thread(query_similar_fixes, issue_desc)
-        past_context_str = (
-            "\n".join(
-                [f'Past fix for similar issue:\n{f["patch"]}' for f in past_context]
-            )
-            if past_context
-            else "None"
-        )
+
 
         # Use localized graph instead of full knowledge graph
         localized_graph = context_cache.get_localized_graph(repo_url, file_path)
@@ -139,7 +131,6 @@ File Content:
 ```
 
 Repository Context: {json.dumps(localized_graph)}
-Past similar fixes for context: {past_context_str}
 
 Determine the root cause, severity ("low", "medium", "high"), impact, and affected files.
 Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "...", "severity": "...", "impact": "...", "affected_files": ["..."]}}"""

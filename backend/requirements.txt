@@ -1,20 +1,11 @@
-# Requires Python >= 3.10 (uses built-in anext() in api/sse.py)
+# Requires Python >= 3.10
 fastapi
 sse-starlette
 uvicorn[standard]
-langchain
-langchain-core
-langchain-groq
-PyGithub
 chromadb
 pydantic
 python-dotenv
 httpx
-bandit
-pylint
-flake8
-tiktoken
-langgraph
 typing_extensions>=4.0
 pytest
 build

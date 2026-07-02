@@ -2,168 +2,54 @@ import json
 from fastapi import APIRouter
 import asyncio
 from sse_starlette.sse import EventSourceResponse
-from orchestrator import app as langgraph_app
-from state import sse_queues, metrics
-import time
+from api.job_manager import JobManager
 
 router = APIRouter()
 
-
-def make_serializable(obj):
-    """Recursively convert non-serializable objects to strings."""
-    if isinstance(obj, dict):
-        return {k: make_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [make_serializable(item) for item in obj]
-    elif isinstance(obj, (str, int, float, bool, type(None))):
-        return obj
-    else:
-        return str(obj)
-
-
-async def run_pipeline_worker(task_id: str, repo_url: str, commit_sha: str = None):
-    state = {
-        "task_id": task_id,
-        "repo_url": repo_url,
-        "commit_sha": commit_sha or "",
-        "repo_local_path": "",
-        "knowledge_graph": {},
-        "dependency_findings": [],
-        "static_findings": [],
-        "investigated_issues": [],
-        "repair_plan": [],
-        "patches": [],
-        "validation_results": [],
-        "security_verified": False,
-        "pr_url": "",
-        "pr_error": "",
-        "retry_count": 0,
-        "awaiting_approval": False,
-        "confidence_score": 0.0,
-        "dependency_graph": {},
-    }
-
-    # We create the queue here if it doesn't exist, so that manual SSE events like approval
-    # can be injected via the orchestrator.
-    if task_id not in sse_queues:
-        sse_queues[task_id] = asyncio.Queue()
-
-    async def emit(event: str, data: dict):
-        if task_id in sse_queues:
-            try:
-                await sse_queues[task_id].put({"event": event, "data": data})
-            except Exception:
-                pass
-
-    await emit("pipeline_started", {"repo_url": repo_url})
-
-    final_pr_url = ""
-    final_pr_error = ""
-    final_confidence = 0.0
-
-    metrics.increment("queue_depth")
-    start_time = time.time()
-
-    try:
-        # We need to run astream and concurrently poll the queue for manual events
-        # like we did in the old code to support the approval_resolved event
-        astream_iter = langgraph_app.astream(state)
-        astream_task = asyncio.create_task(anext(astream_iter, None))
-
-        while True:
-            done, pending = await asyncio.wait(
-                {astream_task}, return_when=asyncio.FIRST_COMPLETED
-            )
-
-            if astream_task in done:
-                output = astream_task.result()
-                if output is None:  # End of stream
-                    break
-
-                for node_name, state_update in output.items():
-                    safe_update = make_serializable(state_update)
-
-                    if "pr_url" in safe_update:
-                        final_pr_url = safe_update["pr_url"]
-                    if "pr_error" in safe_update:
-                        final_pr_error = safe_update["pr_error"]
-                    if "confidence_score" in safe_update:
-                        final_confidence = safe_update["confidence_score"]
-
-                    if "repo_local_path" in safe_update:
-                        state["repo_local_path"] = safe_update["repo_local_path"]
-
-                    event_data = {
-                        "agent": node_name,
-                        "status": "success",
-                        "data": safe_update,
-                    }
-                    await emit("agent_complete", event_data)
-
-                astream_task = asyncio.create_task(anext(astream_iter, None))
-
-        await emit(
-            "pipeline_complete",
-            {
-                "status": "done",
-                "pr_url": final_pr_url,
-                "pr_error": final_pr_error,
-                "confidence_score": final_confidence,
-            },
-        )
-
-    except Exception as e:
-        print(f"Pipeline crashed: {e}")
-        await emit("error", {"error": str(e)})
-        metrics.increment("failed_jobs")
-    else:
-        # Only reached if no exception — count as completed regardless of whether a PR was opened
-        metrics.increment("completed_jobs")
-    finally:
-        metrics.decrement("queue_depth")
-        metrics.set_val("scan_duration_ms", int((time.time() - start_time) * 1000))
-
-        try:
-            repo_local_path = state.get("repo_local_path")
-            if repo_local_path and "codesentinel_" in repo_local_path:
-                import shutil
-
-                shutil.rmtree(repo_local_path, ignore_errors=True)
-        except Exception as e:
-            print(f"Error cleaning up temp dir: {e}")
-
-        # Context cache cleanup (queue cleanup is handled by event_generator's finally block
-        # to avoid deleting the queue before the client reads the final event)
-        from tools import context_cache
-
-        context_cache.invalidate(repo_url)
-
-
 async def event_generator(task_id: str):
-    if task_id not in sse_queues:
-        sse_queues[task_id] = asyncio.Queue()
-
-    q = sse_queues[task_id]
-
+    # 1. Fetch historical events from JobManager
+    historical_events = JobManager.get_events(task_id, after_sequence=-1)
+    last_sequence = -1
+    
+    is_completed = False
+    
+    # Yield historical events first
+    for evt in historical_events:
+        yield {
+            "event": evt["event"],
+            "data": json.dumps(evt["data"]),
+        }
+        last_sequence = evt["sequence"]
+        if evt["event"] in ["pipeline_complete", "error"]:
+            is_completed = True
+            
+    if is_completed:
+        return
+        
+    # 2. Subscribe to live events
+    q = JobManager.subscribe(task_id)
     try:
         while True:
             payload = await q.get()
+            
+            # Skip if we already yielded this sequence historically
+            if payload["sequence"] <= last_sequence:
+                continue
+                
             yield {
-                "event": payload.get("event", "message"),
-                "data": json.dumps(payload.get("data", payload)),
+                "event": payload["event"],
+                "data": json.dumps(payload["data"]),
             }
-            if payload.get("event") in ["pipeline_complete", "error"]:
+            if payload["event"] in ["pipeline_complete", "error"]:
                 break
     except asyncio.CancelledError:
         print(f"SSE client disconnected for task {task_id}")
     except Exception as e:
         print(f"SSE stream error: {e}")
     finally:
-        # Client disconnect should also remove the queue if still present
-        if task_id in sse_queues:
-            del sse_queues[task_id]
+        JobManager.unsubscribe(task_id, q)
 
-
+@router.get("/v1/stream")
 @router.get("/stream")
 async def stream_pipeline(task_id: str = None):
     if not task_id:

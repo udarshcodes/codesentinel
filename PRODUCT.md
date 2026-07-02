@@ -27,11 +27,15 @@ CodeSentinel is built on a modern, decoupled architecture prioritizing extreme f
   A high-performance React application serving as the control plane. It consumes Server-Sent Events (SSE) to render real-time telemetry of the LangGraph execution state, providing operators with confidence scores, live diff rendering, and pipeline visualization.
   - *Admin Dashboard:* An isolated, separate Vite/React application built for observability. It exposes macro-level system metrics, token rotation stats, queue depth, and job metrics. Accessing this dashboard requires the `X-Admin-Token` header.
   
-- **API & Orchestration Layer (FastAPI + LangGraph):** 
-  A high-throughput asynchronous backend powered by FastAPI. At its core, LangGraph governs the pipeline's deterministic state machine, ensuring cyclic graphs (like iterative repair-validation loops and security retries) are handled gracefully with strictly typed `PipelineState` models. Deadlock-free asynchronous execution is managed via `asyncio` primitives (`FIRST_COMPLETED` wait states).
+- **API & Orchestration Layer (FastAPI + SQLite):** 
+  A high-throughput asynchronous backend powered by FastAPI that acts as the **Single Source of Truth** for the entire system. 
+  - *Why the Monolithic Backend was Replaced:* Originally, CodeSentinel packaged all language runtimes, build tools, and SAST scanners into a single 5.5GB monolithic backend container. This huge image made deploying to cost-effective serverless environments (like Azure Container Apps Free Tier) impossible due to strict 5-minute image pull timeouts. 
+  - *Why SQLite was Selected:* SQLite provides robust, persistent job tracking and idempotent state management without the overhead, cost, or complexity of managing a dedicated database service (like PostgreSQL) for a lightweight orchestrator.
+  - *Why Backend is the Single Source of Truth:* The orchestrator tracks the state and broadcasts it via SSE. This ensures that the frontend never has to poll GitHub APIs directly, and the backend maintains authoritative control over ChromaDB, API keys, and job lifecycles.
 
-- **Agent Mesh (`backend/agents/`):** 
-  A swarm of stateless, specialized agents. Each agent acts as a distinct node in the LangGraph, yielding updates to a central, typed state object and returning control back to the orchestrator.
+- **Ephemeral Worker Layer (GitHub Actions):** 
+  - *Why GitHub Actions was Chosen:* We shifted the actual LangGraph execution and SAST scanning to GitHub Actions. This provides free, ephemeral, on-demand compute environments that come pre-installed with almost every language runtime and build tool imaginable.
+  - *Agent Mesh (`backend/agents/`)*: A swarm of stateless, specialized agents that execute within the GitHub Action. Each agent acts as a distinct node in the LangGraph, executing heavy scans and posting granular state updates back to the orchestrator via HTTP webhooks.
   - *Repo Mapper:* Builds a rich architectural map containing API endpoint inventories, database interaction mappings, and service boundary detection via LLM synthesis.
   - *Dependency Analyzer:* Identifies outdated packages and CVEs (PyPI/npm/Maven/Go).
   - *Static Analysis:* Scans for vulnerabilities across multiple categories including `security`, `quality` (e.g., duplicate code, long methods), and `performance` (e.g., SQLAlchemy N+1 detection).
@@ -130,7 +134,7 @@ To provide a massive leap in User Experience (UX), the FastAPI backend streams L
 - **CI/CD Integration Pipeline:** The primary deployment mechanism leverages GitHub Actions. A drop-in template (`codesentinel.yml`) initiates the analysis via the `/api/webhook/github` endpoint whenever a PR is opened or a push occurs. It validates the webhook payload via HMAC SHA-256 signature verification and responds by posting a comment on the PR containing a link to the live SSE telemetry stream.
 
 ## 9. Scalability Strategy
-- **Stateless Agents:** LangGraph nodes process state transformations on a `PipelineState` TypedDict. The agent design inherently supports distributing computational load across horizontally scaled worker nodes or serverless architectures (like AWS Lambda or Celery workers), which are target deployment architectures for the future roadmap (currently, deployment is supported via Azure Container Apps).
+- **Stateless Orchestration & Ephemeral Compute:** LangGraph nodes process state transformations on a `PipelineState` TypedDict entirely within an ephemeral GitHub Actions worker. This architecture inherently supports massive horizontal scaling because the heavy compute (cloning, building, scanning, LLM generation) is offloaded to GitHub's infrastructure, while the orchestrator remains an ultra-lightweight state machine and SSE broadcaster.
 - **Aggressive Caching (`context_cache.py` / `response_cache.py`):** Identical LLM prompts and repository AST structures are cached locally. During repetitive debugging cycles, this prevents redundant network I/O to the LLM provider, drastically reducing pipeline execution time and API costs.
 
 ## 10. Security Considerations

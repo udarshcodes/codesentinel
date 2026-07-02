@@ -42,11 +42,24 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 
 > **Note:** For deeper technical specifications, system architectural flows, and a comprehensive feature catalog, please refer to [PRODUCT.md](./PRODUCT.md).
 
-### Backend
-- **Python 3.10+ & FastAPI:** Asynchronous speed, Pydantic validation, and Server-Sent Events (SSE). Utilizes `fastapi.BackgroundTasks` to execute headless pipelines suitable for robust CI/CD webhook triggers.
-- **LangGraph:** Robust directed graph state machine orchestrating discrete AI agents, with controlled cyclic loops for iterative repair (test -> fail -> fix -> test).
-- **ChromaDB:** Lightweight embedded vector database storing and retrieving past validated fixes via RAG.
-- **Groq API:** Multi-tier routing sending simple tasks to rapid models and complex code generation to 70B+ parameters.
+### Architecture Overview (The Orchestrator Model)
+
+**Why We Replaced the Monolithic Backend:**
+Originally, CodeSentinel packaged all language runtimes, build tools, and SAST scanners into a single 5.5GB monolithic backend container. While functional, this huge image made deploying to cost-effective serverless environments (like Azure Container Apps Free Tier) impossible due to strict 5-minute image pull timeouts. 
+
+**The Solution:**
+We decoupled the heavy lifting into an ephemeral architecture.
+
+#### 1. The Lightweight Orchestrator (Backend)
+- **Single Source of Truth**: The FastAPI backend acts as the central command. It manages webhooks, authenticates requests, and maintains job state using **SQLite**. 
+- **Why SQLite?**: SQLite was selected because it provides robust, persistent job tracking and idempotent state management without the overhead, cost, or complexity of managing a dedicated database service (like PostgreSQL) for a lightweight orchestrator.
+- **Micro-Container**: By stripping out heavy toolchains (Node, Java, Rust, Go), the orchestrator Docker image is now under 250MB, deploying instantly on Azure's free tier.
+- **Persistent Streams**: Real-time Server-Sent Events (SSE) read directly from SQLite, ensuring that if a user disconnects, they instantly receive the full history upon reconnecting.
+
+#### 2. The Ephemeral Worker (GitHub Actions)
+- **Why GitHub Actions?**: We shifted the actual LangGraph execution and SAST scanning to GitHub Actions (`workflow_dispatch`). This provides free, ephemeral, on-demand compute environments that come pre-installed with almost every language runtime and build tool imaginable.
+- **Stateless Execution**: The worker clones the target repository, runs the AI agents, executes the heavy scans, and posts granular state updates back to the orchestrator via HTTP webhooks.
+- **LangGraph & ChromaDB**: The AI workflow (powered by Groq and LangGraph) runs inside the worker, while validated patches are sent back to the orchestrator to be permanently stored in ChromaDB (RAG).
 
 ### Frontend
 - **React 18 & Vite:** Lightning-fast HMR and optimized production builds.
@@ -65,28 +78,26 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 
 ```mermaid
 graph TD
-    A[User Submits Repo URL] -->|POST /api/analyze| B(FastAPI Router)
-    B --> C{LangGraph Orchestrator}
+    A[User Submits Repo URL] -->|POST /api/analyze| B(FastAPI Orchestrator)
+    B -->|Creates SQLite Job| C[(SQLite State)]
+    B -->|Triggers Workflow| D[GitHub Actions Worker]
     
-    subgraph Agentic Pipeline
-    C --> D[Repo Mapper]
-    D --> DA[Dependency Analyzer]
-    DA --> SA[Static Analysis]
-    SA --> F[Bug Investigator]
-    F -.->|Query| G[(ChromaDB Vector Store)]
-    F --> H[Repair Planner]
-    H -->|If High Risk: SSE Pause| I((Human Approval))
-    H -->|If Low Risk| J[Code Generator]
-    I -->|"POST /api/approve/{task_id}"| J
-    J --> K[Validator]
-    K -->|If Build or Tests Fail| J
-    K -->|If Tests Pass| SV[Security Verifier]
-    SV -->|If Still Vulnerable, Return to Generator| J
-    SV -->|If Secure| L[PR Author]
+    subgraph Ephemeral Worker
+    D --> E[LangGraph Execution]
+    E --> F[Repo Mapper & Scanners]
+    F --> G[Bug Investigator]
+    G --> H[Code Generator]
+    H --> I[Validator]
+    I -->|If Tests Pass| J[PR Author]
     end
     
-    L --> M[GitHub API]
-    M --> N((Open Pull Request))
+    J -->|Open Pull Request| K[GitHub API]
+    
+    D -.->|Webhook State Updates| B
+    B -.->|SSE Real-time Stream| L(Frontend Dashboard)
+    
+    I -.->|Save Validated Fixes| B
+    B -.->|Store| M[(ChromaDB)]
 ```
 
 ---
@@ -168,6 +179,7 @@ Navigate to `http://localhost:5173` to use the app.
 |--------|----------|-------------|
 | `POST` | `/api/analyze` (or `/api/v1/analyze`) | Initiates the headless pipeline for a single `repo_url` or multi-repository organization wildcard (`github.com/org/*`), returning unique UUID `task_id`(s) without blocking HTTP response. |
 | `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads, filterable by `task_id`. |
+| `POST` | `/api/job/{task_id}/event` (or `/api/v1/job/{task_id}/event`) | Internal webhook used by the GitHub Action worker to stream granular state updates to the orchestrator. |
 | `POST` | `/api/approve/{task_id}` (or `/api/v1/approve/{task_id}`) | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
 | `POST` | `/api/webhook/github` (or `/api/v1/webhook/github`) | Automated CI/CD webhook endpoint triggering analysis on GitHub push and PR events with HMAC SHA-256 signature verification (`X-Hub-Signature-256`). |
 | `GET`  | `/health`, `/live`, `/ready`, `/metrics` | Observability endpoints returning system health status, liveness, readiness, and queue/execution job metrics. |
@@ -210,13 +222,18 @@ codesentinel/
 │   ├── main.py                  # FastAPI entry point & static asset mounter
 │   ├── state.py                 # Global state and SSE queues
 │   ├── orchestrator.py          # LangGraph state machine
+│   ├── worker.py                # Standalone LangGraph agent worker execution
 │   ├── config.py                # Environment & LLM key rotation pool
 │   ├── limiter.py               # SlowAPI rate limiter instance
 │   ├── self_scan.py             # Self-scan utility
+│   ├── codesentinel.db          # SQLite orchestrator state database
+│   ├── requirements.txt         # Core dependencies
+│   ├── requirements-worker.txt  # Worker dependencies
 │   ├── .env.example             # Environment variable template
 │   ├── api/
-│   │   ├── routes.py            # POST endpoints (analysis initiation, approvals)
-│   │   └── sse.py               # SSE streaming endpoint for pipeline observability
+│   │   ├── routes.py            # POST endpoints (analysis initiation, approvals, webhooks)
+│   │   ├── sse.py               # SSE streaming endpoint for pipeline observability
+│   │   └── job_manager.py       # SQLite interface for job state persistence
 │   ├── agents/                  # LangGraph Node Actors
 │   │   ├── repo_mapper.py       # Builds LLM architectural map of target repo
 │   │   ├── dependency_analyzer.py # Identifies outdated packages and CVEs (PyPI/npm/Maven/Go)

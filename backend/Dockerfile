@@ -1,3 +1,10 @@
+# Build frontend dashboard
+FROM node:20 AS builder
+WORKDIR /app
+COPY admin_dashboard ./admin_dashboard
+RUN cd admin_dashboard && npm install && npm run build
+
+# Build lightweight orchestrator backend
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -8,35 +15,24 @@ LABEL org.opencontainers.image.source="https://github.com/udarshcodes/codesentin
 # Ensure Python output is logged immediately in Azure
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies needed for SAST tools and worker tasks
+# Install basic system dependencies
 RUN apt-get update && \
-    apt-get install -y git build-essential nodejs npm maven curl golang-go && \
+    apt-get install -y curl git && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Rust toolchain (for cargo clippy support)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component clippy
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install Sonar Scanner
-RUN npm install -g sonarqube-scanner
-
-# Install Semgrep globally
-RUN pip install --no-cache-dir semgrep
-
-# Install Python requirements
+# Install lightweight Python requirements (NO heavy scanning tools)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
-# Build the admin dashboard so FastAPI can serve it statically at /admin
-RUN cd admin_dashboard && npm install && npm run build
+# Overwrite the unbuilt admin_dashboard with the built dist from the builder stage
+COPY --from=builder /app/admin_dashboard/dist ./admin_dashboard/dist
 
 # Add Healthcheck for Azure Container Apps
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
-# Start the application
+# Start the orchestrator API
 CMD ["python", "main.py"]

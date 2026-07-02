@@ -6,7 +6,7 @@ import asyncio
 import json
 import shlex
 from models.pipeline_state import PipelineState
-from tools.vector_store import query_similar_fixes, store_validated_fix
+
 from tools.confidence_calc import calculate_pipeline_confidence
 
 # Whitelist of allowed test commands to prevent command injection from LLM output
@@ -610,27 +610,15 @@ async def agent_validator(state: PipelineState):
     issue_desc = issue.get("description", str(issue))
 
     security_clean = state.get("security_verified", False)
-    similar = await asyncio.to_thread(query_similar_fixes, issue_desc, 1)
-    chroma_score = similar[0].get("confidence", 0.0) if similar else 0.0
     confidence = calculate_pipeline_confidence(
         state,
         tests_passed=files_passed,
         tests_total=files_validated,
         security_clean=security_clean,
-        chroma_score=chroma_score,
+        chroma_score=0.0,
     )
 
-    if all_passed:
-        for patch in patches:
-            p_id = patch.get("patch_id")
-            p_issue = next((i for i in investigated_issues if i.get("id") == p_id), {})
-            p_desc = p_issue.get("description", patch.get("file", issue_desc))
-            await asyncio.to_thread(
-                store_validated_fix,
-                issue_description=p_desc,
-                patch=patch.get("diff", ""),
-                confidence=confidence,
-            )
+
 
     return {
         "validation_results": new_validation_results,
