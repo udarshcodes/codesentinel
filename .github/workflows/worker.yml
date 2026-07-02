@@ -47,6 +47,11 @@ jobs:
           
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+        
+      - name: Install Sonar Scanner
+        run: npm install -g sonarqube-scanner
         
       - name: Install Semgrep
         run: pip install semgrep
