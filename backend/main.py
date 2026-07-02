@@ -4,10 +4,14 @@ from contextlib import asynccontextmanager
 
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from limiter import limiter
 from api.routes import router as api_router
 from api.sse import router as sse_router
 from tools.key_dispatcher import get_usage_report
@@ -37,7 +41,10 @@ async def lifespan(app):
     # --- Shutdown (cleanup if needed) ---
 
 
-app = FastAPI(title="Multi-Agent Bug Detection System", lifespan=lifespan)
+app = FastAPI(title="CodeSentinel", lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _cors_origins = os.getenv(
     "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
@@ -94,7 +101,8 @@ if not os.getenv("ADMIN_SECRET", ""):
 
 
 @app.get("/admin/token-usage")
-def token_usage(x_admin_token: str = Header(None)):
+@limiter.limit("5/minute")
+def token_usage(request: Request, x_admin_token: str = Header(None)):
     admin_secret = os.getenv("ADMIN_SECRET", "")
     if not admin_secret or x_admin_token != admin_secret:
         raise HTTPException(status_code=401, detail="Unauthorized")

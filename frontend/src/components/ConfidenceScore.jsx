@@ -12,15 +12,15 @@ export default function ConfidenceScore({ score }) {
     label = 'Medium Confidence'
   }
   if (score < 50) {
-    colorClass = 'text-red-400'
-    bgClass = 'bg-red-400/10'
+    colorClass = 'text-destructive'
+    bgClass = 'bg-destructive/10'
     label = 'Low Confidence'
   }
 
   return (
-    <div className={`p-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 shadow-lg flex items-center justify-between`}>
+    <div className={`p-4 rounded-[1.5rem] border border-border bg-card shadow-lg flex items-center justify-between`}>
       <div>
-        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Fix Confidence Score</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Fix Confidence Score</h3>
         <p className={`text-lg font-bold ${colorClass}`}>{label}</p>
       </div>
       <div className={`text-3xl font-bold ${colorClass} ${bgClass} px-4 py-2 rounded-xl`}>

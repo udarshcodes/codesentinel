@@ -8,6 +8,7 @@ import httpx
 import uuid
 from api.sse import run_pipeline_worker
 from state import approval_events
+from limiter import limiter
 
 router = APIRouter()
 
@@ -19,11 +20,12 @@ class AnalyzeRequest(BaseModel):
 
 @router.post("/v1/analyze")
 @router.post("/analyze")  # Backward compatibility
-async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTasks):
-    repo_url = request.repo_url.strip()
+@limiter.limit("2/minute")
+async def start_analysis(request: Request, body: AnalyzeRequest, background_tasks: BackgroundTasks):
+    repo_url = body.repo_url.strip()
     if repo_url.startswith("github.com/"):
         repo_url = "https://" + repo_url
-        request.repo_url = repo_url
+        body.repo_url = repo_url
 
     # Validate repo_url format
     if not repo_url.endswith("/*"):
@@ -81,7 +83,7 @@ async def start_analysis(request: AnalyzeRequest, background_tasks: BackgroundTa
 
         # Fire and forget the background task
         background_tasks.add_task(
-            run_pipeline_worker, task_id, r_url, request.commit_sha
+            run_pipeline_worker, task_id, r_url, body.commit_sha
         )
 
     # If it was a single repo, return just that task_id for backward compatibility

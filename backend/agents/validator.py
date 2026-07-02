@@ -400,23 +400,64 @@ async def agent_validator(state: PipelineState):
 
         if test_framework and _is_allowed_cmd(test_framework):
             cmd = shlex.split(test_framework)
-            try:
-                res = subprocess.run(
-                    cmd,
-                    cwd=repo_local_path,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    shell=(os.name == "nt"),
-                )
-                test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
-                if res.returncode != 0:
-                    if "not found" not in test_logs.lower():
-                        all_passed = False
-            except Exception as e:
-                test_logs = (
-                    f"Failed to execute dynamic test suite '{test_framework}': {e}"
-                )
+            
+            is_python_test = cmd[0] in ["pytest", "python"]
+            venv_dir = None
+            
+            if is_python_test:
+                try:
+                    import tempfile, venv
+                    venv_dir = tempfile.mkdtemp(prefix="cs_venv_dyn_")
+                    venv.create(venv_dir, with_pip=True)
+                    venv_python = os.path.join(venv_dir, "Scripts", "python.exe") if os.name == "nt" else os.path.join(venv_dir, "bin", "python")
+                    
+                    req_path = os.path.join(repo_local_path, "requirements.txt")
+                    if not os.path.exists(req_path):
+                        req_path = os.path.join(repo_local_path, "backend", "requirements.txt")
+                        
+                    if os.path.exists(req_path):
+                        subprocess.run([venv_python, "-m", "pip", "install", "-r", req_path], capture_output=True, timeout=120)
+                    
+                    subprocess.run([venv_python, "-m", "pip", "install", "pytest"], capture_output=True, timeout=60)
+                    
+                    if cmd[0] == "pytest":
+                        cmd = [venv_python, "-m", "pytest"] + cmd[1:]
+                    elif cmd[0] == "python":
+                        cmd = [venv_python] + cmd[1:]
+                except Exception as e:
+                    test_logs = f"Failed to setup venv for dynamic test: {e}"
+                    all_passed = False
+
+            if all_passed:
+                try:
+                    env = os.environ.copy()
+                    if is_python_test:
+                        if os.path.exists(os.path.join(repo_local_path, "backend")):
+                            env["PYTHONPATH"] = os.path.join(repo_local_path, "backend") + os.pathsep + env.get("PYTHONPATH", "")
+                        elif os.path.exists(os.path.join(repo_local_path, "src")):
+                            env["PYTHONPATH"] = os.path.join(repo_local_path, "src") + os.pathsep + env.get("PYTHONPATH", "")
+                        else:
+                            env["PYTHONPATH"] = repo_local_path + os.pathsep + env.get("PYTHONPATH", "")
+
+                    res = subprocess.run(
+                        cmd,
+                        cwd=repo_local_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                        shell=(os.name == "nt" and not is_python_test),
+                        env=env,
+                    )
+                    test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
+                    if res.returncode != 0:
+                        if "not found" not in test_logs.lower():
+                            all_passed = False
+                except Exception as e:
+                    test_logs = f"Failed to execute dynamic test suite '{test_framework}': {e}"
+                finally:
+                    if venv_dir:
+                        import shutil
+                        shutil.rmtree(venv_dir, ignore_errors=True)
         else:
             # Intelligent fallback: Execute tests for all relevant ecosystems found
             test_logs = ""
@@ -424,13 +465,40 @@ async def agent_validator(state: PipelineState):
 
             # 1. Python Tests
             if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")) or os.path.exists(os.path.join(repo_local_path, "requirements.txt")):
-                py_cmd = [sys.executable, "-m", "pytest", "--tb=short", "-q"] if shutil.which("pytest") else [sys.executable, "-m", "unittest", "discover"]
                 try:
-                    res = subprocess.run(py_cmd, cwd=repo_local_path, capture_output=True, text=True, timeout=60, shell=(os.name == "nt"))
+                    import tempfile, venv, shutil
+                    venv_dir = tempfile.mkdtemp(prefix="cs_venv_")
+                    venv.create(venv_dir, with_pip=True)
+                    
+                    venv_python = os.path.join(venv_dir, "Scripts", "python.exe") if os.name == "nt" else os.path.join(venv_dir, "bin", "python")
+                    
+                    # Search for requirements.txt in root or backend/
+                    req_path = os.path.join(repo_local_path, "requirements.txt")
+                    if not os.path.exists(req_path):
+                        req_path = os.path.join(repo_local_path, "backend", "requirements.txt")
+                    
+                    if os.path.exists(req_path):
+                        subprocess.run([venv_python, "-m", "pip", "install", "-r", req_path], capture_output=True, timeout=120)
+                    
+                    # Install pytest and run it
+                    subprocess.run([venv_python, "-m", "pip", "install", "pytest"], capture_output=True, timeout=60)
+                    
+                    env = os.environ.copy()
+                    if os.path.exists(os.path.join(repo_local_path, "backend")):
+                        env["PYTHONPATH"] = os.path.join(repo_local_path, "backend") + os.pathsep + env.get("PYTHONPATH", "")
+                    elif os.path.exists(os.path.join(repo_local_path, "src")):
+                        env["PYTHONPATH"] = os.path.join(repo_local_path, "src") + os.pathsep + env.get("PYTHONPATH", "")
+                    else:
+                        env["PYTHONPATH"] = repo_local_path + os.pathsep + env.get("PYTHONPATH", "")
+
+                    py_cmd = [venv_python, "-m", "pytest", "--tb=short", "-q"]
+                    res = subprocess.run(py_cmd, cwd=repo_local_path, capture_output=True, text=True, timeout=60, shell=False, env=env)
                     test_logs += f"\n[Python Test Results]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
                     if res.returncode != 0 and "no tests ran" not in test_logs.lower() and "zero tests" not in test_logs.lower():
                         all_passed = False
                     tests_run += 1
+                    
+                    shutil.rmtree(venv_dir, ignore_errors=True)
                 except Exception as e:
                     test_logs += f"\n[Python Test Error] {e}\n"
 

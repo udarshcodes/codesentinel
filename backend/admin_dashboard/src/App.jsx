@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, Key, ShieldAlert, Zap, Clock, Lock } from 'lucide-react';
+import ThemeToggle from './components/ThemeToggle';
 
 export default function App() {
   const [secret, setSecret] = useState(localStorage.getItem('adminSecret') || '');
@@ -52,15 +53,18 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+        <div className="absolute top-6 right-6">
+          <ThemeToggle />
+        </div>
         <div className="glass-panel p-8 max-w-md w-full rounded-3xl animate-in fade-in zoom-in duration-500">
           <div className="flex justify-center mb-6">
-            <div className="bg-slate-900 p-4 rounded-2xl">
-              <Lock className="w-8 h-8 text-white" />
+            <div className="bg-primary p-4 rounded-2xl">
+              <Lock className="w-8 h-8 text-primary-foreground" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-center text-slate-900 mb-2">CodeSentinel Admin</h1>
-          <p className="text-slate-500 text-center mb-8">Enter the master secret to access token observability.</p>
+          <h1 className="text-2xl font-bold text-center text-foreground mb-2">CodeSentinel Admin</h1>
+          <p className="text-muted-foreground text-center mb-8">Enter the master secret to access token observability.</p>
           
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -69,14 +73,14 @@ export default function App() {
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
                 placeholder="Admin Secret"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-slate-50/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-input focus:outline-none focus:ring-2 focus:ring-primary bg-muted/50 text-foreground transition-all"
                 required
               />
             </div>
-            {error && <p className="text-red-500 text-sm text-center font-medium">{error}</p>}
+            {error && <p className="text-destructive text-sm text-center font-medium">{error}</p>}
             <button
               type="submit"
-              className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-slate-900/20"
+              className="w-full py-3 px-4 bg-primary hover:opacity-90 text-primary-foreground font-semibold rounded-xl transition-colors shadow-lg shadow-primary/20"
             >
               Authenticate
             </button>
@@ -88,30 +92,31 @@ export default function App() {
 
   if (!data) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
-        <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin"></div>
-        <p className="text-slate-500 font-medium animate-pulse">Fetching telemetry...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <div className="w-12 h-12 border-4 border-border border-t-primary rounded-full animate-spin"></div>
+        <p className="text-muted-foreground font-medium animate-pulse">Fetching telemetry...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-12">
+    <div className="min-h-screen bg-background pb-12">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-slate-900 p-2 rounded-lg">
-              <Activity className="w-5 h-5 text-white" />
+            <div className="bg-primary p-2 rounded-lg">
+              <Activity className="w-5 h-5 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Token Observability</h1>
+            <h1 className="text-xl font-bold text-foreground tracking-tight">Token Observability</h1>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
               <Clock className="w-4 h-4" />
               <span>Refreshed: {lastRefreshed?.toLocaleTimeString()}</span>
             </div>
-            <button onClick={handleLogout} className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            <ThemeToggle />
+            <button onClick={handleLogout} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               Lock
             </button>
           </div>
@@ -135,14 +140,14 @@ export default function App() {
             sub="Currently in round-robin"
           />
           <StatCard 
-            icon={<ShieldAlert className={`w-6 h-6 ${data.summary.emergency_engaged ? 'text-red-500' : 'text-emerald-500'}`} />}
+            icon={<ShieldAlert className={`w-6 h-6 ${data.summary.emergency_engaged ? 'text-destructive' : 'text-emerald-500'}`} />}
             title="Emergency Key" 
             value={data.summary.emergency_engaged ? 'ACTIVE' : 'Standby'}
             sub={data.emergency_key.available ? "Loaded and ready" : "Not configured"}
             alert={data.summary.emergency_engaged}
           />
           <StatCard 
-            icon={<Activity className="w-6 h-6 text-indigo-500" />}
+            icon={<Activity className="w-6 h-6 text-primary" />}
             title="System Status" 
             value={data.summary.active_primary_keys > 0 || (data.emergency_key.available && !(data.emergency_key.percent_used >= 100)) ? 'Operational' : 'Exhausted'}
             sub="Pipeline availability"
@@ -151,7 +156,7 @@ export default function App() {
 
         {/* Primary Keys */}
         <div className="glass-panel rounded-3xl p-6 sm:p-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
             Primary Key Pool
           </h2>
           <div className="space-y-6">
@@ -162,13 +167,13 @@ export default function App() {
         </div>
 
         {/* Emergency Key */}
-        <div className={`glass-panel rounded-3xl p-6 sm:p-8 transition-colors duration-500 ${data.summary.emergency_engaged ? 'border-red-200 bg-red-50/50' : ''}`}>
+        <div className={`glass-panel rounded-3xl p-6 sm:p-8 transition-colors duration-500 ${data.summary.emergency_engaged ? 'border-destructive/50 bg-destructive/10' : ''}`}>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
               Emergency Reserve
             </h2>
             {data.summary.emergency_engaged && (
-              <span className="px-3 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold uppercase tracking-widest animate-pulse">
+              <span className="px-3 py-1 bg-destructive/20 text-destructive rounded-full text-xs font-bold uppercase tracking-widest animate-pulse">
                 Engaged
               </span>
             )}
@@ -176,7 +181,7 @@ export default function App() {
           {data.emergency_key.available ? (
             <KeyProgress index="E" data={data.emergency_key} isEmergency />
           ) : (
-            <p className="text-slate-500 text-sm">No emergency key configured in environment.</p>
+            <p className="text-muted-foreground text-sm">No emergency key configured in environment.</p>
           )}
         </div>
 
@@ -187,16 +192,16 @@ export default function App() {
 
 function StatCard({ icon, title, value, sub, alert }) {
   return (
-    <div className={`glass-panel p-6 rounded-3xl transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${alert ? 'ring-2 ring-red-500/50' : ''}`}>
+    <div className={`glass-panel p-6 rounded-3xl transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${alert ? 'ring-2 ring-destructive/50' : ''}`}>
       <div className="flex items-center gap-4 mb-4">
-        <div className={`p-3 rounded-2xl ${alert ? 'bg-red-100' : 'bg-slate-100'}`}>
+        <div className={`p-3 rounded-2xl ${alert ? 'bg-destructive/10' : 'bg-muted'}`}>
           {icon}
         </div>
-        <h3 className="text-sm font-medium text-slate-500">{title}</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
       </div>
       <div className="space-y-1">
-        <p className="text-3xl font-bold text-slate-900">{value}</p>
-        <p className="text-sm text-slate-500 font-medium">{sub}</p>
+        <p className="text-3xl font-bold text-foreground">{value}</p>
+        <p className="text-sm text-muted-foreground font-medium">{sub}</p>
       </div>
     </div>
   );
@@ -209,9 +214,9 @@ function KeyProgress({ index, data, isEmergency }) {
   let textColor = 'text-emerald-700';
   
   if (percent >= 85) {
-    color = 'bg-red-500';
-    lightColor = 'bg-red-100';
-    textColor = 'text-red-700';
+    color = 'bg-destructive';
+    lightColor = 'bg-destructive/20';
+    textColor = 'text-destructive';
   } else if (percent >= 60) {
     color = 'bg-amber-500';
     lightColor = 'bg-amber-100';
@@ -224,20 +229,20 @@ function KeyProgress({ index, data, isEmergency }) {
     <div>
       <div className="flex justify-between items-end mb-2">
         <div className="flex items-center gap-3">
-          <span className={`w-8 h-8 flex items-center justify-center rounded-xl font-bold text-sm ${isEmergency ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}`}>
+          <span className={`w-8 h-8 flex items-center justify-center rounded-xl font-bold text-sm ${isEmergency ? 'bg-primary/20 text-primary' : 'bg-muted text-foreground'}`}>
             {isEmergency ? 'E' : parseInt(index) + 1}
           </span>
           <div>
-            <span className="text-sm font-semibold text-slate-900">{isEmergency ? 'Emergency Key' : `Key #${parseInt(index) + 1}`}</span>
-            {isExhausted && <span className="ml-2 text-xs font-bold text-red-500 uppercase tracking-wider">Exhausted</span>}
+            <span className="text-sm font-semibold text-foreground">{isEmergency ? 'Emergency Key' : `Key #${parseInt(index) + 1}`}</span>
+            {isExhausted && <span className="ml-2 text-xs font-bold text-destructive uppercase tracking-wider">Exhausted</span>}
           </div>
         </div>
         <div className="text-right">
-          <span className="text-sm font-bold text-slate-900">{data.tokens_used.toLocaleString()}</span>
-          <span className="text-sm text-slate-500"> / {data.budget.toLocaleString()}</span>
+          <span className="text-sm font-bold text-foreground">{data.tokens_used.toLocaleString()}</span>
+          <span className="text-sm text-muted-foreground"> / {data.budget.toLocaleString()}</span>
         </div>
       </div>
-      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
         <div 
           className={`h-full ${color} transition-all duration-1000 ease-out`}
           style={{ width: `${Math.min(percent, 100)}%` }}

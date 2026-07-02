@@ -67,8 +67,8 @@ export default function DiffViewer({ events }) {
 
   return (
     <div className="glass-panel p-6 sm:p-8 w-full max-w-6xl mx-auto mb-8 animate-fade-in-up !rounded-[2.5rem]">
-      <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-        <svg className="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
+        <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
         </svg>
         Generated Code Patches
@@ -89,37 +89,47 @@ export default function DiffViewer({ events }) {
 }
 
 function PatchItem({ patch, parseDiff, newStyles }) {
-  const [isOpen, setIsOpen] = React.useState(false)
+  const [isOpen, ReactSetIsOpen] = React.useState(false)
   const { oldString, newString } = parseDiff(patch.diff)
+  const [isDark, setIsDark] = React.useState(false)
+
+  React.useEffect(() => {
+    setIsDark(document.documentElement.classList.contains('dark'))
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains('dark'))
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
 
   return (
-    <div className="rounded-[1.5rem] overflow-hidden border border-slate-200 shadow-lg shadow-slate-200/50 transition-all duration-300">
+    <div className="rounded-[1.5rem] overflow-hidden border border-border shadow-lg shadow-border/50 transition-all duration-300">
       <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-slate-50 hover:bg-slate-100 px-4 py-4 border-b border-slate-200 flex items-center justify-between transition-colors focus:outline-none"
+        onClick={() => ReactSetIsOpen(!isOpen)}
+        className="w-full bg-card hover:bg-accent px-4 py-4 border-b border-border flex items-center justify-between transition-colors focus:outline-none"
       >
         <div className="flex items-center gap-3">
           <svg 
-            className={`w-5 h-5 text-slate-500 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} 
+            className={`w-5 h-5 text-muted-foreground transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
-          <svg className="w-5 h-5 text-slate-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg>
-          <span className="text-sm font-mono font-semibold text-slate-900">{patch.file || 'Patch'}</span>
+          <svg className="w-5 h-5 text-muted-foreground" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg>
+          <span className="text-sm font-mono font-semibold text-foreground">{patch.file || 'Patch'}</span>
         </div>
-        <span className="text-xs text-slate-500 font-mono tracking-wider uppercase">Diff Viewer</span>
+        <span className="text-xs text-muted-foreground font-mono tracking-wider uppercase">Diff Viewer</span>
       </button>
       
       {isOpen && (
-        <div className="bg-white text-left animate-fade-in-down">
+        <div className="bg-background text-left animate-fade-in-down overflow-hidden">
           <ReactDiffViewer
             oldValue={oldString}
             newValue={newString}
             splitView={true}
-            useDarkTheme={false}
+            useDarkTheme={isDark}
             styles={newStyles}
             hideLineNumbers={false}
           />

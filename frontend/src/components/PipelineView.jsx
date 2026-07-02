@@ -68,8 +68,8 @@ export default function PipelineView({ events }) {
 
   return (
     <div className="glass-panel p-6 sm:p-8 w-full max-w-6xl mx-auto mb-8 !rounded-[2.5rem]">
-      <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-        <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <h2 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
+        <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
         Live Agent Pipeline
@@ -77,7 +77,7 @@ export default function PipelineView({ events }) {
       
       <div className="relative">
         {/* Vertical connecting line */}
-        <div className="absolute left-[21px] top-4 bottom-4 w-[2px] bg-slate-200 rounded-full"></div>
+        <div className="absolute left-[21px] top-4 bottom-4 w-[2px] bg-border rounded-full"></div>
         
         <div className="space-y-6">
           {AGENT_ORDER.map((agentKey, index) => {
@@ -85,25 +85,25 @@ export default function PipelineView({ events }) {
             const isSkipped = skippedAgents.has(agentKey)
             const isActive = currentAgent === agentKey && !isError
             
-            let statusColor = 'bg-slate-100 border-slate-300 text-slate-400' // Pending
+            let statusColor = 'bg-muted border-border text-muted-foreground' // Pending
           
             let glowEffect = ''
             
             if (isCompleted) {
-              statusColor = 'bg-green-100 border-green-300 text-green-600'
+              statusColor = 'bg-green-500/10 border-green-500/30 text-green-500'
             } else if (isSkipped) {
-              statusColor = 'bg-slate-200 border-slate-300 text-slate-500 opacity-60'
+              statusColor = 'bg-muted border-border text-muted-foreground opacity-60'
             } else if (isActive) {
-              statusColor = 'bg-blue-100 border-blue-500 text-blue-600'
-              glowEffect = 'shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+              statusColor = 'bg-primary/10 border-primary text-primary'
+              glowEffect = 'shadow-lg shadow-primary/30'
             } else if (isError && currentAgent === agentKey) {
-              statusColor = 'bg-red-100 border-red-500 text-red-600'
-              glowEffect = 'shadow-[0_0_15px_rgba(239,68,68,0.3)]'
+              statusColor = 'bg-destructive/10 border-destructive text-destructive'
+              glowEffect = 'shadow-lg shadow-destructive/30'
             }
 
             return (
               <div key={agentKey} className="relative flex items-center gap-4 group">
-                <div className={`relative z-10 flex items-center justify-center w-11 h-11 rounded-full border-2 transition-all duration-300 ${statusColor} bg-white ${glowEffect}`}>
+                <div className={`relative z-10 flex items-center justify-center w-11 h-11 rounded-full border-2 transition-all duration-300 ${statusColor} bg-card ${glowEffect}`}>
                   {isCompleted ? (
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -114,8 +114,8 @@ export default function PipelineView({ events }) {
                     </svg>
                   ) : isActive ? (
                     <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
                     </span>
                   ) : (
                     <span className="text-xs font-bold">{index + 1}</span>
@@ -123,17 +123,17 @@ export default function PipelineView({ events }) {
                 </div>
                 
                 <div className={`flex-1 p-4 rounded-3xl border transition-all duration-300 ${
-                  isActive ? 'bg-white border-blue-200 shadow-lg shadow-blue-500/10' : 'bg-slate-50 border-slate-200'
+                  isActive ? 'bg-card border-primary/30 shadow-lg shadow-primary/10' : 'bg-muted/30 border-border'
                 }`}>
                   <h3 className={`text-lg font-semibold transition-colors duration-300 flex items-center gap-2 ${
-                    isCompleted ? 'text-slate-800' : isSkipped ? 'text-slate-400' : isActive ? 'text-slate-900' : 'text-slate-400'
+                    isCompleted ? 'text-foreground' : isSkipped ? 'text-muted-foreground' : isActive ? 'text-foreground' : 'text-muted-foreground'
                   }`}>
                     {AGENT_LABELS[agentKey]}
-                    {isSkipped && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Skipped</span>}
+                    {isSkipped && <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">Skipped</span>}
                   </h3>
                   
                   {isActive && (
-                    <p className="text-sm text-blue-500 mt-1 animate-pulse">
+                    <p className="text-sm text-primary mt-1 animate-pulse">
                       Processing codebase...
                     </p>
                   )}

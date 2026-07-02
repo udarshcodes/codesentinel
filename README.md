@@ -54,7 +54,7 @@ Instead of adding another dashboard of red warnings, CodeSentinel turns those wa
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners & Analyzers:** `Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy` serve as the deterministic baseline. Also features 13 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
+- **SAST Runners & Analyzers:** 21 specialized scanning modules — 8 standard SAST tools (`Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy`) serve as the deterministic baseline, plus 13 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
 - **Dependency & Registry Checks:** Real-time vulnerability queries via OSV.dev and live registry queries across NPM, PyPI, Maven Central, Go Proxy, and Crates.io.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
@@ -198,6 +198,7 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 2. **Ephemeral Branching:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit. Note: Code execution during validation runs directly on the host, not in an isolated sandbox. Future updates plan to shift this execution into ephemeral, isolated Docker containers to prevent malicious LLM code generation from executing arbitrary operations.
 3. **Secret Management & Transport:** LLM API keys and GitHub tokens are strictly confined to the backend environment. Tokens are handled securely via local git configuration (`http.extraheader`) rather than command-line remote URLs, ensuring they never leak into process logs or `.git/config`.
 4. **Input Validation:** All repository URLs are strictly validated against allowlist regex patterns to prevent Server-Side Request Forgery (SSRF) and command injection before any cloning occurs.
+5. **Rate Limiting & Anti-Brute Force:** Key API endpoints, including the main analysis trigger and the administrative dashboard, are strictly protected with IP-based rate limiting (SlowAPI). This prevents Denial of Wallet (exhausting LLM tokens) and Denial of Service (overloading concurrent Git cloning).
 
 ---
 
@@ -210,13 +211,16 @@ codesentinel/
 │   ├── state.py                 # Global state and SSE queues
 │   ├── orchestrator.py          # LangGraph state machine
 │   ├── config.py                # Environment & LLM key rotation pool
+│   ├── limiter.py               # SlowAPI rate limiter instance
+│   ├── self_scan.py             # Self-scan utility
+│   ├── .env.example             # Environment variable template
 │   ├── api/
 │   │   ├── routes.py            # POST endpoints (analysis initiation, approvals)
 │   │   └── sse.py               # SSE streaming endpoint for pipeline observability
 │   ├── agents/                  # LangGraph Node Actors
 │   │   ├── repo_mapper.py       # Builds LLM architectural map of target repo
 │   │   ├── dependency_analyzer.py # Identifies outdated packages and CVEs (PyPI/npm/Maven/Go)
-│   │   ├── static_analysis.py   # Subprocess orchestration for SAST tools
+│   │   ├── static_analysis.py   # 21 scanning modules (8 SAST tools + 13 custom)
 │   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
 │   │   ├── repair_planner.py    # Formulates fixes & requests human approval
 │   │   ├── code_generator.py    # Generates Search/Replace blocks
@@ -256,7 +260,15 @@ codesentinel/
     │   ├── hooks/
     │   │   ├── usePipeline.js   # SSE connection management & auto-retry
     │   │   └── useApproval.js   # Async mutation hook for human intervention
-    │   ├── components/          # Reusable UI components (DiffViewer, PipelineView, etc.)
+    │   ├── components/          # Reusable UI components
+    │   │   ├── ApprovalModal.jsx   # Human-in-the-loop approval dialog
+    │   │   ├── ConfidenceScore.jsx # Pipeline confidence gauge
+    │   │   ├── DiffViewer.jsx      # Side-by-side patch diff renderer
+    │   │   ├── FindingsPanel.jsx   # SAST findings display panel
+    │   │   ├── PRSummary.jsx       # Pull Request summary card
+    │   │   ├── PipelineDashboard.jsx # Top-level dashboard layout
+    │   │   ├── PipelineView.jsx    # Real-time pipeline stage tracker
+    │   │   └── ThemeToggle.jsx     # Dark/light mode switch
     │   └── App.jsx              # Main UI Shell
     └── vite.config.js           # API proxy configuration
 ```

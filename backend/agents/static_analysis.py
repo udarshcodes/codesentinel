@@ -1507,8 +1507,6 @@ async def agent_static_analysis(state: PipelineState):
     deduped_findings = []
     seen = set()
     for f in findings:
-        if f.get("file", "").endswith(".css"):
-            continue
         key = f"{f['file']}:{f['line']}:{f['tool']}"
         if key not in seen:
             seen.add(key)
