@@ -16,7 +16,8 @@ export function usePipeline(taskId) {
         eventSourceRef.current.close();
       }
 
-      const es = new EventSource(`/api/stream?task_id=${encodeURIComponent(taskId)}`);
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const es = new EventSource(`${apiUrl}/api/stream?task_id=${encodeURIComponent(taskId)}`);
       eventSourceRef.current = es;
 
       dispatch({ type: 'AGENT_START' });
@@ -40,7 +41,7 @@ export function usePipeline(taskId) {
         }
       });
 
-      es.addEventListener('approval_resolved', (e) => {
+      es.addEventListener('approval_resolved', () => {
         try {
           dispatch({ type: 'APPROVAL_RESOLVED' });
         } catch (err) {

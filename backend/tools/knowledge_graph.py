@@ -225,7 +225,9 @@ def _parse_rust_imports(content: str) -> list[str]:
 def _parse_html_imports(content: str) -> list[str]:
     """Extract script src and stylesheet link href from HTML files."""
     imports = []
-    for m in re.finditer(r'<script[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE):
+    for m in re.finditer(
+        r'<script[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE
+    ):
         imports.append(m.group(1))
     for m in re.finditer(r'<link[^>]+href=["\']([^"\']+)["\']', content, re.IGNORECASE):
         imports.append(m.group(1))
@@ -235,7 +237,9 @@ def _parse_html_imports(content: str) -> list[str]:
 def _parse_css_imports(content: str) -> list[str]:
     """Extract @import url(...) or @import "..." from CSS files."""
     imports = []
-    for m in re.finditer(r'@import\s+(?:url\()?["\']?([^"\')\s]+)["\']?\)?', content, re.IGNORECASE):
+    for m in re.finditer(
+        r'@import\s+(?:url\()?["\']?([^"\')\s]+)["\']?\)?', content, re.IGNORECASE
+    ):
         imports.append(m.group(1))
     return imports
 
@@ -309,7 +313,9 @@ def _resolve_import(
     elif source_ext in (".html", ".css"):
         source_dir = os.path.dirname(source_file)
         clean_imp = import_str.lstrip("/")
-        resolved_rel = os.path.normpath(os.path.join(source_dir, import_str)).replace("\\", "/")
+        resolved_rel = os.path.normpath(os.path.join(source_dir, import_str)).replace(
+            "\\", "/"
+        )
         candidates.append(resolved_rel)
         candidates.append(clean_imp)
 
@@ -362,7 +368,18 @@ def build_knowledge_graph(repo_root: str) -> KnowledgeGraph:
         ]
         for fname in files:
             ext = os.path.splitext(fname)[1]
-            if ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rs", ".html", ".css"):
+            if ext in (
+                ".py",
+                ".js",
+                ".jsx",
+                ".ts",
+                ".tsx",
+                ".go",
+                ".java",
+                ".rs",
+                ".html",
+                ".css",
+            ):
                 abs_path = os.path.join(root, fname)
                 rel_path = os.path.relpath(abs_path, repo_root).replace("\\", "/")
                 all_files.add(rel_path)

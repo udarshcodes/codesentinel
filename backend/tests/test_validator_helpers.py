@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from agents.validator import _is_allowed_cmd
+from agents.validator import _is_allowed_cmd  # noqa: E402
 
 
 class TestValidatorHelpers(unittest.TestCase):

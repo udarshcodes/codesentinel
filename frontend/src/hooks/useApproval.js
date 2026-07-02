@@ -6,7 +6,8 @@ export function useApproval(taskId) {
 
   const submitDecision = async (decision) => {
     try {
-      const response = await fetch(`/api/approve/${encodeURIComponent(taskId)}`, {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${apiUrl}/api/approve/${encodeURIComponent(taskId)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

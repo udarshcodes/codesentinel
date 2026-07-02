@@ -48,7 +48,9 @@ def calculate_pipeline_confidence(
     else:
         patches_ratio = 1.0
 
-    chroma_ratio = min(chroma_score / 100.0 if chroma_score > 1.0 else chroma_score, 1.0)
+    chroma_ratio = min(
+        chroma_score / 100.0 if chroma_score > 1.0 else chroma_score, 1.0
+    )
 
     score = (
         (tests_ratio * 40.0)

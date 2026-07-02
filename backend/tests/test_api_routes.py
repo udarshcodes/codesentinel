@@ -33,7 +33,9 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("task_ids", data)
 
     def test_invalid_repo_url(self, mock_worker):
-        response = self.client.post("/api/v1/analyze", json={"repo_url": "not-a-valid-url"})
+        response = self.client.post(
+            "/api/v1/analyze", json={"repo_url": "not-a-valid-url"}
+        )
         self.assertEqual(response.status_code, 400)
 
     def test_backward_compat_route(self, mock_worker):
@@ -53,7 +55,9 @@ class TestApiRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_approve_invalid_decision(self, mock_worker):
-        response = self.client.post("/api/v1/approve/some-task", json={"decision": "maybe"})
+        response = self.client.post(
+            "/api/v1/approve/some-task", json={"decision": "maybe"}
+        )
         self.assertEqual(response.status_code, 400)
 
     def test_webhook_no_event_header(self, mock_worker):
@@ -107,11 +111,16 @@ class TestApiRoutes(unittest.TestCase):
                 {
                     "ref": "refs/heads/main",
                     "after": "abc123",
-                    "repository": {"html_url": "https://github.com/octocat/Hello-World"},
+                    "repository": {
+                        "html_url": "https://github.com/octocat/Hello-World"
+                    },
                 }
             ).encode()
 
-            sig = "sha256=" + hmac.HMAC(secret.encode(), payload, hashlib.sha256).hexdigest()
+            sig = (
+                "sha256="
+                + hmac.HMAC(secret.encode(), payload, hashlib.sha256).hexdigest()
+            )
 
             response = self.client.post(
                 "/api/v1/webhook/github",
@@ -147,7 +156,9 @@ class TestApiRoutes(unittest.TestCase):
             json={"repo_url": "https://github.com/nonexistentorg/*"},
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Could not find any active public repositories", response.json()["detail"])
+        self.assertIn(
+            "Could not find any active public repositories", response.json()["detail"]
+        )
 
 
 if __name__ == "__main__":

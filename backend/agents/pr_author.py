@@ -98,7 +98,7 @@ Return JSON: {{"title": "...", "description": "..."}}"""
 
             # 3. Commit and push
             title = pr_data.get("title", "Automated Security Fixes")
-            
+
             validation_results = state.get("validation_results", [])
             validation_failed = False
             if validation_results and not validation_results[-1].get("passed", True):
@@ -134,7 +134,10 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 desc = str(desc)
 
             if validation_failed:
-                desc = "### ⚠️ Automated Validation Failed\nThe unit tests or syntax verification did not pass after maximum retries. This PR is submitted for manual developer review and remediation.\n\n" + desc
+                desc = (
+                    "### ⚠️ Automated Validation Failed\nThe unit tests or syntax verification did not pass after maximum retries. This PR is submitted for manual developer review and remediation.\n\n"
+                    + desc
+                )
 
             if state.get("security_retry_context"):
                 unresolved = state.get("security_retry_context", [])

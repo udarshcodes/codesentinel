@@ -9,7 +9,7 @@ import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from tools.response_cache import LRUCache, _make_cache_key, get_cached, set_cached
+from tools.response_cache import LRUCache, _make_cache_key, get_cached, set_cached  # noqa: E402
 
 
 class TestLRUCache(unittest.TestCase):

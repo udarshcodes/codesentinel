@@ -224,11 +224,13 @@ class TestBuildKnowledgeGraph(unittest.TestCase):
     def test_build_from_html_css_repo(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with open(os.path.join(tmp_dir, "index.html"), "w") as f:
-                f.write('<html><head><link rel="stylesheet" href="style.css"></head><body><script src="app.js"></script></body></html>')
+                f.write(
+                    '<html><head><link rel="stylesheet" href="style.css"></head><body><script src="app.js"></script></body></html>'
+                )
             with open(os.path.join(tmp_dir, "style.css"), "w") as f:
                 f.write('@import url("reset.css");\nbody { color: red; }')
             with open(os.path.join(tmp_dir, "reset.css"), "w") as f:
-                f.write('body { margin: 0; }')
+                f.write("body { margin: 0; }")
             with open(os.path.join(tmp_dir, "app.js"), "w") as f:
                 f.write('console.log("hello");')
 

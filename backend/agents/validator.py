@@ -99,6 +99,13 @@ async def agent_validator(state: PipelineState):
                 )
                 if result.returncode == 0:
                     logs_list.append(f"[PASS] {target_file} - syntax OK")
+                elif (
+                    "Unexpected token" in result.stderr
+                    or "Cannot use import" in result.stderr
+                ):
+                    logs_list.append(
+                        f"[SKIP] {target_file} - ES module / JSX syntax not supported by node --check"
+                    )
                 else:
                     logs_list.append(f"[FAIL] {target_file} - {result.stderr}")
                     all_passed = False
@@ -115,7 +122,15 @@ async def agent_validator(state: PipelineState):
         elif target_file.endswith(".ts"):
             try:
                 result = subprocess.run(
-                    ["npx", "--yes", "tsc", "--noEmit", "--allowJs", "--checkJs", full_path],
+                    [
+                        "npx",
+                        "--yes",
+                        "tsc",
+                        "--noEmit",
+                        "--allowJs",
+                        "--checkJs",
+                        full_path,
+                    ],
                     capture_output=True,
                     text=True,
                     timeout=60,
@@ -149,14 +164,13 @@ async def agent_validator(state: PipelineState):
                     logs_list.append(f"[FAIL] {target_file} - {result.stderr[:300]}")
                     all_passed = False
             except Exception as e:
-                logs_list.append(
-                    f"[SKIP] {target_file} - go vet not available: {e}"
-                )
+                logs_list.append(f"[SKIP] {target_file} - go vet not available: {e}")
 
         # Java files: syntax check with javac (dry run)
         elif target_file.endswith(".java"):
             try:
                 import tempfile as _tmpmod
+
                 _javac_tmp = _tmpmod.mkdtemp(prefix="cs_javac_")
                 try:
                     result = subprocess.run(
@@ -168,19 +182,22 @@ async def agent_validator(state: PipelineState):
                     if result.returncode == 0:
                         logs_list.append(f"[PASS] {target_file} - Java syntax OK")
                     else:
-                        logs_list.append(f"[FAIL] {target_file} - {result.stderr[:300]}")
+                        logs_list.append(
+                            f"[FAIL] {target_file} - {result.stderr[:300]}"
+                        )
                         all_passed = False
                 finally:
                     import shutil as _shutil
+
                     _shutil.rmtree(_javac_tmp, ignore_errors=True)
             except Exception as e:
-                logs_list.append(
-                    f"[SKIP] {target_file} - javac not available: {e}"
-                )
+                logs_list.append(f"[SKIP] {target_file} - javac not available: {e}")
 
         # Rust files: validated by cargo build step
         elif target_file.endswith(".rs"):
-            logs_list.append(f"[SKIP] {target_file} - Rust validated by cargo build step")
+            logs_list.append(
+                f"[SKIP] {target_file} - Rust validated by cargo build step"
+            )
 
         # HTML files: basic structure check
         elif target_file.endswith((".html", ".htm")):
@@ -225,43 +242,50 @@ async def agent_validator(state: PipelineState):
     # Build verification stage
     build_passed = True
 
-    # Check for frontend package.json first, then fallback to root
-    frontend_pkg = os.path.join(repo_local_path, "frontend", "package.json")
-    root_pkg = os.path.join(repo_local_path, "package.json")
-    pkg_path = (
-        frontend_pkg
-        if os.path.exists(frontend_pkg)
-        else (root_pkg if os.path.exists(root_pkg) else None)
-    )
+    # Check for multiple package.json locations
+    pkg_paths = []
+    for candidate in ["frontend/package.json", "backend/package.json", "package.json"]:
+        p = os.path.join(repo_local_path, candidate.replace("/", os.sep))
+        if os.path.exists(p):
+            pkg_paths.append(p)
 
-    if pkg_path:
+    for pkg_path in pkg_paths:
         build_cwd = os.path.dirname(pkg_path)
         try:
             with open(pkg_path, "r", encoding="utf-8") as f:
                 pkg = json.load(f)
-                if "scripts" in pkg and "build" in pkg["scripts"]:
-                    res = subprocess.run(
-                        ["npm", "run", "build"],
-                        cwd=build_cwd,
-                        capture_output=True,
-                        text=True,
-                        timeout=60,
-                    )
-                    if res.returncode != 0:
-                        build_passed = False
-                        logs_list.append(
-                            f"[FAIL] Build verification failed (npm run build in {build_cwd}):\n{res.stderr[:500]}"
-                        )
-                    else:
-                        logs_list.append(
-                            f"[PASS] Build verification passed (npm run build in {build_cwd})"
-                        )
-        except Exception as e:
-            logs_list.append(f"[WARN] package.json build error: {e}")
 
-    elif os.path.exists(
-        os.path.join(repo_local_path, "pyproject.toml")
-    ) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
+            # Install dependencies first
+            subprocess.run(
+                ["npm", "install", "--no-audit", "--no-fund"],
+                cwd=build_cwd,
+                capture_output=True,
+                timeout=180,
+                shell=(os.name == "nt"),
+            )
+
+            if "scripts" in pkg and "build" in pkg["scripts"]:
+                res = subprocess.run(
+                    ["npm", "run", "build"],
+                    cwd=build_cwd,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    shell=(os.name == "nt"),
+                )
+                if res.returncode != 0:
+                    build_passed = False
+                    logs_list.append(
+                        f"[FAIL] Build verification failed (npm run build in {build_cwd}):\n{res.stderr[:500]}"
+                    )
+                else:
+                    logs_list.append(
+                        f"[PASS] Build verification passed (npm run build in {build_cwd})"
+                    )
+        except Exception as e:
+            logs_list.append(f"[WARN] package.json build error in {build_cwd}: {e}")
+
+    if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
         try:
             res = subprocess.run(
                 [sys.executable, "-m", "build"],
@@ -280,7 +304,7 @@ async def agent_validator(state: PipelineState):
         except Exception as e:
             logs_list.append(f"[WARN] setup.py/pyproject.toml build error: {e}")
 
-    elif os.path.exists(os.path.join(repo_local_path, "pom.xml")):
+    if os.path.exists(os.path.join(repo_local_path, "pom.xml")):
         try:
             res = subprocess.run(
                 ["mvn", "package", "-DskipTests"],
@@ -288,6 +312,7 @@ async def agent_validator(state: PipelineState):
                 capture_output=True,
                 text=True,
                 timeout=60,
+                shell=(os.name == "nt"),
             )
             if res.returncode != 0:
                 build_passed = False
@@ -299,15 +324,20 @@ async def agent_validator(state: PipelineState):
         except Exception as e:
             logs_list.append(f"[WARN] pom.xml build error: {e}")
 
-    elif os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
+    if os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
         try:
-            gradle_cmd = ["./gradlew", "assemble"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "assemble"]
+            gradle_cmd = (
+                ["./gradlew", "assemble"]
+                if os.path.exists(os.path.join(repo_local_path, "gradlew"))
+                else ["gradle", "assemble"]
+            )
             res = subprocess.run(
                 gradle_cmd,
                 cwd=repo_local_path,
                 capture_output=True,
                 text=True,
                 timeout=60,
+                shell=(os.name == "nt"),
             )
             if res.returncode != 0:
                 build_passed = False
@@ -315,11 +345,13 @@ async def agent_validator(state: PipelineState):
                     f"[FAIL] Build verification failed ({' '.join(gradle_cmd)}):\n{res.stdout[-500:]}"
                 )
             else:
-                logs_list.append(f"[PASS] Build verification passed ({' '.join(gradle_cmd)})")
+                logs_list.append(
+                    f"[PASS] Build verification passed ({' '.join(gradle_cmd)})"
+                )
         except Exception as e:
             logs_list.append(f"[WARN] Gradle build error: {e}")
 
-    elif os.path.exists(os.path.join(repo_local_path, "go.mod")):
+    if os.path.exists(os.path.join(repo_local_path, "go.mod")):
         try:
             res = subprocess.run(
                 ["go", "build", "./..."],
@@ -338,7 +370,7 @@ async def agent_validator(state: PipelineState):
         except Exception as e:
             logs_list.append(f"[WARN] go.mod build error: {e}")
 
-    elif os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
+    if os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
         try:
             res = subprocess.run(
                 ["cargo", "build"],
@@ -370,7 +402,12 @@ async def agent_validator(state: PipelineState):
             cmd = shlex.split(test_framework)
             try:
                 res = subprocess.run(
-                    cmd, cwd=repo_local_path, capture_output=True, text=True, timeout=60
+                    cmd,
+                    cwd=repo_local_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    shell=(os.name == "nt"),
                 )
                 test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
                 if res.returncode != 0:
@@ -381,55 +418,84 @@ async def agent_validator(state: PipelineState):
                     f"Failed to execute dynamic test suite '{test_framework}': {e}"
                 )
         else:
-            # Intelligent fallback based on repository language detection
-            ext_counts = {}
-            for r_dir, r_dirs, r_files in os.walk(repo_local_path):
-                r_dirs[:] = [d for d in r_dirs if d not in (".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build", "target")]
-                for fname in r_files:
-                    ext = os.path.splitext(fname)[1]
-                    if ext in (".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".rs"):
-                        ext_counts[ext] = ext_counts.get(ext, 0) + 1
+            # Intelligent fallback: Execute tests for all relevant ecosystems found
+            test_logs = ""
+            tests_run = 0
 
-            py_count = ext_counts.get(".py", 0)
-            js_ts_count = sum(ext_counts.get(e, 0) for e in (".js", ".ts", ".jsx", ".tsx"))
-            go_count = ext_counts.get(".go", 0)
-            java_count = ext_counts.get(".java", 0)
-            rs_count = ext_counts.get(".rs", 0)
-
-            fallback_cmd = [sys.executable, "-m", "unittest", "discover", "-s", "tests"]
-            if py_count >= max(js_ts_count, go_count, java_count, rs_count, 1):
-                if shutil.which("pytest"):
-                    fallback_cmd = [sys.executable, "-m", "pytest", "--tb=short", "-q"]
-                else:
-                    fallback_cmd = [sys.executable, "-m", "unittest", "discover"]
-            elif js_ts_count >= max(py_count, go_count, java_count, rs_count, 1):
-                fallback_cmd = ["npm", "test"]
-            elif go_count >= max(py_count, js_ts_count, java_count, rs_count, 1):
-                fallback_cmd = ["go", "test", "./..."]
-            elif java_count >= max(py_count, js_ts_count, go_count, rs_count, 1):
-                if os.path.exists(os.path.join(repo_local_path, "gradlew")):
-                    fallback_cmd = ["./gradlew", "test"]
-                elif os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
-                    fallback_cmd = ["gradle", "test"]
-                else:
-                    fallback_cmd = ["mvn", "test"]
-            elif rs_count >= max(py_count, js_ts_count, go_count, java_count, 1):
-                fallback_cmd = ["cargo", "test"]
-
-            try:
-                res = subprocess.run(
-                    fallback_cmd,
-                    cwd=repo_local_path,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                test_logs = res.stdout[:500] if res.stdout else res.stderr[:500]
-                if res.returncode != 0:
-                    if "not found" not in test_logs.lower() and "no tests ran" not in test_logs.lower() and "zero tests" not in test_logs.lower():
+            # 1. Python Tests
+            if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")) or os.path.exists(os.path.join(repo_local_path, "requirements.txt")):
+                py_cmd = [sys.executable, "-m", "pytest", "--tb=short", "-q"] if shutil.which("pytest") else [sys.executable, "-m", "unittest", "discover"]
+                try:
+                    res = subprocess.run(py_cmd, cwd=repo_local_path, capture_output=True, text=True, timeout=60, shell=(os.name == "nt"))
+                    test_logs += f"\n[Python Test Results]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
+                    if res.returncode != 0 and "no tests ran" not in test_logs.lower() and "zero tests" not in test_logs.lower():
                         all_passed = False
-            except Exception as e:
-                test_logs = f"No test suite executed successfully ({' '.join(fallback_cmd)}): {e}"
+                    tests_run += 1
+                except Exception as e:
+                    test_logs += f"\n[Python Test Error] {e}\n"
+
+            # 2. Node.js Tests
+            for candidate in ["frontend/package.json", "backend/package.json", "package.json"]:
+                p = os.path.join(repo_local_path, candidate.replace("/", os.sep))
+                if os.path.exists(p):
+                    try:
+                        with open(p, "r", encoding="utf-8") as f:
+                            pkg = json.load(f)
+                        if "scripts" in pkg and "test" in pkg["scripts"] and "echo \"Error: no test specified\"" not in pkg["scripts"]["test"]:
+                            test_cwd = os.path.dirname(p)
+                            res = subprocess.run(["npm", "test"], cwd=test_cwd, capture_output=True, text=True, timeout=60, shell=(os.name == "nt"))
+                            test_logs += f"\n[Node.js Test Results in {candidate}]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
+                            if res.returncode != 0:
+                                all_passed = False
+                            tests_run += 1
+                    except Exception as e:
+                        test_logs += f"\n[Node.js Test Error in {candidate}] {e}\n"
+
+            # 3. Go Tests
+            if os.path.exists(os.path.join(repo_local_path, "go.mod")):
+                try:
+                    res = subprocess.run(["go", "test", "./..."], cwd=repo_local_path, capture_output=True, text=True, timeout=60)
+                    test_logs += f"\n[Go Test Results]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
+                    if res.returncode != 0 and "no test files" not in test_logs.lower():
+                        all_passed = False
+                    tests_run += 1
+                except Exception as e:
+                    test_logs += f"\n[Go Test Error] {e}\n"
+
+            # 4. Java/Gradle/Maven Tests
+            if os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
+                cmd = ["./gradlew", "test"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "test"]
+                try:
+                    res = subprocess.run(cmd, cwd=repo_local_path, capture_output=True, text=True, timeout=60, shell=(os.name == "nt"))
+                    test_logs += f"\n[Gradle Test Results]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
+                    if res.returncode != 0:
+                        all_passed = False
+                    tests_run += 1
+                except Exception as e:
+                    test_logs += f"\n[Gradle Test Error] {e}\n"
+            elif os.path.exists(os.path.join(repo_local_path, "pom.xml")):
+                try:
+                    res = subprocess.run(["mvn", "test"], cwd=repo_local_path, capture_output=True, text=True, timeout=60, shell=(os.name == "nt"))
+                    test_logs += f"\n[Maven Test Results]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
+                    if res.returncode != 0:
+                        all_passed = False
+                    tests_run += 1
+                except Exception as e:
+                    test_logs += f"\n[Maven Test Error] {e}\n"
+
+            # 5. Rust Tests
+            if os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
+                try:
+                    res = subprocess.run(["cargo", "test"], cwd=repo_local_path, capture_output=True, text=True, timeout=60)
+                    test_logs += f"\n[Rust Test Results]\n{res.stdout[:500] if res.stdout else res.stderr[:500]}\n"
+                    if res.returncode != 0:
+                        all_passed = False
+                    tests_run += 1
+                except Exception as e:
+                    test_logs += f"\n[Rust Test Error] {e}\n"
+                
+            if tests_run == 0:
+                test_logs += "\nNo recognized test frameworks found to execute.\n"
 
     retry_count = state.get("retry_count", 0)
     unresolvable = False

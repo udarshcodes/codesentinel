@@ -10,14 +10,14 @@ def strip_markdown(text: str, target_file: str) -> str:
     if target_file.endswith(".md"):
         return text.strip("\n")
 
-    lines = text.split("\n")
+    lines = text.splitlines()
     cleaned = [line for line in lines if not re.match(r"^\s*```.*$", line)]
     return "\n".join(cleaned).strip("\n")
 
 
 def strip_conversational_comments(text: str) -> str:
     """Removes common LLM conversational phrasing masquerading as comments."""
-    lines = text.split("\n")
+    lines = text.splitlines()
     cleaned = [
         line
         for line in lines
@@ -42,8 +42,11 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
         return {"success": False, "stderr": f"File not found: {target_file}"}
 
     try:
-        with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(full_path, "r", encoding="utf-8", errors="ignore", newline="") as f:
             content = f.read()
+            original_newlines = f.newlines
+
+        content = content.replace("\r\n", "\n")
 
         # Create backup before patching
         backup_path = full_path + ".bak"
@@ -169,7 +172,13 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
                     "stderr": f"SyntaxError after patch application: {e}",
                 }
 
-        with open(full_path, "w", encoding="utf-8") as f:
+        write_newline = "\n"
+        if isinstance(original_newlines, tuple):
+            write_newline = original_newlines[0]
+        elif isinstance(original_newlines, str):
+            write_newline = original_newlines
+
+        with open(full_path, "w", encoding="utf-8", newline=write_newline) as f:
             f.write(content)
 
         if os.path.exists(backup_path):

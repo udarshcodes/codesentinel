@@ -94,12 +94,14 @@ async def agent_repo_mapper(state: PipelineState):
         ):
             continue
 
-        rel_root = os.path.relpath(root, temp_dir)
+        rel_root = os.path.relpath(root, temp_dir).replace("\\", "/")
         if rel_root != ".":
             file_tree.append(rel_root + "/")
 
         for file in files:
-            rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
+            rel_path = os.path.relpath(os.path.join(root, file), temp_dir).replace(
+                "\\", "/"
+            )
             if (
                 tracked_files is not None
                 and rel_path.replace("\\", "/") not in tracked_files
@@ -109,13 +111,32 @@ async def agent_repo_mapper(state: PipelineState):
             ext = os.path.splitext(file)[1]
             if ext:
                 extensions[ext] = extensions.get(ext, 0) + 1
-            if file in ["requirements.txt", "package.json", "pom.xml", "build.gradle", "build.gradle.kts", "go.mod", "Cargo.toml"]:
+            if file in [
+                "requirements.txt",
+                "package.json",
+                "pom.xml",
+                "build.gradle",
+                "build.gradle.kts",
+                "go.mod",
+                "Cargo.toml",
+            ]:
                 dep_files.append(rel_path)
 
             file_tree.append("  " + file)
 
             # Extract content for API and DB mapping if it's a source file
-            if ext in [".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".rs", ".html", ".css"]:
+            if ext in [
+                ".py",
+                ".js",
+                ".ts",
+                ".jsx",
+                ".tsx",
+                ".go",
+                ".java",
+                ".rs",
+                ".html",
+                ".css",
+            ]:
                 try:
                     with open(os.path.join(root, file), "r", encoding="utf-8") as f:
                         content = f.read(5000)  # Read up to 5000 chars to save context

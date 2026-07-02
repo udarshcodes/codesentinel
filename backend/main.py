@@ -103,7 +103,9 @@ def token_usage(x_admin_token: str = Header(None)):
 
 # Mount the admin dashboard (StaticFiles with html=True handles index.html automatically)
 try:
-    admin_dist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "admin_dashboard", "dist")
+    admin_dist_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "admin_dashboard", "dist"
+    )
     if not os.path.exists(admin_dist_path) and os.path.exists("admin_dashboard/dist"):
         admin_dist_path = "admin_dashboard/dist"
 

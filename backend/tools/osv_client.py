@@ -46,7 +46,9 @@ async def fetch_vuln_details(vuln_ids: list[str]) -> dict:
     async def fetch_one(client, vid):
         async with sem:
             try:
-                r = await client.get(f"https://api.osv.dev/v1/vulns/{vid}", timeout=10.0)
+                r = await client.get(
+                    f"https://api.osv.dev/v1/vulns/{vid}", timeout=10.0
+                )
                 if r.status_code == 200:
                     return vid, r.json()
             except Exception as e:

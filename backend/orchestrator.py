@@ -52,9 +52,9 @@ class OrchestratorAgent:
         if latest.get("unresolvable") or retry_count >= 3:
             print(
                 f"[Orchestrator] Validation FAILED after {retry_count} retries — "
-                f"marking as unresolvable and proceeding to PR author."
+                f"marking as unresolvable and proceeding to security verification."
             )
-            return "pr_author"
+            return "security_verifier"
 
         # Check if there are any applied patches worth retrying
         applied_patches = [p for p in patches if p.get("applied")]
@@ -138,7 +138,11 @@ workflow.add_edge("code_generator", "validator")
 workflow.add_conditional_edges(
     "validator",
     orchestrator.route_after_validator,
-    {"security_verifier": "security_verifier", "code_generator": "code_generator", "pr_author": "pr_author"},
+    {
+        "security_verifier": "security_verifier",
+        "code_generator": "code_generator",
+        "pr_author": "pr_author",
+    },
 )
 
 workflow.add_conditional_edges(

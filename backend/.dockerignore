@@ -13,3 +13,5 @@ venv/
 .venv/
 tests/
 *.md
+self_scan.py
+self_scan_results.json

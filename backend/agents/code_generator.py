@@ -62,14 +62,15 @@ async def agent_code_generator(state: PipelineState):
     # Extract failed issue IDs from validation/security results
     failed_issue_ids = set()
     if validation_results and not validation_results[-1].get("passed"):
-        failed_issue_ids.update(
-            validation_results[-1].get("failed_issue_ids", [])
-        )
+        failed_issue_ids.update(validation_results[-1].get("failed_issue_ids", []))
     if security_retry_context:
         for sec in security_retry_context:
             sec_file = sec.get("file", sec.get("path", ""))
             for i in investigated_issues:
-                if sec_file and any(f == sec_file or f.endswith(sec_file) for f in i.get("affected_files", [])):
+                if sec_file and any(
+                    f == sec_file or f.endswith(sec_file)
+                    for f in i.get("affected_files", [])
+                ):
                     failed_issue_ids.add(i.get("id"))
 
     # We always retry if it's the first time or if the issue explicitly failed or was never patched
@@ -82,7 +83,9 @@ async def agent_code_generator(state: PipelineState):
         )
         if retry_count > 0 and existing_patch and existing_patch.get("applied"):
             # It was applied. Did it fail validation or security?
-            if issue_id not in failed_issue_ids and not touched_symbols.get(issue_id, {}).get("last_failure_reason"):
+            if issue_id not in failed_issue_ids and not touched_symbols.get(
+                issue_id, {}
+            ).get("last_failure_reason"):
                 print(f"[CodeGenerator] Skipping already patched issue {issue_id}")
                 new_patches.append(existing_patch)
                 continue
@@ -158,7 +161,7 @@ Current file content:
 
             # Clean up any markdown wrappers the LLM may have added
             if fixed_content.startswith("```"):
-                lines = fixed_content.split("\n")
+                lines = fixed_content.splitlines()
                 fixed_content = "\n".join(lines[1:])
             if fixed_content.endswith("```"):
                 fixed_content = fixed_content[:-3].rstrip()

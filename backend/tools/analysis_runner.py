@@ -1,3 +1,4 @@
+import os
 import subprocess
 import json
 
@@ -13,6 +14,7 @@ def run_semgrep_on_files(files: list[str], cwd: str = None) -> list:
             capture_output=True,
             text=True,
             timeout=60,
+            shell=(os.name == "nt"),
         )
         data = json.loads(result.stdout or "{}")
         return data.get("results", [])
@@ -33,6 +35,7 @@ def run_bandit_on_files(files: list[str], cwd: str = None) -> list:
             capture_output=True,
             text=True,
             timeout=30,
+            shell=(os.name == "nt"),
         )
         data = json.loads(result.stdout or "{}")
         return data.get("results", [])

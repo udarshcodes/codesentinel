@@ -24,6 +24,7 @@ async def agent_static_analysis(state: PipelineState):
                 capture_output=True,
                 text=True,
                 timeout=120,
+                shell=(os.name == "nt"),
             )
             if result.stdout:
                 data = json.loads(result.stdout)
@@ -56,6 +57,7 @@ async def agent_static_analysis(state: PipelineState):
                 capture_output=True,
                 text=True,
                 timeout=120,
+                shell=(os.name == "nt"),
             )
             if result.stdout:
                 data = json.loads(result.stdout)
@@ -63,7 +65,9 @@ async def agent_static_analysis(state: PipelineState):
                     file_path = hit.get("filename", "")
                     if os.path.isabs(file_path):
                         try:
-                            file_path = os.path.relpath(file_path, repo_local_path)
+                            file_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                         except ValueError:
                             pass
                     if file_path.startswith("./") or file_path.startswith(".\\"):
@@ -94,6 +98,7 @@ async def agent_static_analysis(state: PipelineState):
             capture_output=True,
             text=True,
             timeout=120,
+            shell=(os.name == "nt"),
         )
         if result.stdout:
             try:
@@ -106,7 +111,9 @@ async def agent_static_analysis(state: PipelineState):
                     file_path = file_result.get("filePath", "")
                     if os.path.isabs(file_path):
                         try:
-                            file_path = os.path.relpath(file_path, repo_local_path)
+                            file_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                         except ValueError:
                             pass
                     if file_path.startswith("./") or file_path.startswith(".\\"):
@@ -147,6 +154,7 @@ async def agent_static_analysis(state: PipelineState):
                 capture_output=True,
                 text=True,
                 timeout=120,
+                shell=(os.name == "nt"),
             )
             if result.stdout:
                 try:
@@ -184,6 +192,7 @@ async def agent_static_analysis(state: PipelineState):
                 capture_output=True,
                 text=True,
                 timeout=120,
+                shell=(os.name == "nt"),
             )
             if result.stdout:
                 for line in result.stdout.splitlines():
@@ -214,6 +223,7 @@ async def agent_static_analysis(state: PipelineState):
                 capture_output=True,
                 text=True,
                 timeout=300,
+                shell=(os.name == "nt"),
             )
             # Attempt to parse the SonarQube issues report if available
             issues_report = os.path.join(
@@ -254,32 +264,35 @@ async def agent_static_analysis(state: PipelineState):
     else:
         print("[StaticAnalysis] sonar-scanner not found in PATH, skipping.")
 
-    # 6b. Go Vet (Go static analysis)
+    # 6b. Go Vet
     go_path = shutil.which("go")
     if go_path:
-        has_go_files = any(
-            f.endswith(".go")
-            for _, _, files in os.walk(repo_local_path)
-            for f in files
-        )
-        if has_go_files:
+        gomod_paths = []
+        for root_dir, dirs, files in os.walk(repo_local_path):
+            if "node_modules" in dirs:
+                dirs.remove("node_modules")
+            if "go.mod" in files:
+                gomod_paths.append(root_dir)
+        
+        for gmdir in gomod_paths:
             try:
                 result = subprocess.run(
                     [go_path, "vet", "./..."],
-                    cwd=repo_local_path,
+                    cwd=gmdir,
                     capture_output=True,
                     text=True,
                     timeout=120,
+                    shell=(os.name == "nt"),
                 )
-                # go vet outputs to stderr
                 if result.stderr:
                     for line in result.stderr.splitlines():
-                        # Format: file.go:line:col: message
                         parts = line.split(":", 3)
                         if len(parts) >= 4 and parts[0].endswith(".go"):
+                            # parts[0] is relative to gmdir
+                            rel_file = os.path.relpath(os.path.join(gmdir, parts[0]), repo_local_path).replace("\\", "/")
                             findings.append(
                                 {
-                                    "file": parts[0],
+                                    "file": rel_file,
                                     "issue": parts[3].strip(),
                                     "tool": "go_vet",
                                     "severity": "MEDIUM",
@@ -288,43 +301,67 @@ async def agent_static_analysis(state: PipelineState):
                                 }
                             )
             except Exception as e:
-                print(f"go vet execution skipped or failed: {e}")
+                print(f"go vet execution skipped or failed in {gmdir}: {e}")
     else:
         print("[StaticAnalysis] go not found in PATH, skipping go vet.")
 
     # 6c. Cargo Clippy (Rust static analysis)
     cargo_path = shutil.which("cargo")
-    if cargo_path and os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
-        try:
-            result = subprocess.run(
-                [cargo_path, "clippy", "--message-format=json", "--", "-W", "clippy::all"],
-                cwd=repo_local_path,
-                capture_output=True,
-                text=True,
-                timeout=180,
-            )
-            if result.stdout:
-                for json_line in result.stdout.splitlines():
-                    try:
-                        msg = json.loads(json_line)
-                        if msg.get("reason") == "compiler-message":
-                            cm = msg.get("message", {})
-                            spans = cm.get("spans", [])
-                            primary = next((s for s in spans if s.get("is_primary")), spans[0] if spans else {})
-                            findings.append(
-                                {
-                                    "file": primary.get("file_name", ""),
-                                    "issue": cm.get("message", "Clippy warning"),
-                                    "tool": "cargo_clippy",
-                                    "severity": "MEDIUM" if cm.get("level") == "warning" else "HIGH",
-                                    "line": primary.get("line_start", 1),
-                                    "category": "quality",
-                                }
-                            )
-                    except json.JSONDecodeError:
-                        pass
-        except Exception as e:
-            print(f"cargo clippy execution skipped or failed: {e}")
+    if cargo_path:
+        cargo_paths = []
+        for root_dir, dirs, files in os.walk(repo_local_path):
+            if "node_modules" in dirs:
+                dirs.remove("node_modules")
+            if "Cargo.toml" in files:
+                cargo_paths.append(root_dir)
+                
+        for cdir in cargo_paths:
+            try:
+                result = subprocess.run(
+                    [
+                        cargo_path,
+                        "clippy",
+                        "--message-format=json",
+                        "--",
+                        "-W",
+                        "clippy::all",
+                    ],
+                    cwd=cdir,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    shell=(os.name == "nt"),
+                )
+                if result.stdout:
+                    for json_line in result.stdout.splitlines():
+                        try:
+                            msg = json.loads(json_line)
+                            if msg.get("reason") == "compiler-message":
+                                cm = msg.get("message", {})
+                                spans = cm.get("spans", [])
+                                primary = next(
+                                    (s for s in spans if s.get("is_primary")),
+                                    spans[0] if spans else {},
+                                )
+                                rel_file = os.path.relpath(os.path.join(cdir, primary.get("file_name", "")), repo_local_path).replace("\\", "/")
+                                findings.append(
+                                    {
+                                        "file": rel_file,
+                                        "issue": cm.get("message", "Clippy warning"),
+                                        "tool": "cargo_clippy",
+                                        "severity": (
+                                            "MEDIUM"
+                                            if cm.get("level") == "warning"
+                                            else "HIGH"
+                                        ),
+                                        "line": primary.get("line_start", 1),
+                                        "category": "quality",
+                                    }
+                                )
+                        except json.JSONDecodeError:
+                            pass
+            except Exception as e:
+                print(f"Cargo clippy skipped or failed in {cdir}: {e}")
     else:
         if not cargo_path:
             print("[StaticAnalysis] cargo not found in PATH, skipping clippy.")
@@ -395,7 +432,7 @@ async def agent_static_analysis(state: PipelineState):
                                     ):
                                         rel_path = os.path.relpath(
                                             file_path, repo_local_path
-                                        )
+                                        ).replace("\\", "/")
                                         findings.append(
                                             {
                                                 "file": rel_path,
@@ -444,7 +481,9 @@ async def agent_static_analysis(state: PipelineState):
                                 in_loop = False
 
                         if in_loop and db_query_pattern.search(line):
-                            rel_path = os.path.relpath(file_path, repo_local_path)
+                            rel_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                             findings.append(
                                 {
                                     "file": rel_path,
@@ -485,7 +524,7 @@ async def agent_static_analysis(state: PipelineState):
                                     if not is_in_with:
                                         rel_path = os.path.relpath(
                                             file_path, repo_local_path
-                                        )
+                                        ).replace("\\", "/")
                                         findings.append(
                                             {
                                                 "file": rel_path,
@@ -523,7 +562,7 @@ async def agent_static_analysis(state: PipelineState):
                                 if add_call in line:
                                     rel_path = os.path.relpath(
                                         file_path, repo_local_path
-                                    )
+                                    ).replace("\\", "/")
                                     findings.append(
                                         {
                                             "file": rel_path,
@@ -535,6 +574,43 @@ async def agent_static_analysis(state: PipelineState):
                                         }
                                     )
                                     break  # One finding per pair per file
+                except Exception:
+                    pass
+
+    # 10b. ReDoS (Regular Expression Denial of Service) Detection
+    _REDOS_PATTERNS = [
+        re.compile(r"\([^)]*\+\)\+"),
+        re.compile(r"\([^)]*\*\)\*"),
+        re.compile(r"\([^)]*\+\)\*"),
+        re.compile(r"\([^)]*\*\)\+"),
+    ]
+    for root, _, files in os.walk(repo_local_path):
+        if any(
+            skip in root
+            for skip in [".git", "node_modules", "dist", "build", "venv", "__pycache__"]
+        ):
+            continue
+        for file in files:
+            if file.endswith((".js", ".ts", ".jsx", ".tsx", ".py")):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    for i, line in enumerate(lines):
+                        if any(pat.search(line) for pat in _REDOS_PATTERNS):
+                            rel_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
+                            findings.append(
+                                {
+                                    "file": rel_path,
+                                    "issue": "Potential ReDoS (Regular Expression Denial of Service) vulnerability: Nested quantifiers found in regex.",
+                                    "tool": "redos_checker",
+                                    "severity": "HIGH",
+                                    "line": i + 1,
+                                    "category": "security",
+                                }
+                            )
                 except Exception:
                     pass
 
@@ -594,7 +670,9 @@ async def agent_static_analysis(state: PipelineState):
                                 line.strip() for line in body_lines if line.strip()
                             )
                             h = hashlib.md5(normalized.encode()).hexdigest()
-                            rel_path = os.path.relpath(file_path, repo_local_path)
+                            rel_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                             if h not in function_hashes:
                                 function_hashes[h] = []
                             function_hashes[h].append(
@@ -626,10 +704,10 @@ async def agent_static_analysis(state: PipelineState):
     for h, locations in function_hashes.items():
         if len(locations) >= 2:
             for loc in locations:
-                other_locs = [l for l in locations if l != loc]
+                other_locs = [loc_item for loc_item in locations if loc_item != loc]
                 if not other_locs:
                     continue
-                files_str = ", ".join(f"{l[0]}:{l[1]}(L{l[2]})" for l in other_locs)
+                files_str = ", ".join(f"{loc_item[0]}:{loc_item[1]}(L{loc_item[2]})" for loc_item in other_locs)
                 findings.append(
                     {
                         "file": loc[0],
@@ -656,16 +734,22 @@ async def agent_static_analysis(state: PipelineState):
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read()
-                    rel_path = os.path.relpath(file_path, repo_local_path)
+                    rel_path = os.path.relpath(file_path, repo_local_path).replace(
+                        "\\", "/"
+                    )
                     has_try_with = "try (" in content or "try(" in content
                     for match in _JAVA_CLOSEABLE_PATTERN.finditer(content):
-                        match_line = content[:match.start()].count("\n") + 1
+                        match_line = content[: match.start()].count("\n") + 1
                         all_lines = content.splitlines()
-                        line_content = all_lines[match_line - 1] if match_line <= len(all_lines) else ""
+                        line_content = (
+                            all_lines[match_line - 1]
+                            if match_line <= len(all_lines)
+                            else ""
+                        )
                         if has_try_with and "try" in line_content:
                             continue
-                        lines_after = all_lines[match_line:match_line + 50]
-                        if not any("close()" in l for l in lines_after):
+                        lines_after = all_lines[match_line : match_line + 50]
+                        if not any("close()" in line for line in lines_after):
                             resource_type = match.group(1)
                             findings.append(
                                 {
@@ -681,9 +765,15 @@ async def agent_static_analysis(state: PipelineState):
                     pass
 
     # 14. Go/Rust/Java N+1 and Performance Detection
-    _GO_QUERY_PATTERN = re.compile(r"\.(Query|QueryRow|Exec|Find|First|Where|Select)\s*\(")
-    _RUST_QUERY_PATTERN = re.compile(r"\.(load|execute|filter|find|get_result|select)\s*\(")
-    _JAVA_QUERY_PATTERN = re.compile(r"\.(executeQuery|executeUpdate|createQuery|createNativeQuery|find|persist|merge|getResultList|getSingleResult)\s*\(")
+    _GO_QUERY_PATTERN = re.compile(
+        r"\.(Query|QueryRow|Exec|Find|First|Where|Select)\s*\("
+    )
+    _RUST_QUERY_PATTERN = re.compile(
+        r"\.(load|execute|filter|find|get_result|select)\s*\("
+    )
+    _JAVA_QUERY_PATTERN = re.compile(
+        r"\.(executeQuery|executeUpdate|createQuery|createNativeQuery|find|persist|merge|getResultList|getSingleResult)\s*\("
+    )
     _GO_LOOP_PATTERN = re.compile(r"^\s*for\s+")
     _JAVA_LOOP_PATTERN = re.compile(r"^\s*(?:for|while)\s*\(")
     for root, _, files in os.walk(repo_local_path):
@@ -706,7 +796,9 @@ async def agent_static_analysis(state: PipelineState):
                             if brace_count <= 0 and "}" in line:
                                 in_loop = False
                         if in_loop and _GO_QUERY_PATTERN.search(line):
-                            rel_path = os.path.relpath(file_path, repo_local_path)
+                            rel_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                             findings.append(
                                 {
                                     "file": rel_path,
@@ -727,7 +819,9 @@ async def agent_static_analysis(state: PipelineState):
                     in_loop = False
                     brace_count = 0
                     for i, line in enumerate(lines):
-                        if not in_loop and ("for " in line or "while " in line or "loop {" in line):
+                        if not in_loop and (
+                            "for " in line or "while " in line or "loop {" in line
+                        ):
                             in_loop = True
                             brace_count = line.count("{") - line.count("}")
                         elif in_loop:
@@ -735,7 +829,9 @@ async def agent_static_analysis(state: PipelineState):
                             if brace_count <= 0 and "}" in line:
                                 in_loop = False
                         if in_loop and _RUST_QUERY_PATTERN.search(line):
-                            rel_path = os.path.relpath(file_path, repo_local_path)
+                            rel_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                             findings.append(
                                 {
                                     "file": rel_path,
@@ -764,7 +860,9 @@ async def agent_static_analysis(state: PipelineState):
                             if brace_count <= 0 and "}" in line:
                                 in_loop = False
                         if in_loop and _JAVA_QUERY_PATTERN.search(line):
-                            rel_path = os.path.relpath(file_path, repo_local_path)
+                            rel_path = os.path.relpath(
+                                file_path, repo_local_path
+                            ).replace("\\", "/")
                             findings.append(
                                 {
                                     "file": rel_path,
@@ -779,9 +877,19 @@ async def agent_static_analysis(state: PipelineState):
                     pass
 
     # 15. HTML/CSS Quality Checks
-    _DEPRECATED_TAGS = ["<center", "<font", "<marquee", "<blink", "<big", "<strike", "<tt"]
+    _DEPRECATED_TAGS = [
+        "<center",
+        "<font",
+        "<marquee",
+        "<blink",
+        "<big",
+        "<strike",
+        "<tt",
+    ]
     for root, _, files in os.walk(repo_local_path):
-        if any(skip in root for skip in [".git", "node_modules", "dist", "build", "venv"]):
+        if any(
+            skip in root for skip in [".git", "node_modules", "dist", "build", "venv"]
+        ):
             continue
         for file in files:
             if file.endswith(".html"):
@@ -789,7 +897,9 @@ async def agent_static_analysis(state: PipelineState):
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read()
-                    rel_path = os.path.relpath(file_path, repo_local_path)
+                    rel_path = os.path.relpath(file_path, repo_local_path).replace(
+                        "\\", "/"
+                    )
                     for i, line in enumerate(content.splitlines()):
                         if 'style="' in line or "style='" in line:
                             findings.append(
@@ -825,7 +935,9 @@ async def agent_static_analysis(state: PipelineState):
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read()
-                    rel_path = os.path.relpath(file_path, repo_local_path)
+                    rel_path = os.path.relpath(file_path, repo_local_path).replace(
+                        "\\", "/"
+                    )
                     important_count = content.count("!important")
                     if important_count > 5:
                         findings.append(
@@ -838,8 +950,12 @@ async def agent_static_analysis(state: PipelineState):
                                 "category": "quality",
                             }
                         )
-                    selector_pattern = re.compile(r"^([^{/\n@][^{]*?)\s*\{", re.MULTILINE)
-                    selectors = [m.group(1).strip() for m in selector_pattern.finditer(content)]
+                    selector_pattern = re.compile(
+                        r"^([^{/\n@][^{]*?)\s*\{", re.MULTILINE
+                    )
+                    selectors = [
+                        m.group(1).strip() for m in selector_pattern.finditer(content)
+                    ]
                     seen_selectors = {}
                     for sel in selectors:
                         if sel in seen_selectors:
@@ -861,11 +977,40 @@ async def agent_static_analysis(state: PipelineState):
     # ── 16. Dead Code Detection (unused functions / classes / files) ──────
     all_repo_sources: dict[str, str] = {}
     for root_dir, dirs, fnames in os.walk(repo_local_path):
-        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build", ".next", "target", "vendor")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d
+            not in (
+                ".git",
+                "node_modules",
+                "venv",
+                ".venv",
+                "__pycache__",
+                "dist",
+                "build",
+                ".next",
+                "target",
+                "vendor",
+            )
+        ]
         for fname in fnames:
-            if fname.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rs", ".html", ".css")):
+            if fname.endswith(
+                (
+                    ".py",
+                    ".js",
+                    ".jsx",
+                    ".ts",
+                    ".tsx",
+                    ".go",
+                    ".java",
+                    ".rs",
+                    ".html",
+                    ".css",
+                )
+            ):
                 fpath = os.path.join(root_dir, fname)
-                rel_path = os.path.relpath(fpath, repo_local_path)
+                rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
                 try:
                     with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
                         all_repo_sources[rel_path] = fh.read()
@@ -886,18 +1031,23 @@ async def agent_static_analysis(state: PipelineState):
 
                 for func_name, lineno in defined_funcs.items():
                     ref_count = sum(
-                        1 for node in ast.walk(tree)
-                        if isinstance(node, ast.Name) and node.id == func_name and node.lineno != lineno
+                        1
+                        for node in ast.walk(tree)
+                        if isinstance(node, ast.Name)
+                        and node.id == func_name
+                        and node.lineno != lineno
                     )
                     if ref_count == 0:
-                        findings.append({
-                            "file": rel_path,
-                            "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
-                            "tool": "dead_code_detector",
-                            "severity": "LOW",
-                            "line": lineno,
-                            "category": "quality",
-                        })
+                        findings.append(
+                            {
+                                "file": rel_path,
+                                "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
+                                "tool": "dead_code_detector",
+                                "severity": "LOW",
+                                "line": lineno,
+                                "category": "quality",
+                            }
+                        )
             except Exception:
                 pass
 
@@ -905,7 +1055,9 @@ async def agent_static_analysis(state: PipelineState):
             try:
                 lines = source.splitlines()
                 _js_func_def = re.compile(r"^\s*(?:async\s+)?function\s+(\w+)")
-                _js_const_def = re.compile(r"^\s*(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>")
+                _js_const_def = re.compile(
+                    r"^\s*(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|[a-zA-Z_]\w*)\s*=>"
+                )
                 defined_funcs = {}
                 for i, line in enumerate(lines):
                     if line.strip().startswith("export"):
@@ -916,18 +1068,22 @@ async def agent_static_analysis(state: PipelineState):
 
                 for func_name, lineno in defined_funcs.items():
                     ref_count = sum(
-                        1 for i, line in enumerate(lines, 1)
-                        if i != lineno and re.search(r"\b" + re.escape(func_name) + r"\b", line)
+                        1
+                        for i, line in enumerate(lines, 1)
+                        if i != lineno
+                        and re.search(r"\b" + re.escape(func_name) + r"\b", line)
                     )
                     if ref_count == 0:
-                        findings.append({
-                            "file": rel_path,
-                            "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
-                            "tool": "dead_code_detector",
-                            "severity": "LOW",
-                            "line": lineno,
-                            "category": "quality",
-                        })
+                        findings.append(
+                            {
+                                "file": rel_path,
+                                "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
+                                "tool": "dead_code_detector",
+                                "severity": "LOW",
+                                "line": lineno,
+                                "category": "quality",
+                            }
+                        )
             except Exception:
                 pass
 
@@ -942,25 +1098,31 @@ async def agent_static_analysis(state: PipelineState):
                         defined_funcs[m.group(1)] = i + 1
                 for func_name, lineno in defined_funcs.items():
                     ref_count = sum(
-                        1 for i, line in enumerate(lines, 1)
-                        if i != lineno and re.search(r"\b" + re.escape(func_name) + r"\b", line)
+                        1
+                        for i, line in enumerate(lines, 1)
+                        if i != lineno
+                        and re.search(r"\b" + re.escape(func_name) + r"\b", line)
                     )
                     if ref_count == 0:
-                        findings.append({
-                            "file": rel_path,
-                            "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
-                            "tool": "dead_code_detector",
-                            "severity": "LOW",
-                            "line": lineno,
-                            "category": "quality",
-                        })
+                        findings.append(
+                            {
+                                "file": rel_path,
+                                "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
+                                "tool": "dead_code_detector",
+                                "severity": "LOW",
+                                "line": lineno,
+                                "category": "quality",
+                            }
+                        )
             except Exception:
                 pass
 
         elif fname.endswith(".java"):
             try:
                 lines = source.splitlines()
-                _java_func = re.compile(r"^\s*private\s+(?:static\s+)?(?:final\s+)?[\w<>\[\]]+\s+(\w+)\s*\(")
+                _java_func = re.compile(
+                    r"^\s*private\s+(?:static\s+)?(?:final\s+)?[\w<>\[\]]+\s+(\w+)\s*\("
+                )
                 defined_funcs = {}
                 for i, line in enumerate(lines):
                     m = _java_func.match(line)
@@ -968,18 +1130,22 @@ async def agent_static_analysis(state: PipelineState):
                         defined_funcs[m.group(1)] = i + 1
                 for func_name, lineno in defined_funcs.items():
                     ref_count = sum(
-                        1 for i, line in enumerate(lines, 1)
-                        if i != lineno and re.search(r"\b" + re.escape(func_name) + r"\b", line)
+                        1
+                        for i, line in enumerate(lines, 1)
+                        if i != lineno
+                        and re.search(r"\b" + re.escape(func_name) + r"\b", line)
                     )
                     if ref_count == 0:
-                        findings.append({
-                            "file": rel_path,
-                            "issue": f"Method '{func_name}' appears to be unused (dead code). Consider removing it.",
-                            "tool": "dead_code_detector",
-                            "severity": "LOW",
-                            "line": lineno,
-                            "category": "quality",
-                        })
+                        findings.append(
+                            {
+                                "file": rel_path,
+                                "issue": f"Method '{func_name}' appears to be unused (dead code). Consider removing it.",
+                                "tool": "dead_code_detector",
+                                "severity": "LOW",
+                                "line": lineno,
+                                "category": "quality",
+                            }
+                        )
             except Exception:
                 pass
 
@@ -994,18 +1160,22 @@ async def agent_static_analysis(state: PipelineState):
                         defined_funcs[m.group(1)] = i + 1
                 for func_name, lineno in defined_funcs.items():
                     ref_count = sum(
-                        1 for i, line in enumerate(lines, 1)
-                        if i != lineno and re.search(r"\b" + re.escape(func_name) + r"\b", line)
+                        1
+                        for i, line in enumerate(lines, 1)
+                        if i != lineno
+                        and re.search(r"\b" + re.escape(func_name) + r"\b", line)
                     )
                     if ref_count == 0:
-                        findings.append({
-                            "file": rel_path,
-                            "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
-                            "tool": "dead_code_detector",
-                            "severity": "LOW",
-                            "line": lineno,
-                            "category": "quality",
-                        })
+                        findings.append(
+                            {
+                                "file": rel_path,
+                                "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
+                                "tool": "dead_code_detector",
+                                "severity": "LOW",
+                                "line": lineno,
+                                "category": "quality",
+                            }
+                        )
             except Exception:
                 pass
 
@@ -1013,7 +1183,9 @@ async def agent_static_analysis(state: PipelineState):
     used_css_classes: set[str] = set()
     for rel_path, source in all_repo_sources.items():
         if rel_path.endswith((".html", ".jsx", ".tsx", ".js")):
-            for m in re.finditer(r'class(?:Name)?=["\']([^"\']+)["\']', source, re.IGNORECASE):
+            for m in re.finditer(
+                r'class(?:Name)?=["\']([^"\']+)["\']', source, re.IGNORECASE
+            ):
                 for cls in m.group(1).split():
                     used_css_classes.add(cls)
 
@@ -1021,23 +1193,38 @@ async def agent_static_analysis(state: PipelineState):
         if rel_path.endswith(".css"):
             lines = source.splitlines()
             for i, line in enumerate(lines, 1):
-                for m in re.finditer(r'\.([a-zA-Z0-9_-]+)\s*\{', line):
+                for m in re.finditer(r"\.([a-zA-Z0-9_-]+)\s*\{", line):
                     cls_name = m.group(1)
-                    if cls_name not in used_css_classes and not cls_name.startswith((":", "root")):
-                        findings.append({
-                            "file": rel_path,
-                            "issue": f"CSS class '.{cls_name}' appears to be unused (dead code). Consider removing it.",
-                            "tool": "dead_code_detector",
-                            "severity": "LOW",
-                            "line": i,
-                            "category": "quality",
-                        })
+                    if cls_name not in used_css_classes and not cls_name.startswith(
+                        (":", "root")
+                    ):
+                        findings.append(
+                            {
+                                "file": rel_path,
+                                "issue": f"CSS class '.{cls_name}' appears to be unused (dead code). Consider removing it.",
+                                "tool": "dead_code_detector",
+                                "severity": "LOW",
+                                "line": i,
+                                "category": "quality",
+                            }
+                        )
 
     # Whole-Repository Dead File Detection
     entrypoint_names = {
-        "main.py", "app.py", "index.js", "index.ts", "index.html",
-        "main.go", "main.java", "lib.rs", "mod.rs", "__init__.py",
-        "routes.py", "server.py", "manage.py", "setup.py",
+        "main.py",
+        "app.py",
+        "index.js",
+        "index.ts",
+        "index.html",
+        "main.go",
+        "main.java",
+        "lib.rs",
+        "mod.rs",
+        "__init__.py",
+        "routes.py",
+        "server.py",
+        "manage.py",
+        "setup.py",
     }
     if len(all_repo_sources) > 1:
         for rel_path, source in all_repo_sources.items():
@@ -1045,7 +1232,9 @@ async def agent_static_analysis(state: PipelineState):
             if (
                 fname.lower() in entrypoint_names
                 or fname.startswith("test_")
-                or fname.endswith(("_test.go", ".test.js", ".test.ts", "Test.java", "_test.py"))
+                or fname.endswith(
+                    ("_test.go", ".test.js", ".test.ts", "Test.java", "_test.py")
+                )
                 or "tests/" in rel_path.replace("\\", "/")
                 or "test/" in rel_path.replace("\\", "/")
             ):
@@ -1059,28 +1248,43 @@ async def agent_static_analysis(state: PipelineState):
                     is_referenced = True
                     break
             if not is_referenced:
-                findings.append({
-                    "file": rel_path,
-                    "issue": f"File '{rel_path}' appears to be unreferenced across the repository (dead file). Consider removing it.",
-                    "tool": "dead_file_checker",
-                    "severity": "LOW",
-                    "line": 1,
-                    "category": "quality",
-                })
+                findings.append(
+                    {
+                        "file": rel_path,
+                        "issue": f"File '{rel_path}' appears to be unreferenced across the repository (dead file). Consider removing it.",
+                        "tool": "dead_file_checker",
+                        "severity": "LOW",
+                        "line": 1,
+                        "category": "quality",
+                    }
+                )
 
     # ── 16b. Go Resource Leak Detection ───────────────────────────────────
     _GO_OPEN_PATTERNS = [
-        (re.compile(r"(\w+)\s*(?:,\s*\w+)?\s*(?::=|=)\s*os\.(?:Open|Create|OpenFile)\s*\("), "os.Open/Create"),
-        (re.compile(r"(\w+)\s*(?:,\s*\w+)?\s*(?::=|=)\s*net\.(?:Dial|Listen)\s*\("), "net.Dial/Listen"),
-        (re.compile(r"(\w+)\s*(?:,\s*\w+)?\s*(?::=|=)\s*http\.(?:Get|Post|Do)\s*\("), "http.Get/Post"),
+        (
+            re.compile(
+                r"(\w+)\s*(?:,\s*\w+)?\s*(?::=|=)\s*os\.(?:Open|Create|OpenFile)\s*\("
+            ),
+            "os.Open/Create",
+        ),
+        (
+            re.compile(r"(\w+)\s*(?:,\s*\w+)?\s*(?::=|=)\s*net\.(?:Dial|Listen)\s*\("),
+            "net.Dial/Listen",
+        ),
+        (
+            re.compile(r"(\w+)\s*(?:,\s*\w+)?\s*(?::=|=)\s*http\.(?:Get|Post|Do)\s*\("),
+            "http.Get/Post",
+        ),
     ]
     for root_dir, dirs, fnames in os.walk(repo_local_path):
-        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "vendor", "target")]
+        dirs[:] = [
+            d for d in dirs if d not in (".git", "node_modules", "vendor", "target")
+        ]
         for fname in fnames:
             if not fname.endswith(".go"):
                 continue
             fpath = os.path.join(root_dir, fname)
-            rel_path = os.path.relpath(fpath, repo_local_path)
+            rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
             try:
                 with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
                     content = fh.read()
@@ -1092,15 +1296,20 @@ async def agent_static_analysis(state: PipelineState):
                             var_name = m.group(1)
                             # Check if a defer <var>.Close() exists in the next 5 lines
                             lookahead = "\n".join(lines[i + 1 : i + 6])
-                            if f"defer {var_name}.Close()" not in lookahead and f"defer {var_name}.Body.Close()" not in lookahead:
-                                findings.append({
-                                    "file": rel_path,
-                                    "issue": f"Potential resource leak (Go): {desc} result '{var_name}' opened without a subsequent 'defer {var_name}.Close()'.",
-                                    "tool": "go_leak_detector",
-                                    "severity": "MEDIUM",
-                                    "line": i + 1,
-                                    "category": "performance",
-                                })
+                            if (
+                                f"defer {var_name}.Close()" not in lookahead
+                                and f"defer {var_name}.Body.Close()" not in lookahead
+                            ):
+                                findings.append(
+                                    {
+                                        "file": rel_path,
+                                        "issue": f"Potential resource leak (Go): {desc} result '{var_name}' opened without a subsequent 'defer {var_name}.Close()'.",
+                                        "tool": "go_leak_detector",
+                                        "severity": "MEDIUM",
+                                        "line": i + 1,
+                                        "category": "performance",
+                                    }
+                                )
                             break
             except Exception:
                 pass
@@ -1108,10 +1317,25 @@ async def agent_static_analysis(state: PipelineState):
     # ── 17. Long Methods Detection ────────────────────────────────────────
     LONG_METHOD_THRESHOLD = 50  # lines
     for root_dir, dirs, fnames in os.walk(repo_local_path):
-        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build", ".next", "target")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d
+            not in (
+                ".git",
+                "node_modules",
+                "venv",
+                ".venv",
+                "__pycache__",
+                "dist",
+                "build",
+                ".next",
+                "target",
+            )
+        ]
         for fname in fnames:
             fpath = os.path.join(root_dir, fname)
-            rel_path = os.path.relpath(fpath, repo_local_path)
+            rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
             ext = os.path.splitext(fname)[1]
 
             if ext == ".py":
@@ -1124,14 +1348,16 @@ async def agent_static_analysis(state: PipelineState):
                             if hasattr(node, "end_lineno") and node.end_lineno:
                                 length = node.end_lineno - node.lineno + 1
                                 if length > LONG_METHOD_THRESHOLD:
-                                    findings.append({
-                                        "file": rel_path,
-                                        "issue": f"Function '{node.name}' is {length} lines long (>{LONG_METHOD_THRESHOLD}). Consider refactoring.",
-                                        "tool": "long_method_detector",
-                                        "severity": "LOW",
-                                        "line": node.lineno,
-                                        "category": "quality",
-                                    })
+                                    findings.append(
+                                        {
+                                            "file": rel_path,
+                                            "issue": f"Function '{node.name}' is {length} lines long (>{LONG_METHOD_THRESHOLD}). Consider refactoring.",
+                                            "tool": "long_method_detector",
+                                            "severity": "LOW",
+                                            "line": node.lineno,
+                                            "category": "quality",
+                                        }
+                                    )
                 except (SyntaxError, Exception):
                     pass
 
@@ -1143,13 +1369,21 @@ async def agent_static_analysis(state: PipelineState):
 
                     func_pattern = None
                     if ext in (".js", ".jsx", ".ts", ".tsx"):
-                        func_pattern = re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)")
+                        func_pattern = re.compile(
+                            r"^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)"
+                        )
                     elif ext == ".java":
-                        func_pattern = re.compile(r"^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[\w<>\[\]]+\s+(\w+)\s*\(")
+                        func_pattern = re.compile(
+                            r"^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?[\w<>\[\]]+\s+(\w+)\s*\("
+                        )
                     elif ext == ".go":
-                        func_pattern = re.compile(r"^\s*func\s+(?:\([^)]*\)\s*)?(\w+)\s*\(")
+                        func_pattern = re.compile(
+                            r"^\s*func\s+(?:\([^)]*\)\s*)?(\w+)\s*\("
+                        )
                     elif ext == ".rs":
-                        func_pattern = re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)")
+                        func_pattern = re.compile(
+                            r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)"
+                        )
 
                     if func_pattern:
                         i = 0
@@ -1160,18 +1394,22 @@ async def agent_static_analysis(state: PipelineState):
                                 start = i
                                 brace_depth = 0
                                 for j in range(i, len(lines)):
-                                    brace_depth += lines[j].count("{") - lines[j].count("}")
+                                    brace_depth += lines[j].count("{") - lines[j].count(
+                                        "}"
+                                    )
                                     if brace_depth <= 0 and j > i:
                                         length = j - start + 1
                                         if length > LONG_METHOD_THRESHOLD:
-                                            findings.append({
-                                                "file": rel_path,
-                                                "issue": f"Function '{func_name}' is {length} lines long (>{LONG_METHOD_THRESHOLD}). Consider refactoring.",
-                                                "tool": "long_method_detector",
-                                                "severity": "LOW",
-                                                "line": start + 1,
-                                                "category": "quality",
-                                            })
+                                            findings.append(
+                                                {
+                                                    "file": rel_path,
+                                                    "issue": f"Function '{func_name}' is {length} lines long (>{LONG_METHOD_THRESHOLD}). Consider refactoring.",
+                                                    "tool": "long_method_detector",
+                                                    "severity": "LOW",
+                                                    "line": start + 1,
+                                                    "category": "quality",
+                                                }
+                                            )
                                         i = j + 1
                                         break
                                 else:
@@ -1183,17 +1421,57 @@ async def agent_static_analysis(state: PipelineState):
 
     # ── 18. Built-in Hardcoded Secrets Scanner ────────────────────────────
     _SECRET_PATTERNS = [
-        (re.compile(r"""(?:password|passwd|pwd)\s*[:=]\s*['"][^'"]{4,}['"]""", re.IGNORECASE), "Hardcoded password"),
-        (re.compile(r"""(?:secret|token|api_key|apikey|api[-_]?secret)\s*[:=]\s*['"][^'"]{8,}['"]""", re.IGNORECASE), "Hardcoded secret/token"),
+        (
+            re.compile(
+                r"""(?:password|passwd|pwd)\s*[:=]\s*['"][^'"]{4,}['"]""", re.IGNORECASE
+            ),
+            "Hardcoded password",
+        ),
+        (
+            re.compile(
+                r"""(?:secret|token|api_key|apikey|api[-_]?secret)\s*[:=]\s*['"][^'"]{8,}['"]""",
+                re.IGNORECASE,
+            ),
+            "Hardcoded secret/token",
+        ),
         (re.compile(r"""AKIA[0-9A-Z]{16}"""), "AWS Access Key ID"),
-        (re.compile(r"""-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"""), "Private key in source"),
+        (
+            re.compile(r"""-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"""),
+            "Private key in source",
+        ),
         (re.compile(r"""ghp_[A-Za-z0-9]{36}"""), "GitHub personal access token"),
         (re.compile(r"""gsk_[A-Za-z0-9]{20,}"""), "Groq API key"),
         (re.compile(r"""sk-[A-Za-z0-9]{20,}"""), "OpenAI-style API key"),
         (re.compile(r"""xox[bprs]-[A-Za-z0-9\-]{10,}"""), "Slack token"),
     ]
-    _SECRET_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".yml", ".yaml", ".json", ".env", ".cfg", ".ini", ".toml"}
-    _SECRET_SKIP_DIRS = {".git", "node_modules", "venv", ".venv", "__pycache__", "dist", "build", ".next", "target"}
+    _SECRET_EXTENSIONS = {
+        ".py",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".java",
+        ".go",
+        ".rs",
+        ".yml",
+        ".yaml",
+        ".json",
+        ".env",
+        ".cfg",
+        ".ini",
+        ".toml",
+    }
+    _SECRET_SKIP_DIRS = {
+        ".git",
+        "node_modules",
+        "venv",
+        ".venv",
+        "__pycache__",
+        "dist",
+        "build",
+        ".next",
+        "target",
+    }
 
     for root_dir, dirs, fnames in os.walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in _SECRET_SKIP_DIRS]
@@ -1205,20 +1483,22 @@ async def agent_static_analysis(state: PipelineState):
             if fname in (".env.example", ".env.sample", ".env.template"):
                 continue
             fpath = os.path.join(root_dir, fname)
-            rel_path = os.path.relpath(fpath, repo_local_path)
+            rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
             try:
                 with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
                     for lineno, line in enumerate(fh, 1):
                         for pattern, description in _SECRET_PATTERNS:
                             if pattern.search(line):
-                                findings.append({
-                                    "file": rel_path,
-                                    "issue": f"{description} detected on line {lineno}. Avoid hardcoding credentials in source code.",
-                                    "tool": "secrets_scanner",
-                                    "severity": "HIGH",
-                                    "line": lineno,
-                                    "category": "security",
-                                })
+                                findings.append(
+                                    {
+                                        "file": rel_path,
+                                        "issue": f"{description} detected on line {lineno}. Avoid hardcoding credentials in source code.",
+                                        "tool": "secrets_scanner",
+                                        "severity": "HIGH",
+                                        "line": lineno,
+                                        "category": "security",
+                                    }
+                                )
                                 break  # One finding per line is enough
             except Exception:
                 pass
@@ -1272,7 +1552,9 @@ def _extract_and_hash_js_functions(
                             line.strip() for line in body_lines if line.strip()
                         )
                         h = hashlib.md5(normalized.encode()).hexdigest()
-                        rel_path = os.path.relpath(file_path, repo_local_path)
+                        rel_path = os.path.relpath(file_path, repo_local_path).replace(
+                            "\\", "/"
+                        )
                         if h not in function_hashes:
                             function_hashes[h] = []
                         function_hashes[h].append((rel_path, name, start + 1))
@@ -1323,7 +1605,9 @@ def _extract_and_hash_brace_functions(
                             line.strip() for line in body_lines if line.strip()
                         )
                         h = hashlib.md5(normalized.encode()).hexdigest()
-                        rel_path = os.path.relpath(file_path, repo_local_path)
+                        rel_path = os.path.relpath(file_path, repo_local_path).replace(
+                            "\\", "/"
+                        )
                         if h not in function_hashes:
                             function_hashes[h] = []
                         function_hashes[h].append((rel_path, name, start + 1))

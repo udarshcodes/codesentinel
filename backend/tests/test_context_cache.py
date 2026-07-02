@@ -40,8 +40,12 @@ class TestContextCache(unittest.TestCase):
     def test_different_repos_isolated(self):
         context_cache.store("https://github.com/foo/bar", "key1", "value1")
         context_cache.store("https://github.com/baz/qux", "key1", "value2")
-        self.assertEqual(context_cache.get("https://github.com/foo/bar", "key1"), "value1")
-        self.assertEqual(context_cache.get("https://github.com/baz/qux", "key1"), "value2")
+        self.assertEqual(
+            context_cache.get("https://github.com/foo/bar", "key1"), "value1"
+        )
+        self.assertEqual(
+            context_cache.get("https://github.com/baz/qux", "key1"), "value2"
+        )
 
 
 class TestLocalizedGraph(unittest.TestCase):

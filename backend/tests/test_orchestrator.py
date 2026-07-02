@@ -57,7 +57,7 @@ class TestRouteAfterValidator(unittest.TestCase):
             "retry_count": 3,
         }
         result = route_after_validator(state)
-        self.assertEqual(result, "pr_author")
+        self.assertEqual(result, "security_verifier")
 
     def test_empty_validation_results(self):
         state = {

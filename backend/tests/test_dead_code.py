@@ -4,7 +4,6 @@ Tests for dead code and dead file detection in static_analysis.py.
 
 import asyncio
 import os
-import shutil
 import sys
 import tempfile
 import unittest
@@ -23,9 +22,7 @@ class TestDeadCodeDetection(unittest.TestCase):
 
             # Java file with unused private method
             with open(os.path.join(tmp_dir, "Service.java"), "w") as f:
-                f.write(
-                    "public class Service {\n    private void deadMethod() {}\n}\n"
-                )
+                f.write("public class Service {\n    private void deadMethod() {}\n}\n")
 
             # Rust file with unused function
             with open(os.path.join(tmp_dir, "lib.rs"), "w") as f:

@@ -61,9 +61,7 @@ def get_localized_graph(repo_url: str, target_file: str) -> dict:
     # Return a minimal subset: language, framework, and only modules
     # relevant to the target file.
     modules = kg.get("modules") or []
-    relevant_modules = [
-        m for m in modules if m and _is_related(str(m), target_file)
-    ]
+    relevant_modules = [m for m in modules if m and _is_related(str(m), target_file)]
 
     # Include API endpoints and DB interactions relevant to this file
     api_endpoints = kg.get("api_endpoints") or []

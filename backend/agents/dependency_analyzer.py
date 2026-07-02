@@ -12,15 +12,30 @@ async def agent_dependency_analyzer(state: PipelineState):
     if not repo_local_path:
         return {"dependency_findings": findings}
 
-    req_path = os.path.join(repo_local_path, "requirements.txt")
-    pkg_path = os.path.join(repo_local_path, "package.json")
-    pom_path = os.path.join(repo_local_path, "pom.xml")
-    gradle_path = os.path.join(repo_local_path, "build.gradle")
-    gradle_kts_path = os.path.join(repo_local_path, "build.gradle.kts")
-
     dependencies = []
 
-    if os.path.exists(req_path):
+    req_paths = []
+    pkg_paths = []
+    pom_paths = []
+    gradle_paths = []
+    gradle_kts_paths = []
+    gomod_paths = []
+    cargo_paths = []
+
+    for root_dir, dirs, fnames in os.walk(repo_local_path):
+        dirs[:] = [
+            d for d in dirs
+            if d not in (".git", "node_modules", "dist", "build", "venv", ".venv", "__pycache__", "target")
+        ]
+        if "requirements.txt" in fnames: req_paths.append(os.path.join(root_dir, "requirements.txt"))
+        if "package.json" in fnames: pkg_paths.append(os.path.join(root_dir, "package.json"))
+        if "pom.xml" in fnames: pom_paths.append(os.path.join(root_dir, "pom.xml"))
+        if "build.gradle" in fnames: gradle_paths.append(os.path.join(root_dir, "build.gradle"))
+        if "build.gradle.kts" in fnames: gradle_kts_paths.append(os.path.join(root_dir, "build.gradle.kts"))
+        if "go.mod" in fnames: gomod_paths.append(os.path.join(root_dir, "go.mod"))
+        if "Cargo.toml" in fnames: cargo_paths.append(os.path.join(root_dir, "Cargo.toml"))
+
+    for req_path in req_paths:
         with open(req_path, "r") as f:
             for line in f:
                 line = line.strip()
@@ -43,7 +58,7 @@ async def agent_dependency_analyzer(state: PipelineState):
                         f"[DependencyAnalyzer] Skipping malformed line: {line!r} ({e})"
                     )
 
-    if os.path.exists(pkg_path):
+    for pkg_path in pkg_paths:
         with open(pkg_path, "r") as f:
             try:
                 data = json.load(f)
@@ -57,7 +72,7 @@ async def agent_dependency_analyzer(state: PipelineState):
             except Exception as e:
                 print(f"[DependencyAnalyzer] Failed to parse package.json: {e}")
 
-    if os.path.exists(pom_path):
+    for pom_path in pom_paths:
         import xml.etree.ElementTree as ET
 
         try:
@@ -87,25 +102,28 @@ async def agent_dependency_analyzer(state: PipelineState):
         except Exception as e:
             print(f"[DependencyAnalyzer] Failed to parse pom.xml: {e}")
 
-    for gpath in (gradle_path, gradle_kts_path):
-        if os.path.exists(gpath):
-            try:
-                with open(gpath, "r", encoding="utf-8") as f:
-                    gcontent = f.read()
-                for match in re.finditer(r"""(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*(?:\(\s*)?["']([^:"']+):([^:"']+):([^:"']+)["']""", gcontent):
-                    grp, art, ver = match.groups()
-                    if not ver.startswith("$"):
-                        dependencies.append({
+    for gpath in gradle_paths + gradle_kts_paths:
+        try:
+            with open(gpath, "r", encoding="utf-8") as f:
+                gcontent = f.read()
+            for match in re.finditer(
+                r"""(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*(?:\(\s*)?["']([^:"']+):([^:"']+):([^:"']+)["']""",
+                gcontent,
+            ):
+                grp, art, ver = match.groups()
+                if not ver.startswith("$"):
+                    dependencies.append(
+                        {
                             "name": f"{grp}:{art}",
                             "version": ver,
                             "ecosystem": "Maven",
-                        })
-            except Exception as e:
-                print(f"[DependencyAnalyzer] Failed to parse Gradle file: {e}")
+                        }
+                    )
+        except Exception as e:
+            print(f"[DependencyAnalyzer] Failed to parse Gradle file: {e}")
 
     # Parse go.mod for Go dependencies
-    gomod_path = os.path.join(repo_local_path, "go.mod")
-    if os.path.exists(gomod_path):
+    for gomod_path in gomod_paths:
         try:
             with open(gomod_path, "r") as f:
                 in_require_block = False
@@ -143,14 +161,17 @@ async def agent_dependency_analyzer(state: PipelineState):
             print(f"[DependencyAnalyzer] Failed to parse go.mod: {e}")
 
     # Parse Cargo.toml for Rust dependencies
-    cargo_path = os.path.join(repo_local_path, "Cargo.toml")
-    if os.path.exists(cargo_path):
+    for cargo_path in cargo_paths:
         try:
             with open(cargo_path, "r") as f:
                 in_deps = False
                 for line in f:
                     line = line.strip()
-                    if line in ("[dependencies]", "[dev-dependencies]", "[build-dependencies]"):
+                    if line in (
+                        "[dependencies]",
+                        "[dev-dependencies]",
+                        "[build-dependencies]",
+                    ):
                         in_deps = True
                         continue
                     if line.startswith("[") and in_deps:
@@ -162,7 +183,9 @@ async def agent_dependency_analyzer(state: PipelineState):
                         ver_raw = parts[1].strip().strip('"').strip("'")
                         # Handle inline table: { version = "1.0", features = [...] }
                         if ver_raw.startswith("{"):
-                            ver_match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', ver_raw)
+                            ver_match = re.search(
+                                r'version\s*=\s*["\']([^"\']+)["\']', ver_raw
+                            )
                             ver = ver_match.group(1) if ver_match else "latest"
                         else:
                             ver = ver_raw.lstrip("^~>=")
@@ -175,21 +198,30 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     # Parse HTML files for CDN libraries (e.g. unpkg.com, cdn.jsdelivr.net)
     for root_dir, dirs, fnames in os.walk(repo_local_path):
-        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "dist", "build", "venv")]
+        dirs[:] = [
+            d
+            for d in dirs
+            if d not in (".git", "node_modules", "dist", "build", "venv")
+        ]
         for fname in fnames:
             if fname.endswith(".html"):
                 fpath = os.path.join(root_dir, fname)
-                rel_path = os.path.relpath(fpath, repo_local_path)
+                rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
                 try:
                     with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
-                    for m in re.finditer(r'https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/([a-zA-Z0-9_-]+)@([0-9.]+)', content):
-                        dependencies.append({
-                            "name": m.group(1),
-                            "version": m.group(2),
-                            "ecosystem": "npm",
-                            "file": rel_path
-                        })
+                    for m in re.finditer(
+                        r"https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/([a-zA-Z0-9_-]+)@([0-9.]+)",
+                        content,
+                    ):
+                        dependencies.append(
+                            {
+                                "name": m.group(1),
+                                "version": m.group(2),
+                                "ecosystem": "npm",
+                                "file": rel_path,
+                            }
+                        )
                 except Exception:
                     pass
 
@@ -250,8 +282,9 @@ async def agent_dependency_analyzer(state: PipelineState):
                             return latest
                 elif dep["ecosystem"] == "crates.io":
                     res = await client.get(
-                        f"https://crates.io/api/v1/crates/{dep['name']}", timeout=5,
-                        headers={"User-Agent": "CodeSentinel/1.0"}
+                        f"https://crates.io/api/v1/crates/{dep['name']}",
+                        timeout=5,
+                        headers={"User-Agent": "CodeSentinel/1.0"},
                     )
                     if res.status_code == 200:
                         latest = res.json().get("crate", {}).get("max_version")
@@ -361,7 +394,9 @@ async def agent_dependency_analyzer(state: PipelineState):
                 }
             )
 
-    cycles = state.get("dependency_graph", {}).get("cycles", []) or state.get("knowledge_graph", {}).get("dependency_graph_summary", {}).get("cycles", [])
+    cycles = state.get("dependency_graph", {}).get("cycles", []) or state.get(
+        "knowledge_graph", {}
+    ).get("dependency_graph_summary", {}).get("cycles", [])
     for cycle in cycles:
         cycle_str = " -> ".join(cycle)
         findings.append(

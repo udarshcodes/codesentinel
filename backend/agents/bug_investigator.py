@@ -50,7 +50,9 @@ async def agent_bug_investigator(state: PipelineState):
             try:
                 with open(file_path, "r", errors="ignore") as f:
                     content = f.read()
-                rel_path = os.path.relpath(file_path, repo_local_path)
+                rel_path = os.path.relpath(file_path, repo_local_path).replace(
+                    "\\", "/"
+                )
 
                 prompt = f"""{BUG_INVESTIGATOR_SYSTEM}
 
@@ -106,7 +108,9 @@ If no bugs, return: {{"found": false}}"""
         if file_content and line_num:
             from tools.context_pruner import extract_function_context
 
-            pruned_content = extract_function_context(file_content, [line_num], file_path)
+            pruned_content = extract_function_context(
+                file_content, [line_num], file_path
+            )
         else:
             pruned_content = file_content[:3000]
 

@@ -15,7 +15,8 @@ function App() {
     setErrorMsg(null)
     setIsSubmitting(true)
     try {
-      const res = await fetch('/api/analyze', {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_url: repoUrlInput })

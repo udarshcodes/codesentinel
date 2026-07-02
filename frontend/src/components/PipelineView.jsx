@@ -47,6 +47,25 @@ export default function PipelineView({ events }) {
     currentAgent = AGENT_ORDER.find(a => !completedAgents.has(a))
   }
 
+  // Determine implicitly skipped agents (e.g. if a later agent is active/completed, earlier uncompleted ones were skipped)
+  const skippedAgents = new Set()
+  let furthestIndex = -1
+  if (currentAgent) {
+    furthestIndex = AGENT_ORDER.indexOf(currentAgent)
+  }
+  completedAgents.forEach(agent => {
+    const idx = AGENT_ORDER.indexOf(agent)
+    if (idx > furthestIndex) {
+      furthestIndex = idx
+    }
+  })
+
+  AGENT_ORDER.forEach((agent, index) => {
+    if (index < furthestIndex && !completedAgents.has(agent)) {
+      skippedAgents.add(agent)
+    }
+  })
+
   return (
     <div className="glass-panel p-6 sm:p-8 w-full max-w-6xl mx-auto mb-8 !rounded-[2.5rem]">
       <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
@@ -63,6 +82,7 @@ export default function PipelineView({ events }) {
         <div className="space-y-6">
           {AGENT_ORDER.map((agentKey, index) => {
             const isCompleted = completedAgents.has(agentKey)
+            const isSkipped = skippedAgents.has(agentKey)
             const isActive = currentAgent === agentKey && !isError
             
             let statusColor = 'bg-slate-100 border-slate-300 text-slate-400' // Pending
@@ -71,6 +91,8 @@ export default function PipelineView({ events }) {
             
             if (isCompleted) {
               statusColor = 'bg-green-100 border-green-300 text-green-600'
+            } else if (isSkipped) {
+              statusColor = 'bg-slate-200 border-slate-300 text-slate-500 opacity-60'
             } else if (isActive) {
               statusColor = 'bg-blue-100 border-blue-500 text-blue-600'
               glowEffect = 'shadow-[0_0_15px_rgba(59,130,246,0.3)]'
@@ -86,6 +108,10 @@ export default function PipelineView({ events }) {
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
+                  ) : isSkipped ? (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
                   ) : isActive ? (
                     <span className="relative flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -99,10 +125,11 @@ export default function PipelineView({ events }) {
                 <div className={`flex-1 p-4 rounded-3xl border transition-all duration-300 ${
                   isActive ? 'bg-white border-blue-200 shadow-lg shadow-blue-500/10' : 'bg-slate-50 border-slate-200'
                 }`}>
-                  <h3 className={`text-lg font-semibold transition-colors duration-300 ${
-                    isCompleted ? 'text-slate-800' : isActive ? 'text-slate-900' : 'text-slate-400'
+                  <h3 className={`text-lg font-semibold transition-colors duration-300 flex items-center gap-2 ${
+                    isCompleted ? 'text-slate-800' : isSkipped ? 'text-slate-400' : isActive ? 'text-slate-900' : 'text-slate-400'
                   }`}>
                     {AGENT_LABELS[agentKey]}
+                    {isSkipped && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Skipped</span>}
                   </h3>
                   
                   {isActive && (

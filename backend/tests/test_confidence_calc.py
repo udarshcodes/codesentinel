@@ -23,7 +23,9 @@ class TestConfidenceCalc(unittest.TestCase):
 
     def test_partial_score(self):
         state = {
-            "validation_results": [{"passed": False, "files_passed": 1, "files_validated": 2}],
+            "validation_results": [
+                {"passed": False, "files_passed": 1, "files_validated": 2}
+            ],
             "patches": [{"applied": True}, {"applied": False}],
             "security_verified": True,
         }
