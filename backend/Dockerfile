@@ -9,16 +9,13 @@ RUN cd admin_dashboard && npm install && npm run build
 FROM python:3.10-slim
 WORKDIR /app
 
-# Install optimized system dependencies for multiple languages
-# --no-install-recommends prevents downloading massive unnecessary GUI/X11 packages
+# Install system dependencies needed for SAST tools and worker tasks
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    git build-essential curl ca-certificates \
-    nodejs npm maven golang-go && \
+    apt-get install -y git build-essential nodejs npm maven curl golang-go && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Rust with the minimal profile (saves ~1.2 GB of disk space)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal --component clippy
+# Install Rust (needed for some analyzers)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --component clippy
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install SonarQube Scanner
