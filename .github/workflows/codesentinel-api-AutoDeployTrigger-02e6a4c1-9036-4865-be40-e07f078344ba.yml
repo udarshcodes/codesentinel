@@ -19,6 +19,7 @@ jobs:
     permissions: 
       id-token: write #This is required for requesting the OIDC JWT Token
       contents: read #Required when GH token is used to authenticate with private repo
+      packages: write #Required to push to GHCR
 
     steps:
       - name: Checkout to the branch
@@ -35,15 +36,12 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}/backend
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
+          dockerfilePath: Dockerfile
           registryUrl: ghcr.io
           registryUsername: ${{ secrets.CODESENTINELAPI_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.CODESENTINELAPI_REGISTRY_PASSWORD }}
           containerAppName: codesentinel-api
           resourceGroup: CodeSentinel-RG
-          imageToBuild: ghcr.io/codesentinel-api:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
+          imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.sha }}
 
 
