@@ -143,10 +143,10 @@ async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = N
             )
             if res.status_code >= 400:
                 print(f"Error triggering worker: {res.status_code} - {res.text}")
-                JobManager.add_event(task_id, 0, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {res.text}"}, datetime.utcnow().isoformat())
+                JobManager.add_event(task_id, -1, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {res.text}"}, datetime.utcnow().isoformat())
         except Exception as e:
             print(f"Exception triggering worker: {e}")
-            JobManager.add_event(task_id, 0, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {e}"}, datetime.utcnow().isoformat())
+            JobManager.add_event(task_id, -1, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {e}"}, datetime.utcnow().isoformat())
 
 
 # --- WORKER WEBHOOK ENDPOINTS ---
