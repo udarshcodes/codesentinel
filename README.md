@@ -6,6 +6,7 @@
     <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=45&pause=1500&color=00D2FF&center=true&vCenter=true&width=1000&height=120&lines=CodeSentinel;Autonomous+AI+Code+Remediation;Stop+drowning+in+alerts;Automate+your+remediation" alt="CodeSentinel Typing SVG" />
   </a>
   <br />
+  <h3>🚀 <a href="https://salmon-ground-0362fac00.7.azurestaticapps.net/">Live Demo Available Here</a></h3>
 </div>
 
 ---

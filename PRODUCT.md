@@ -1,5 +1,7 @@
 # CodeSentinel: Autonomous AI Vulnerability Remediation Pipeline
 
+**🚀 Live Demo:** [https://salmon-ground-0362fac00.7.azurestaticapps.net/](https://salmon-ground-0362fac00.7.azurestaticapps.net/)
+
 ## 1. Executive Summary
 CodeSentinel is an advanced, autonomous AI agent mesh designed to identify, analyze, and remediate vulnerabilities and structural bugs within modern codebases. By leveraging a deterministic state machine (LangGraph) integrated with tiered Large Language Models (LLMs), CodeSentinel operates as a proactive, autonomous site reliability engineer (SRE) and security researcher. The system maps repositories, executes static analysis, generates AST-aware code patches, validates repairs against testing suites, runs targeted security re-verifications, and authors production-ready GitHub Pull Requests entirely autonomously.
 
