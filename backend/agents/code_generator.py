@@ -232,9 +232,9 @@ Current file content:
             traceback.print_exc()
 
     # Remove previous failed patches for the same issues so we don't accumulate duplicates on retries
-    current_issue_ids = [plan.get("issue_id") for plan in repair_plan]
+    current_issue_ids = [str(plan.get("issue_id")) for plan in repair_plan]
     existing_patches = [
-        p for p in patches if p.get("patch_id") not in current_issue_ids
+        p for p in patches if str(p.get("patch_id")) not in current_issue_ids
     ]
 
     result = {
