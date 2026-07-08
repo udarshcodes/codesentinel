@@ -22,3 +22,5 @@ temp.patch
 *.bak
 *.log
 .pytest_cache/
+*.db
+*.sqlite
