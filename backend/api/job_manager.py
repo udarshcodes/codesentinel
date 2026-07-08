@@ -138,7 +138,7 @@ class JobManager:
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT sequence, status, event_name, data, timestamp FROM job_events WHERE task_id = ? AND sequence > ? ORDER BY sequence ASC",
+            "SELECT sequence, status, event_name, data, timestamp FROM job_events WHERE task_id = ? AND sequence >= ? ORDER BY sequence ASC",
             (task_id, after_sequence)
         )
         rows = cursor.fetchall()

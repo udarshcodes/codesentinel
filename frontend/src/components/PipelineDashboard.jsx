@@ -43,7 +43,8 @@ function DashboardInner({ taskId, onComplete }) {
   const syntheticEvents = [
     ...pipelineState.agents.map(a => ({ event: 'agent_complete', data: a })),
     ...(pipelineState.awaiting_approval ? [{ event: 'approval_required' }] : []),
-    ...(pipelineState.status === 'complete' ? [{ event: 'pipeline_complete' }] : [])
+    ...(pipelineState.status === 'complete' ? [{ event: 'pipeline_complete' }] : []),
+    ...(pipelineState.status === 'error' ? [{ event: 'error', data: { error: pipelineState.error } }] : [])
   ];
 
   const handleApprove = async () => {
