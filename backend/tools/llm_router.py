@@ -81,8 +81,9 @@ def _record(
     entry["model_used"].append(model_used)
     print(
         f"[TokenTracker] {agent_name}: "
-        f"prompt {entry['prompt_tokens']}/{entry['prompt_budget']} | "
-        f"completion {entry['completion_tokens']}/{entry['completion_budget']} | "
+        f"req: {prompt_tokens}/{entry['prompt_budget']} prompt, "
+        f"{completion_tokens}/{entry['completion_budget']} comp | "
+        f"session: {entry['prompt_tokens']} prompt, {entry['completion_tokens']} comp | "
         f"model={model_used}"
     )
 
@@ -175,33 +176,48 @@ async def invoke_llm(
             api_key=api_key,
             max_tokens=budget["completion"],
         )
+        if expect_json and not json_array:
+            llm = llm.bind(response_format={"type": "json_object"})
 
         try:
             res = await asyncio.to_thread(llm.invoke, prompt)
             raw = res.content.strip()
 
             # Extract actual token usage from the Groq API response if available
-            tokens = (getattr(res, "usage_metadata", None) or {}).get("total_tokens", 0)
-            if tokens:
-                record_usage(key_idx, tokens)
-                completion_tokens = tokens
-            else:
+            usage = getattr(res, "usage_metadata", {}) or {}
+            total_tokens = usage.get("total_tokens", 0)
+            if total_tokens:
+                record_usage(key_idx, total_tokens)
+            
+            completion_tokens = usage.get("output_tokens", 0)
+            if not completion_tokens:
                 # Fallback to offline approximation
                 completion_tokens = count_tokens(raw)
 
             if expect_json:
                 cleaned = raw.replace("```json", "").replace("```", "").strip()
                 try:
-                    if json_array:
-                        start_idx = cleaned.find("[")
-                        end_idx = cleaned.rfind("]")
-                    else:
-                        start_idx = cleaned.find("{")
-                        end_idx = cleaned.rfind("}")
-
-                    if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
+                    open_char = "[" if json_array else "{"
+                    close_char = "]" if json_array else "}"
+                    
+                    start_idx = cleaned.find(open_char)
+                    if start_idx == -1:
                         raise ValueError("No JSON block found in response")
-
+                    
+                    depth = 0
+                    end_idx = -1
+                    for i in range(start_idx, len(cleaned)):
+                        if cleaned[i] == open_char:
+                            depth += 1
+                        elif cleaned[i] == close_char:
+                            depth -= 1
+                            if depth == 0:
+                                end_idx = i
+                                break
+                    
+                    if end_idx == -1:
+                        raise ValueError("Mismatched braces/brackets in JSON response")
+                        
                     json_str = cleaned[start_idx : end_idx + 1]
                     parsed_json = json.loads(json_str)
                 except Exception as e:
