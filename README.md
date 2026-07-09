@@ -139,7 +139,7 @@ npm run build
 ```
 
 ### 5. Environment Variables
-Create a `.env` file in the `backend/` directory:
+Create a `.env` file in the `backend/` directory (see `.env.example` for a full template):
 ```env
 # Required: Comma-separated Groq API keys for automated round-robin rotation
 GROQ_API_KEY=gsk_abc123,gsk_def456,gsk_ghi789
@@ -147,11 +147,27 @@ GROQ_API_KEY=gsk_abc123,gsk_def456,gsk_ghi789
 # Optional: Emergency key (activates only when all primary keys are exhausted)
 GROQ_EMERGENCY_KEY=gsk_emergency_key
 
+# Optional: Daily token budget per key (default: 100000)
+GROQ_TOKENS_PER_KEY=100000
+
 # Required: For cloning, pushing, and opening PRs
 GITHUB_TOKEN=ghp_your_personal_access_token
 
 # Required: Master password to access the /admin observability dashboard
 ADMIN_SECRET=your_super_secret_password
+
+# Optional: Storage paths (defaults shown)
+TEMP_REPO_PATH=/tmp/repos
+CHROMA_PERSIST_PATH=./chroma_data
+
+# Optional: CORS allowed origins (comma-separated)
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+# Optional: Slack/webhook URL for key exhaustion alerts
+# ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
+
+# Optional: GitHub Webhook Secret (for HMAC SHA-256 payload verification)
+# GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
 ```
 
 ### 6. Run the Application
@@ -218,6 +234,10 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 
 ```text
 codesentinel/
+├── .github/workflows/           # Project deployment & worker workflows
+│   ├── azure-static-web-apps-*.yml  # Azure Static Web Apps deployment
+│   ├── codesentinel-api-*.yml       # Azure Container Apps API deployment
+│   └── worker.yml                   # Ephemeral LangGraph worker dispatch
 ├── backend/
 │   ├── main.py                  # FastAPI entry point & static asset mounter
 │   ├── state.py                 # Global state and SSE queues
@@ -227,6 +247,7 @@ codesentinel/
 │   ├── limiter.py               # SlowAPI rate limiter instance
 │   ├── self_scan.py             # Self-scan utility
 │   ├── codesentinel.db          # SQLite orchestrator state database
+│   ├── Dockerfile               # Backend container image
 │   ├── requirements.txt         # Core dependencies
 │   ├── requirements-worker.txt  # Worker dependencies
 │   ├── .env.example             # Environment variable template
@@ -271,21 +292,27 @@ codesentinel/
 ├── docker-compose.yml           # Multi-container orchestration configuration
 ├── nginx.conf                   # Reverse proxy routing configuration
 └── frontend/
-    ├── src/
-    │   ├── context/
-    │   │   └── PipelineContext.jsx # Global Reducer for SSE event payloads
-    │   ├── hooks/
-    │   │   ├── usePipeline.js   # SSE connection management & auto-retry
-    │   │   └── useApproval.js   # Async mutation hook for human intervention
-    │   ├── components/          # Reusable UI components
-    │   │   ├── ApprovalModal.jsx   # Human-in-the-loop approval dialog
-    │   │   ├── ConfidenceScore.jsx # Pipeline confidence gauge
-    │   │   ├── DiffViewer.jsx      # Side-by-side patch diff renderer
-    │   │   ├── FindingsPanel.jsx   # SAST findings display panel
-    │   │   ├── PRSummary.jsx       # Pull Request summary card
-    │   │   ├── PipelineDashboard.jsx # Top-level dashboard layout
-    │   │   ├── PipelineView.jsx    # Real-time pipeline stage tracker
-    │   │   └── ThemeToggle.jsx     # Dark/light mode switch
-    │   └── App.jsx              # Main UI Shell
-    └── vite.config.js           # API proxy configuration
+    ├── Dockerfile               # Frontend container image
+    ├── index.html               # HTML entry point
+    ├── vite.config.js           # API proxy configuration
+    ├── tailwind.config.js       # Tailwind CSS configuration
+    ├── postcss.config.js        # PostCSS plugin configuration
+    └── src/
+        ├── main.jsx             # React DOM root mount
+        ├── index.css            # Global styles & Tailwind directives
+        ├── App.jsx              # Main UI Shell
+        ├── context/
+        │   └── PipelineContext.jsx # Global Reducer for SSE event payloads
+        ├── hooks/
+        │   ├── usePipeline.js   # SSE connection management & auto-retry
+        │   └── useApproval.js   # Async mutation hook for human intervention
+        └── components/          # Reusable UI components
+            ├── ApprovalModal.jsx   # Human-in-the-loop approval dialog
+            ├── ConfidenceScore.jsx # Pipeline confidence gauge
+            ├── DiffViewer.jsx      # Side-by-side patch diff renderer
+            ├── FindingsPanel.jsx   # SAST findings display panel
+            ├── PRSummary.jsx       # Pull Request summary card
+            ├── PipelineDashboard.jsx # Top-level dashboard layout
+            ├── PipelineView.jsx    # Real-time pipeline stage tracker
+            └── ThemeToggle.jsx     # Dark/light mode switch
 ```

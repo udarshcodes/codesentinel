@@ -160,6 +160,7 @@ class WorkerEvent(BaseModel):
     timestamp: str
 
 @router.post("/v1/job/{task_id}/event")
+@router.post("/job/{task_id}/event")  # Backward compatibility
 async def worker_event_webhook(task_id: str, event: WorkerEvent):
     """Called by the GitHub Action worker to stream granular state updates."""
     success = JobManager.add_event(
