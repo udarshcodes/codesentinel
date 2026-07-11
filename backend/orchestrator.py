@@ -43,7 +43,7 @@ class OrchestratorAgent:
 
         latest = validation_results[-1]
 
-        if latest.get("passed"):
+        if latest.get("passed") and not latest.get("build_failed") and not latest.get("suite_failed"):
             print(
                 "[Orchestrator] Validation PASSED — proceeding to security verification."
             )

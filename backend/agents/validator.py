@@ -121,16 +121,33 @@ async def agent_validator(state: PipelineState):
         # TypeScript files: syntax check with tsc --noEmit
         elif target_file.endswith(".ts"):
             try:
-                result = subprocess.run(
-                    [
+                # Check for tsconfig.json to enable project mode
+                tsconfig_path = os.path.join(repo_local_path, "tsconfig.json")
+                if os.path.exists(tsconfig_path):
+                    tsc_cmd = [
+                        "npx",
+                        "--yes",
+                        "tsc",
+                        "--noEmit",
+                        "--skipLibCheck",
+                        "--project",
+                        "tsconfig.json",
+                    ]
+                else:
+                    tsc_cmd = [
                         "npx",
                         "--yes",
                         "tsc",
                         "--noEmit",
                         "--allowJs",
                         "--checkJs",
+                        "--skipLibCheck",
                         full_path,
-                    ],
+                    ]
+
+                result = subprocess.run(
+                    tsc_cmd,
+                    cwd=repo_local_path,
                     capture_output=True,
                     text=True,
                     timeout=60,
@@ -168,6 +185,10 @@ async def agent_validator(state: PipelineState):
 
         # Java files: syntax check with javac (dry run)
         elif target_file.endswith(".java"):
+            if os.path.exists(os.path.join(repo_local_path, "pom.xml")) or os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
+                logs_list.append(f"[SKIP] {target_file} - Java syntax validated by build step")
+                continue
+
             try:
                 import tempfile as _tmpmod
 
@@ -175,6 +196,7 @@ async def agent_validator(state: PipelineState):
                 try:
                     result = subprocess.run(
                         ["javac", "-d", _javac_tmp, full_path],
+                        cwd=repo_local_path,
                         capture_output=True,
                         text=True,
                         timeout=60,
@@ -397,6 +419,7 @@ async def agent_validator(state: PipelineState):
         knowledge_graph = state.get("knowledge_graph", {})
         test_framework = knowledge_graph.get("test_framework", "")
 
+        suite_failed = False
         if test_framework and _is_allowed_cmd(test_framework):
             cmd = shlex.split(test_framework)
             
@@ -426,6 +449,7 @@ async def agent_validator(state: PipelineState):
                 except Exception as e:
                     test_logs = f"Failed to setup venv for dynamic test: {e}"
                     all_passed = False
+                    suite_failed = True
 
             if all_passed:
                 try:
@@ -569,7 +593,7 @@ async def agent_validator(state: PipelineState):
     unresolvable_fixes = state.get("unresolvable_fixes", [])
     touched_symbols = state.get("touched_symbols", {})
 
-    if not all_passed:
+    if not all_passed or not build_passed or suite_failed:
         if patches:
             latest_patch = patches[-1]
             issue_id = latest_patch.get("patch_id")
@@ -601,6 +625,8 @@ async def agent_validator(state: PipelineState):
             "files_validated": files_validated,
             "files_passed": files_passed,
             "failed_issue_ids": failed_issue_ids,
+            "build_failed": not build_passed,
+            "suite_failed": suite_failed,
         }
     )
 

@@ -99,14 +99,25 @@ Return JSON: {{"title": "...", "description": "..."}}"""
             # 3. Commit and push
             title = pr_data.get("title", "Automated Security Fixes")
 
-            validation_results = state.get("validation_results", [])
+            total_patches = len(state.get("patches", []))
+            latest = state.get("validation_results", [])[-1] if state.get("validation_results") else {}
+            failed_ids = latest.get("failed_issue_ids", [])
+            
+            build_failed = latest.get("build_failed", False)
+            suite_failed = latest.get("suite_failed", False)
+            
             validation_failed = False
-            if validation_results and not validation_results[-1].get("passed", True):
+            partial_failure = False
+            
+            if build_failed or suite_failed:
                 validation_failed = True
-            if state.get("unresolvable_fixes"):
-                validation_failed = True
+            elif total_patches and failed_ids:
+                if len(failed_ids) >= total_patches:
+                    validation_failed = True
+                else:
+                    partial_failure = True
 
-            if validation_failed:
+            if validation_failed or partial_failure:
                 title = f"[NEEDS WORK] {title}"
 
             has_changes = commit_and_push(
@@ -136,6 +147,11 @@ Return JSON: {{"title": "...", "description": "..."}}"""
             if validation_failed:
                 desc = (
                     "### ⚠️ Automated Validation Failed\nThe unit tests or syntax verification did not pass after maximum retries. This PR is submitted for manual developer review and remediation.\n\n"
+                    + desc
+                )
+            elif partial_failure:
+                desc = (
+                    "### ⚠️ Partial Success\nSome AI-generated patches could not be applied or failed validation and were skipped. The PR contains only the successful fixes.\n\n"
                     + desc
                 )
 
