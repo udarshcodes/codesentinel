@@ -268,7 +268,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
 
     if should_analyze:
         task_id = str(uuid.uuid4())
-        background_tasks.add_task(run_pipeline_worker, task_id, repo_url, commit_sha)
+        background_tasks.add_task(trigger_github_worker, task_id, repo_url, commit_sha)
         return {"status": "accepted", "task_id": task_id, "repo_url": repo_url}
 
     return {"status": "ignored", "reason": f"Event {event_type} ignored"}

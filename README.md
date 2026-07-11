@@ -153,6 +153,13 @@ GROQ_TOKENS_PER_KEY=100000
 # Required: For cloning, pushing, and opening PRs
 GITHUB_TOKEN=ghp_your_personal_access_token
 
+# Optional: GitHub Actions Worker Configuration
+# The repo containing the worker.yml workflow (default: udarshcodes/codesentinel)
+WORKER_REPO=udarshcodes/codesentinel
+
+# Optional: Public URL of this backend (the GitHub Action worker posts state updates here)
+BACKEND_URL=http://localhost:8000
+
 # Required: Master password to access the /admin observability dashboard
 ADMIN_SECRET=your_super_secret_password
 
