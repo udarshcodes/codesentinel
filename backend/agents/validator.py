@@ -412,6 +412,7 @@ async def agent_validator(state: PipelineState):
             logs_list.append(f"[WARN] Cargo.toml build error: {e}")
 
     test_logs = ""
+    suite_failed = False
     if not build_passed:
         test_logs = "Tests skipped due to build failure (Note: This did not fail the patch validation)."
     else:
@@ -419,7 +420,6 @@ async def agent_validator(state: PipelineState):
         knowledge_graph = state.get("knowledge_graph", {})
         test_framework = knowledge_graph.get("test_framework", "")
 
-        suite_failed = False
         if test_framework and _is_allowed_cmd(test_framework):
             cmd = shlex.split(test_framework)
             
