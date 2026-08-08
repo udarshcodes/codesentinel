@@ -55,10 +55,10 @@ function App() {
 
 
   return (
-    <div className="container mx-auto px-4 pt-12 pb-4 relative z-10 min-h-screen flex flex-col">
+    <div className="container mx-auto px-4 pt-12 pb-4 relative z-10 min-h-[100dvh] flex flex-col">
 
 
-      {/* Admin Dashboard Link and Theme Toggle */}
+
       <div className="absolute top-6 right-6 sm:top-8 sm:right-8 z-50 animate-fade-in-down flex items-center gap-4">
         <ThemeToggle />
         <a 
@@ -71,7 +71,7 @@ function App() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          Admin Dashboard
+          <span className="hidden sm:inline">Admin Dashboard</span>
         </a>
       </div>
 
@@ -88,9 +88,9 @@ function App() {
       </header>
 
       <main className="flex-1">
-        {/* URL Input Form */}
+
         <div className="glass-panel p-8 mb-8 max-w-6xl mx-auto !rounded-[2.5rem]">
-          <form onSubmit={startAnalysis} className="flex gap-4">
+          <form onSubmit={startAnalysis} className="flex flex-col sm:flex-row gap-4">
             <input 
               type="url" 
               placeholder="https://github.com/username/repo"
@@ -103,7 +103,7 @@ function App() {
             <button 
               type="submit"
               disabled={isSubmitting || isPipelineRunning}
-              className="bg-primary hover:opacity-90 disabled:bg-muted disabled:text-muted-foreground px-10 py-4 rounded-full font-bold text-lg text-primary-foreground transition-all duration-200 shadow-lg"
+              className="w-full sm:w-auto bg-primary hover:opacity-90 disabled:bg-muted disabled:text-muted-foreground px-10 py-4 rounded-full font-bold text-lg text-primary-foreground transition-all duration-200 shadow-lg"
             >
               {(isSubmitting || isPipelineRunning) ? (
                 <span className="flex items-center gap-2">
@@ -137,7 +137,7 @@ function App() {
           </div>
         )}
 
-        {/* Dynamic Dashboards */}
+
         {batchTasks.length > 0 ? (
           batchTasks.map(task => (
             <PipelineDashboard 
@@ -156,7 +156,7 @@ function App() {
         ) : null}
       </main>
       
-      {/* Footer */}
+
       <footer className="mt-auto pt-12 pb-4 text-center border-t border-border">
         <div className="flex flex-col gap-4">
           <p className="text-base font-medium tracking-wide text-muted-foreground">

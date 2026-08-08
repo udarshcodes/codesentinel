@@ -25,8 +25,7 @@ const AGENT_LABELS = {
 }
 
 export default function PipelineView({ events }) {
-  // Determine which agent is currently active or completed
-  const completedAgents = new Set()
+    const completedAgents = new Set()
   let currentAgent = null
   let isError = false
 
@@ -42,14 +41,13 @@ export default function PipelineView({ events }) {
     }
   })
 
-  // The active agent is the first one not in completedAgents
   if (isError) {
     currentAgent = null
   } else if (!currentAgent && !isError && (events.length === 0 || events[events.length - 1].event !== 'pipeline_complete')) {
     currentAgent = AGENT_ORDER.find(a => !completedAgents.has(a))
   }
 
-  // Determine implicitly skipped agents (e.g. if a later agent is active/completed, earlier uncompleted ones were skipped)
+  // Track implicitly skipped agents based on state progression
   const skippedAgents = new Set()
   let furthestIndex = -1
   if (currentAgent) {
@@ -78,7 +76,6 @@ export default function PipelineView({ events }) {
       </h2>
       
       <div className="relative">
-        {/* Vertical connecting line */}
         <div className="absolute left-[21px] top-4 bottom-4 w-[2px] bg-border rounded-full"></div>
         
         <div className="space-y-6">

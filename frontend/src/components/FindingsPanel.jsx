@@ -1,7 +1,7 @@
 
 
 export default function FindingsPanel({ events }) {
-  // Extract findings from static_analysis or bug_investigator events
+
   let allIssues = []
   
   events.forEach(e => {

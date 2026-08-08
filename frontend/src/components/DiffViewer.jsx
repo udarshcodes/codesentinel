@@ -19,7 +19,7 @@ export default function DiffViewer({ events }) {
     }
   }
 
-  // Parse unified diff into old/new strings
+
   const parseDiff = (patchStr) => {
     if (!patchStr) return { oldString: '', newString: '' }
 
@@ -40,7 +40,7 @@ export default function DiffViewer({ events }) {
       return { oldString: '', newString: patchStr }
     }
     
-    // Skip diff header (--- a/file +++ b/file)
+
     let startIndex = 0
     while (startIndex < lines.length && (lines[startIndex].startsWith('---') || lines[startIndex].startsWith('+++') || lines[startIndex].startsWith('diff') || lines[startIndex].startsWith('index'))) {
       startIndex++
@@ -56,7 +56,7 @@ export default function DiffViewer({ events }) {
         oldVal.push(line.substring(1))
         newVal.push(line.substring(1))
       } else {
-        // Context or header
+
         oldVal.push(line)
         newVal.push(line)
       }
@@ -93,13 +93,24 @@ function PatchItem({ patch, parseDiff, newStyles }) {
   const { oldString, newString } = parseDiff(patch.diff)
   const [isDark, setIsDark] = React.useState(false)
 
+  const [isSplitView, setIsSplitView] = React.useState(window.innerWidth >= 768)
+
   React.useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'))
     const observer = new MutationObserver(() => {
       setIsDark(document.documentElement.classList.contains('dark'))
     })
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-    return () => observer.disconnect()
+
+    const handleResize = () => {
+      setIsSplitView(window.innerWidth >= 768)
+    }
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', handleResize)
+    }
   }, [])
 
   return (
@@ -128,7 +139,7 @@ function PatchItem({ patch, parseDiff, newStyles }) {
           <ReactDiffViewer
             oldValue={oldString}
             newValue={newString}
-            splitView={true}
+            splitView={isSplitView}
             useDarkTheme={isDark}
             styles={newStyles}
             hideLineNumbers={false}

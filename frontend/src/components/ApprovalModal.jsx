@@ -3,7 +3,7 @@
 export default function ApprovalModal({ isOpen, agentData, onApprove, onReject }) {
   if (!isOpen || !agentData) return null
 
-  // agentData.fix should be the repair_plan array
+
   const fixes = Array.isArray(agentData.fix) ? agentData.fix : []
   const highRiskFixes = fixes.filter(f => f.risk === 'high-risk')
 
