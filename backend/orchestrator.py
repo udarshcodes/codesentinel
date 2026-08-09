@@ -11,18 +11,7 @@ from agents.validator import agent_validator
 from agents.security_verifier import agent_security_verifier
 from agents.pr_author import agent_pr_author
 
-# --- Agent 10: Orchestrator Agent ---
-# The Orchestrator is an intelligent meta-agent that controls the pipeline.
-# It makes dynamic decisions at conditional edges using heuristics and
-# logs its reasoning for observability.
-
-
 class OrchestratorAgent:
-    """
-    Intelligent orchestrator that controls what runs next, what retries,
-    and what fails. Implements the 'Agent 10 — Orchestrator Agent' from
-    the specification.
-    """
 
     @staticmethod
     def route_after_validator(state: PipelineState) -> str:
@@ -56,7 +45,6 @@ class OrchestratorAgent:
             )
             return "security_verifier"
 
-        # Check if there are any applied patches worth retrying
         applied_patches = [p for p in patches if p.get("applied")]
         if not applied_patches:
             print(
@@ -110,11 +98,8 @@ class OrchestratorAgent:
 
 orchestrator = OrchestratorAgent()
 
-# --- Graph Definition ---
-
 workflow = StateGraph(PipelineState)
 
-# Add nodes
 workflow.add_node("repo_mapper", agent_repo_mapper)
 workflow.add_node("dependency_analyzer", agent_dependency_analyzer)
 workflow.add_node("static_analysis", agent_static_analysis)
@@ -125,7 +110,7 @@ workflow.add_node("validator", agent_validator)
 workflow.add_node("security_verifier", agent_security_verifier)
 workflow.add_node("pr_author", agent_pr_author)
 
-# Edges (sequential pipeline with conditional cycles for validation and security retries)
+# Set edges
 workflow.set_entry_point("repo_mapper")
 workflow.add_edge("repo_mapper", "dependency_analyzer")
 workflow.add_edge("dependency_analyzer", "static_analysis")
@@ -134,7 +119,6 @@ workflow.add_edge("bug_investigator", "repair_planner")
 workflow.add_edge("repair_planner", "code_generator")
 workflow.add_edge("code_generator", "validator")
 
-# Orchestrator-controlled conditional routing
 workflow.add_conditional_edges(
     "validator",
     orchestrator.route_after_validator,
@@ -153,5 +137,4 @@ workflow.add_conditional_edges(
 
 workflow.add_edge("pr_author", END)
 
-# Compile the graph
 app = workflow.compile()

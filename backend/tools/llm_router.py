@@ -11,15 +11,9 @@ from config import GROQ_API_KEYS
 from tools.key_dispatcher import get_next_key, record_usage, mark_rate_limited
 from tools.response_cache import get_cached, set_cached
 
-# ---------------------------------------------------------------------------
-# Model tiers
-# ---------------------------------------------------------------------------
 TIER1_MODEL = "llama-3.1-8b-instant"  # Fast & cheap — scanning, mapping
 TIER2_MODEL = "llama-3.3-70b-versatile"  # Reasoning — repair planning, code gen
 
-# ---------------------------------------------------------------------------
-# Per-agent token budgets  (prompt_limit, completion_limit)
-# ---------------------------------------------------------------------------
 AGENT_BUDGETS = {
     "repo_mapper": {"prompt": 4000, "completion": 1000},
     "bug_investigator": {"prompt": 6000, "completion": 2000},
@@ -30,17 +24,13 @@ AGENT_BUDGETS = {
     "pr_author": {"prompt": 4000, "completion": 1000},
 }
 
-# Escalation threshold — if pre-flight token count exceeds this,
-# automatically route to Tier 2 regardless of agent tier assignment.
+# Escalate to Tier 2 if prompt tokens exceed threshold
 ESCALATION_TOKEN_THRESHOLD = 4000
 
 # Maximum schema-validation retries per tier before escalating / aborting.
 MAX_RETRIES_PER_TIER = 2
 
-# ---------------------------------------------------------------------------
-# Tokenizer — offline, no API call required
-# ---------------------------------------------------------------------------
-# tiktoken's cl100k_base is a reasonable proxy for Llama-3 token counts.
+# Offline tokenizer (cl100k_base used as Llama-3 proxy)
 _ENCODING = tiktoken.get_encoding("cl100k_base")
 
 
@@ -49,9 +39,6 @@ def count_tokens(text: str) -> int:
     return len(_ENCODING.encode(text))
 
 
-# ---------------------------------------------------------------------------
-# Telemetry store  (in-memory, per-process)
-# ---------------------------------------------------------------------------
 _telemetry: dict[str, dict] = {}
 
 
@@ -88,9 +75,6 @@ def _record(
     )
 
 
-# ---------------------------------------------------------------------------
-# Core invoke function
-# ---------------------------------------------------------------------------
 async def invoke_llm(
     prompt: str,
     agent_name: str,
@@ -124,7 +108,6 @@ async def invoke_llm(
     if not GROQ_API_KEYS:
         raise RuntimeError("GROQ_API_KEYS is not configured.")
 
-    # --- Pre-flight token check (offline, before any API call) ---
     prompt_tokens = count_tokens(prompt)
     budget = AGENT_BUDGETS.get(agent_name, {"prompt": 6000, "completion": 2000})
 
@@ -133,19 +116,17 @@ async def invoke_llm(
             f"[LLMRouter] WARNING: {agent_name} prompt ({prompt_tokens} tokens) "
             f"exceeds budget ({budget['prompt']}). Truncating end."
         )
-        # Truncate from the END so we preserve system instructions and issue context at the start.
-        # The file content at the end gets shortened — the LLM still sees the start of the file.
+        # Truncate end to preserve system instructions and context
         max_chars = budget["prompt"] * 4
         prompt = prompt[:max_chars] + "\n```\n[FILE TRUNCATED DUE TO TOKEN LIMIT]\n"
         prompt_tokens = count_tokens(prompt)
 
-    # Determine starting model based on tier AND token threshold
+
     if tier == 1 and prompt_tokens <= ESCALATION_TOKEN_THRESHOLD:
         current_model = TIER1_MODEL
     else:
         current_model = TIER2_MODEL
 
-    # --- Cache Check ---
     cached_response = get_cached(prompt, current_model)
     if cached_response:
         print(f"[LLMRouter] Cache hit for {current_model}. Skipping API call.")
@@ -160,7 +141,6 @@ async def invoke_llm(
     completion_tokens = 0
     parsed_json = None  # Store parsed result from validation inside the loop
 
-    # --- Retry loop with deterministic escalation ---
     for attempt in range(1, total_attempts + 1):
         if res_content is not None:
             # We had a cache hit, skip the API call
@@ -183,7 +163,6 @@ async def invoke_llm(
             res = await asyncio.to_thread(llm.invoke, prompt)
             raw = res.content.strip()
 
-            # Extract actual token usage from the Groq API response if available
             usage = getattr(res, "usage_metadata", {}) or {}
             total_tokens = usage.get("total_tokens", 0)
             if total_tokens:
@@ -191,7 +170,6 @@ async def invoke_llm(
             
             completion_tokens = usage.get("output_tokens", 0)
             if not completion_tokens:
-                # Fallback to offline approximation
                 completion_tokens = count_tokens(raw)
 
             if expect_json:
@@ -239,7 +217,7 @@ async def invoke_llm(
                 f"(model={current_model}): {e}"
             )
 
-            # Deterministic escalation: after enough failures on Tier 1, escalate to Tier 2.
+            # Escalate to Tier 2 after consecutive Tier 1 failures
             if attempt == MAX_RETRIES_PER_TIER and current_model == TIER1_MODEL:
                 print(
                     f"[LLMRouter] Escalating {agent_name} from "

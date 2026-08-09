@@ -21,7 +21,6 @@ async def agent_repo_mapper(state: PipelineState):
         print(f"Invalid or unsafe repository URL: {repo_url}")
         return {"repo_local_path": "", "knowledge_graph": {}}
 
-    # 1. Clone repository
     temp_base = os.getenv("TEMP_REPO_PATH", "/tmp/repos")
     os.makedirs(temp_base, exist_ok=True)
     temp_dir = tempfile.mkdtemp(prefix="codesentinel_", dir=temp_base)
@@ -38,7 +37,6 @@ async def agent_repo_mapper(state: PipelineState):
 
         subprocess.run(["git", "clone", clone_url, temp_dir], check=True, timeout=300)
 
-        # If a specific commit SHA was requested (e.g., from CI/CD), checkout that commit
         commit_sha = state.get("commit_sha", "")
         if commit_sha:
             subprocess.run(
@@ -124,7 +122,6 @@ async def agent_repo_mapper(state: PipelineState):
 
             file_tree.append("  " + file)
 
-            # Extract content for API and DB mapping if it's a source file
             if ext in [
                 ".py",
                 ".js",
@@ -147,7 +144,6 @@ async def agent_repo_mapper(state: PipelineState):
                 except Exception:
                     pass
 
-    # 3. LLM analysis — Tier 1 (extracting rich knowledge graph)
     if GROQ_API_KEYS:
         prompt = f"""Analyze the following repository data to build a rich knowledge graph.
 File extensions: {extensions}
@@ -195,6 +191,7 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpo
                 "test_framework": "",
             }
     else:
+        # Fallback mock to allow pipeline progression without LLM keys
         knowledge_graph = {
             "language": "Python (Mock)",
             "framework": "FastAPI",
@@ -212,7 +209,6 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpo
         kg = build_knowledge_graph(temp_dir)
         dependency_graph = kg.to_dict()
 
-        # Merge structural data into the knowledge_graph for downstream agents
         knowledge_graph["dependency_graph_summary"] = {
             "node_count": dependency_graph.get("node_count", 0),
             "edge_count": dependency_graph.get("edge_count", 0),
@@ -230,7 +226,6 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpo
     except Exception as e:
         print(f"[RepoMapper] Dependency graph build failed (non-fatal): {e}")
 
-    # Cache the knowledge graph for downstream agents
     context_cache.store(repo_url, "knowledge_graph", knowledge_graph)
 
     return {

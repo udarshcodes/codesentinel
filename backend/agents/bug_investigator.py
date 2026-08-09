@@ -21,7 +21,6 @@ async def agent_bug_investigator(state: PipelineState):
     if not GROQ_API_KEYS:
         return {"investigated_issues": investigated_issues}
 
-    # If static analysis found nothing, fallback to a general LLM code review of primary files
     if not all_findings:
         print("No static findings, falling back to deep LLM code review...")
         source_files = []
@@ -45,7 +44,7 @@ async def agent_bug_investigator(state: PipelineState):
                 ):
                     source_files.append(os.path.join(root, file))
 
-        # Limit to 5 files to avoid massive context
+        # Prevent context overflow by limiting file count
         for file_path in source_files[:5]:
             try:
                 with open(file_path, "r", errors="ignore") as f:
@@ -116,7 +115,6 @@ If no bugs, return: {{"found": false}}"""
 
 
 
-        # Use localized graph instead of full knowledge graph
         localized_graph = context_cache.get_localized_graph(repo_url, file_path)
 
         prompt = f"""{BUG_INVESTIGATOR_SYSTEM}
