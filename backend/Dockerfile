@@ -22,7 +22,7 @@ RUN apt-get update && \
 
 # Install lightweight Python requirements (NO heavy scanning tools)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install uv && uv pip install --system -r requirements.txt
 
 # Copy application code
 COPY . .

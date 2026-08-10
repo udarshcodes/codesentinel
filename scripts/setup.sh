@@ -8,14 +8,14 @@ echo "==========================================="
 # 1. Create and activate fresh Linux virtual environment
 echo "--> Creating Python virtual environment (.venv)..."
 rm -rf .venv venv venv_win wsl_venv* temp_venv
-python3 -m venv .venv
+pip install uv
+uv venv .venv
 source .venv/bin/activate
 
 # 2. Install Python Dependencies
 echo "--> Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r backend/requirements.txt
-pip install semgrep
+uv pip install -r backend/requirements.txt
+uv pip install semgrep
 
 # 3. Install Node Dependencies (if package.json exists)
 if [ -f "backend/package.json" ]; then

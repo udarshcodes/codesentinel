@@ -8,4 +8,4 @@ bandit
 pylint
 flake8
 tiktoken
-# Semgrep is installed globally in worker.yml via pip install semgrep
+# Semgrep is installed globally in worker.yml via uv pip install --system semgrep
