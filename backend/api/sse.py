@@ -7,13 +7,11 @@ from api.job_manager import JobManager
 router = APIRouter()
 
 async def event_generator(task_id: str):
-    # 1. Fetch historical events from JobManager
     historical_events = JobManager.get_events(task_id, after_sequence=-1)
     last_sequence = -1
     
     is_completed = False
     
-    # Yield historical events first
     for evt in historical_events:
         yield {
             "event": evt["event"],
@@ -26,13 +24,12 @@ async def event_generator(task_id: str):
     if is_completed:
         return
         
-    # 2. Subscribe to live events
     q = JobManager.subscribe(task_id)
     try:
         while True:
             payload = await q.get()
             
-            # Skip if we already yielded this sequence historically
+            # Deduplicate sequences already yielded historically
             if payload["sequence"] <= last_sequence:
                 continue
                 

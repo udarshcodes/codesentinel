@@ -20,15 +20,13 @@ class AnalyzeRequest(BaseModel):
 
 
 @router.post("/v1/analyze")
-@router.post("/analyze")  # Backward compatibility
+@router.post("/analyze")
 @limiter.limit("2/minute")
 async def start_analysis(request: Request, body: AnalyzeRequest, background_tasks: BackgroundTasks):
     repo_url = body.repo_url.strip()
     if repo_url.startswith("github.com/"):
         repo_url = "https://" + repo_url
         body.repo_url = repo_url
-
-    # Validate repo_url format
     if not repo_url.endswith("/*"):
         if not re.match(
             r"^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(?:\.git)?$", repo_url
@@ -77,22 +75,18 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
 
     task_ids = []
     for r_url in repos_to_analyze:
-        # Generate a stable UUID based on repo name for easy frontend connection
-        # Or just a pure UUID. Let's use pure UUID so we can have multiple runs.
+        # Use UUIDs to support multiple concurrent runs
         task_id = str(uuid.uuid4())
         task_ids.append(task_id)
 
-        # 1. Create Job in Database
         JobManager.create_job(task_id, r_url)
 
-        # 2. Trigger GitHub Action (Workflow Dispatch)
-        # We fire and forget this async call so we don't block the API
+        # Dispatch non-blocking background task to GitHub worker
         background_tasks.add_task(
             trigger_github_worker, task_id, r_url, body.commit_sha
         )
 
-    # If it was a single repo, return just that task_id for backward compatibility
-    # But also include the array of task_ids for Multi-Repo mode
+    # Return legacy single task_id and array of multi-repo task_ids
     main_task_id = task_ids[0] if task_ids else ""
 
     return {
@@ -104,13 +98,11 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
 
 
 async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = None):
-    # This triggers the worker.yml in the CodeSentinel repo.
-    # It assumes the action is stored in the same repo we are running from,
-    # or a central worker repo defined by WORKER_REPO_URL.
+    # Dispatch webhook to GitHub Actions worker repository
     github_token = os.getenv("GITHUB_TOKEN", "")
     worker_repo = os.getenv("WORKER_REPO", "udarshcodes/codesentinel")
     
-    # Robustly handle if the user accidentally put the full URL in WORKER_REPO
+    # Strip URL prefixes if WORKER_REPO is misconfigured
     if "github.com/" in worker_repo:
         worker_repo = worker_repo.split("github.com/")[-1].strip("/")
 
@@ -150,8 +142,6 @@ async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = N
             JobManager.add_event(task_id, -1, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {e}"}, datetime.utcnow().isoformat())
 
 
-# --- WORKER WEBHOOK ENDPOINTS ---
-
 class WorkerEvent(BaseModel):
     sequence: int
     status: str
@@ -166,11 +156,9 @@ async def worker_event_webhook(task_id: str, event: WorkerEvent):
     success = JobManager.add_event(
         task_id, event.sequence, event.status, event.event, event.data, event.timestamp
     )
-    # If the event was a final complete event, we also need to persist patches to ChromaDB.
-    # The worker packages patches into the data object of pipeline_complete.
+    # Persist validated patches to ChromaDB upon pipeline completion
     if event.event == "pipeline_complete" and event.status == JobManager.COMPLETED:
         from tools import vector_store
-        # The worker should pass validated_fixes in the data payload
         validated_fixes = event.data.get("validated_fixes", [])
         for fix in validated_fixes:
             vector_store.store_validated_fix(fix["issue"], fix["patch"], fix["confidence"])
@@ -197,10 +185,9 @@ async def submit_approval(task_id: str, body: dict):
         raise HTTPException(404, "No pipeline awaiting approval for this task")
 
     event_dict["decision"] = decision
-    event_dict["event"].set()  # Unblock the waiting coroutine
+    event_dict["event"].set()
 
-    # Broadcast that the pipeline is resuming via the sse queue
-    # We use a helper function from orchestrator to just put it in the queue
+    # Broadcast pipeline resumption via SSE
     from state import sse_queues
 
     if task_id in sse_queues:
@@ -219,7 +206,6 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
     Automatically triggers analysis on push to main or pull_request opened/synchronized.
     Verifies the X-Hub-Signature-256 header if GITHUB_WEBHOOK_SECRET is configured.
     """
-    # Verify webhook signature if a secret is configured
     webhook_secret = os.getenv("GITHUB_WEBHOOK_SECRET", "")
     if webhook_secret:
         signature_header = request.headers.get("X-Hub-Signature-256", "")
@@ -255,13 +241,11 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
 
     if event_type == "push":
         ref = payload.get("ref", "")
-        # Trigger on push to main or master
         if ref in ["refs/heads/main", "refs/heads/master"]:
             should_analyze = True
             commit_sha = payload.get("after")
     elif event_type == "pull_request":
         action = payload.get("action")
-        # Trigger on PR opened or updated
         if action in ["opened", "synchronize"]:
             should_analyze = True
             commit_sha = payload.get("pull_request", {}).get("head", {}).get("sha")

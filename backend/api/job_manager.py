@@ -36,11 +36,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize on module load
 init_db()
 
 class JobManager:
-    # Explicit state machine states
     QUEUED = "QUEUED"
     STARTING = "STARTING"
     CLONING_REPOSITORY = "CLONING_REPOSITORY"
@@ -55,9 +53,7 @@ class JobManager:
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
-    # In-memory asyncio queues for real-time SSE streaming (per task_id)
-    # This prevents needing to poll the database constantly.
-    # When a new event arrives, it is saved to DB and then pushed to the queue.
+    # In-memory pub/sub queues for SSE streaming, avoiding DB polling.
     _live_queues: Dict[str, List[asyncio.Queue]] = {}
 
     @classmethod
@@ -85,7 +81,6 @@ class JobManager:
                 (task_id, sequence, status, event_name, json.dumps(data), timestamp)
             )
             
-            # Update the latest status in jobs table
             cursor.execute(
                 "UPDATE jobs SET status = ?, updated_at = ? WHERE task_id = ?",
                 (status, timestamp, task_id)
@@ -93,12 +88,12 @@ class JobManager:
             conn.commit()
             success = True
         except sqlite3.IntegrityError:
-            # Duplicate sequence for this task_id. Idempotency guarantees we ignore it safely.
+            # Idempotency guarantee: safely ignore duplicate sequence insertions.
             success = False
         finally:
             conn.close()
 
-        # If it was a new event, push to any active live SSE subscribers
+        # Notify active SSE subscribers if event is new
         if success and task_id in cls._live_queues:
             event_payload = {
                 "event": event_name,

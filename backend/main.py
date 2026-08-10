@@ -20,7 +20,6 @@ from state import metrics
 
 @asynccontextmanager
 async def lifespan(app):
-    # --- Startup ---
     if not os.getenv("GROQ_API_KEY"):
         print("[WARNING] GROQ_API_KEY not set!")
     if not os.getenv("GITHUB_TOKEN"):
@@ -35,11 +34,7 @@ async def lifespan(app):
         "TEMP_REPO_PATH", os.path.join(tempfile.gettempdir(), "repos")
     )
     os.makedirs(temp_repo, exist_ok=True)
-    if not os.access(temp_repo, os.W_OK):
-        raise RuntimeError(f"CRITICAL: {temp_repo} is not writable")
     yield
-    # --- Shutdown (cleanup if needed) ---
-
 
 app = FastAPI(title="CodeSentinel", lifespan=lifespan)
 
@@ -53,7 +48,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _cors_origins],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -90,7 +85,6 @@ def live_check():
 
 @app.get("/ready")
 def ready_check():
-    # Tools are recommended but no longer strictly required to pass healthcheck
     return {"status": "ready"}
 
 
@@ -109,7 +103,6 @@ def token_usage(request: Request, x_admin_token: str = Header(None)):
     return get_usage_report()
 
 
-# Mount the admin dashboard (StaticFiles with html=True handles index.html automatically)
 try:
     admin_dist_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "admin_dashboard", "dist"
@@ -124,12 +117,19 @@ try:
             name="admin",
         )
     else:
+        from fastapi.responses import HTMLResponse
 
-        @app.get("/admin")
+        @app.get("/admin", response_class=HTMLResponse)
         def admin_dashboard():
-            return {
-                "error": f"Dashboard not built yet at {admin_dist_path}. Run npm run build in admin_dashboard."
-            }
+            return f"""
+            <html>
+                <head><title>Admin Dashboard Not Built</title></head>
+                <body>
+                    <h1>Admin Dashboard Not Found</h1>
+                    <p>The admin dashboard has not been built yet. Please run <code>npm run build</code> in the <code>admin_dashboard</code> directory (expected path: {admin_dist_path}).</p>
+                </body>
+            </html>
+            """
 
 except Exception as e:
     print(f"[Warning] Error mounting admin dashboard: {e}")
