@@ -7,6 +7,7 @@ from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools import context_cache
 from tools.prompt_cache import BUG_INVESTIGATOR_SYSTEM
+from tools.vector_store import query_similar_fixes
 
 
 async def agent_bug_investigator(state: PipelineState):
@@ -116,6 +117,10 @@ If no bugs, return: {{"found": false}}"""
 
 
         localized_graph = context_cache.get_localized_graph(repo_url, file_path)
+        similar_fixes = query_similar_fixes(issue_desc)
+        similar_fixes_context = ""
+        if similar_fixes:
+            similar_fixes_context = "\nSimilar Past Fixes from Knowledge Base:\n" + json.dumps(similar_fixes, indent=2)
 
         prompt = f"""{BUG_INVESTIGATOR_SYSTEM}
 
@@ -129,6 +134,7 @@ File Content:
 ```
 
 Repository Context: {json.dumps(localized_graph)}
+{similar_fixes_context}
 
 Determine the root cause, severity ("low", "medium", "high"), impact, and affected files.
 Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "...", "severity": "...", "impact": "...", "affected_files": ["..."]}}"""
