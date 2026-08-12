@@ -10,7 +10,6 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from orchestrator import app as langgraph_app
 
-# The worker requires these environment variables
 TASK_ID = os.environ.get("TASK_ID")
 REPO_URL = os.environ.get("REPO_URL")
 COMMIT_SHA = os.environ.get("COMMIT_SHA", "")
@@ -120,7 +119,6 @@ async def run_worker():
                                 "confidence": final_confidence
                             })
 
-                # Determine high level status based on the agent running
                 status = "RUNNING_SCANNERS"
                 if node_name == "bug_investigator":
                     status = "AI_ANALYSIS"
@@ -139,7 +137,6 @@ async def run_worker():
                 print(f"Agent {node_name} completed.")
                 await post_event(status, "agent_complete", event_data)
 
-        # Finished
         print("Pipeline complete.")
         await post_event("COMPLETED", "pipeline_complete", {
             "status": "done",

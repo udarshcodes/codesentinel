@@ -35,12 +35,17 @@ async def agent_repo_mapper(state: PipelineState):
                 "https://github.com/", f"https://oauth2:{github_token}@github.com/"
             )
 
-        subprocess.run(["git", "clone", clone_url, temp_dir], check=True, timeout=300)
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_ASKPASS"] = "echo"
+        env["GCM_INTERACTIVE"] = "false"  # Disable Windows Git Credential Manager GUI
+        
+        subprocess.run(["git", "clone", clone_url, temp_dir], check=True, timeout=300, env=env)
 
         commit_sha = state.get("commit_sha", "")
         if commit_sha:
             subprocess.run(
-                ["git", "checkout", commit_sha], cwd=temp_dir, check=True, timeout=30
+                ["git", "checkout", commit_sha], cwd=temp_dir, check=True, timeout=30, env=env
             )
             print(f"[RepoMapper] Checked out commit {commit_sha}")
 
