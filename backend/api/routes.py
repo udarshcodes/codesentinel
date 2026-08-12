@@ -23,6 +23,7 @@ class AnalyzeRequest(BaseModel):
 @router.post("/analyze")
 @limiter.limit("2/minute")
 async def start_analysis(request: Request, body: AnalyzeRequest, background_tasks: BackgroundTasks):
+    base_url = str(request.base_url).rstrip("/")
     repo_url = body.repo_url.strip()
     if repo_url.startswith("github.com/"):
         repo_url = "https://" + repo_url
@@ -83,7 +84,7 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
 
         # Dispatch non-blocking background task to GitHub worker
         background_tasks.add_task(
-            trigger_github_worker, task_id, r_url, body.commit_sha
+            trigger_github_worker, task_id, r_url, body.commit_sha, base_url
         )
 
     # Return legacy single task_id and array of multi-repo task_ids
@@ -97,7 +98,7 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
     }
 
 
-async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = None):
+async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = None, dynamic_backend_url: str = None):
     # Dispatch webhook to GitHub Actions worker repository
     github_token = os.getenv("GITHUB_TOKEN", "")
     worker_repo = os.getenv("WORKER_REPO", "udarshcodes/codesentinel")
@@ -106,7 +107,10 @@ async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = N
     if "github.com/" in worker_repo:
         worker_repo = worker_repo.split("github.com/")[-1].strip("/")
 
-    backend_url = os.getenv("BACKEND_URL", "http://codesentinel-api") # Fallback for local
+    if dynamic_backend_url:
+        backend_url = os.getenv("BACKEND_URL", dynamic_backend_url)
+    else:
+        backend_url = os.getenv("BACKEND_URL", "http://codesentinel-api") # Fallback for local
     
     if not github_token:
         print("Warning: No GITHUB_TOKEN set. Cannot trigger worker action.")
