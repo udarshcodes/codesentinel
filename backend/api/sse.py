@@ -7,8 +7,8 @@ from api.job_manager import JobManager
 router = APIRouter()
 
 async def event_generator(task_id: str):
-    historical_events = JobManager.get_events(task_id, after_sequence=-1)
-    last_sequence = -1
+    historical_events = JobManager.get_events(task_id, after_sequence=-2)
+    last_sequence = -2
     
     is_completed = False
     
