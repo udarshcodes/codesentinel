@@ -1,5 +1,5 @@
 from models.pipeline_state import PipelineState
-from tools.analysis_runner import run_semgrep_on_files, run_bandit_on_files
+from agents.static_analysis import agent_static_analysis
 import os
 
 
@@ -15,33 +15,41 @@ async def agent_security_verifier(state: PipelineState):
 
     patches = state.get("patches", [])
     repo_local_path = state.get("repo_local_path", "")
+    
+    # Track BOTH rule and tool so we don't drop issues from tools that don't emit a strict rule ID
     original_rules = {
-        f.get("rule") for f in state.get("static_findings", []) if f.get("rule")
+        f.get("rule") or f.get("tool") for f in state.get("static_findings", []) if f.get("rule") or f.get("tool")
     }
 
     # Collect only the files that were modified by patches
-    modified_files = list(
-        {os.path.join(repo_local_path, p["file"]) for p in patches if p.get("file")}
-    )
+    modified_files = {
+        os.path.normpath(os.path.join(repo_local_path, p["file"]))
+        for p in patches if p.get("file")
+    }
 
     if not modified_files:
         return {"security_verified": True}
 
-    new_semgrep = run_semgrep_on_files(modified_files, cwd=repo_local_path or None)
-    new_bandit = run_bandit_on_files(modified_files, cwd=repo_local_path or None)
+    # Re-run full static analysis to get all findings across all supported languages
+    # This prevents the unwired issue where JS/Go/Rust fixes were blindly passed
+    new_analysis_state = dict(state)
+    new_analysis_result = await agent_static_analysis(new_analysis_state)
+    new_findings = new_analysis_result.get("static_findings", [])
 
-    all_new = []
-    for f in new_semgrep:
-        all_new.append(f)
-    for f in new_bandit:
-        all_new.append(f)
+    still_vulnerable = []
 
-    # Check if any original vulnerability rules still fire
-    still_vulnerable = [
-        f
-        for f in all_new
-        if f.get("check_id") in original_rules or f.get("test_id") in original_rules
-    ]
+    for finding in new_findings:
+        f_path = finding.get("file", "")
+        abs_path = os.path.normpath(os.path.join(repo_local_path, f_path))
+        
+        # Only verify if the vulnerability is in a file we actually modified
+        if abs_path in modified_files:
+            f_rule = finding.get("rule")
+            f_tool = finding.get("tool")
+            
+            identifier = f_rule if f_rule else f_tool
+            if identifier in original_rules:
+                still_vulnerable.append(finding)
 
     if still_vulnerable:
         return {
