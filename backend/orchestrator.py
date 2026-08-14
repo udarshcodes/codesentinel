@@ -11,8 +11,8 @@ from agents.validator import agent_validator
 from agents.security_verifier import agent_security_verifier
 from agents.pr_author import agent_pr_author
 
-class OrchestratorAgent:
 
+class OrchestratorAgent:
     @staticmethod
     def route_after_validator(state: PipelineState) -> str:
         """Decide whether to retry code generation or proceed to security verification."""
@@ -32,7 +32,11 @@ class OrchestratorAgent:
 
         latest = validation_results[-1]
 
-        if latest.get("passed") and not latest.get("build_failed") and not latest.get("suite_failed"):
+        if (
+            latest.get("passed")
+            and not latest.get("build_failed")
+            and not latest.get("suite_failed")
+        ):
             print(
                 "[Orchestrator] Validation PASSED — proceeding to security verification."
             )
@@ -71,7 +75,7 @@ class OrchestratorAgent:
             return "pr_author"
 
         security_verified = state.get("security_verified")
-        retry_count = state.get("retry_count", 0)
+        security_retry_count = state.get("security_retry_count", 0)
         security_retry_context = state.get("security_retry_context", [])
 
         if security_verified:
@@ -80,10 +84,10 @@ class OrchestratorAgent:
             )
             return "pr_author"
 
-        if retry_count >= 3:
+        if security_retry_count >= 3:
             remaining_vulns = len(security_retry_context)
             print(
-                f"[Orchestrator] Security verification FAILED after {retry_count} retries "
+                f"[Orchestrator] Security verification FAILED after {security_retry_count} retries "
                 f"({remaining_vulns} vulnerabilities remain) — proceeding to PR author anyway."
             )
             return "pr_author"
@@ -91,7 +95,7 @@ class OrchestratorAgent:
         remaining_vulns = len(security_retry_context)
         print(
             f"[Orchestrator] Security verification FAILED ({remaining_vulns} vulnerabilities "
-            f"still present, retry {retry_count}/3) — routing back to code_generator."
+            f"still present, retry {security_retry_count}/3) — routing back to code_generator."
         )
         return "code_generator"
 

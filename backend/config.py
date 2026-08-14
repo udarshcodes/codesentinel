@@ -20,3 +20,14 @@ GROQ_TOTAL_DAILY_BUDGET = GROQ_TOKENS_PER_KEY_PER_DAY * len(GROQ_API_KEYS)
 TEMP_REPO_PATH = os.getenv(
     "TEMP_REPO_PATH", os.path.join(tempfile.gettempdir(), "repos")
 )
+
+IGNORED_DIRS = {
+    ".git",
+    "node_modules",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    "__pycache__",
+    ".pytest_cache",
+}

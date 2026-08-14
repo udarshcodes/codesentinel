@@ -3,9 +3,12 @@ import json
 import os
 from datetime import datetime
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
-DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "codesentinel.db"))
+DB_PATH = os.getenv(
+    "DB_PATH", os.path.join(os.path.dirname(__file__), "..", "codesentinel.db")
+)
+
 
 def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
@@ -36,7 +39,9 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 class JobManager:
     QUEUED = "QUEUED"
@@ -63,13 +68,21 @@ class JobManager:
         now = datetime.utcnow().isoformat()
         cursor.execute(
             "INSERT INTO jobs (task_id, repo_url, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (task_id, repo_url, cls.QUEUED, now, now)
+            (task_id, repo_url, cls.QUEUED, now, now),
         )
         conn.commit()
         conn.close()
 
     @classmethod
-    def add_event(cls, task_id: str, sequence: int, status: str, event_name: str, data: dict, timestamp: str) -> bool:
+    def add_event(
+        cls,
+        task_id: str,
+        sequence: int,
+        status: str,
+        event_name: str,
+        data: dict,
+        timestamp: str,
+    ) -> bool:
         """
         Adds an idempotent event. Returns True if inserted, False if duplicate sequence.
         """
@@ -78,12 +91,12 @@ class JobManager:
         try:
             cursor.execute(
                 "INSERT INTO job_events (task_id, sequence, status, event_name, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                (task_id, sequence, status, event_name, json.dumps(data), timestamp)
+                (task_id, sequence, status, event_name, json.dumps(data), timestamp),
             )
-            
+
             cursor.execute(
                 "UPDATE jobs SET status = ?, updated_at = ? WHERE task_id = ?",
-                (status, timestamp, task_id)
+                (status, timestamp, task_id),
             )
             conn.commit()
             success = True
@@ -100,21 +113,24 @@ class JobManager:
                 "data": data,
                 "status": status,
                 "sequence": sequence,
-                "timestamp": timestamp
+                "timestamp": timestamp,
             }
             for q in cls._live_queues[task_id]:
                 try:
                     q.put_nowait(event_payload)
                 except asyncio.QueueFull:
                     pass
-                    
+
         return success
 
     @classmethod
     def get_job(cls, task_id: str) -> Optional[dict]:
         conn = sqlite3.connect(DB_PATH, timeout=10.0)
         cursor = conn.cursor()
-        cursor.execute("SELECT task_id, repo_url, status, created_at, updated_at FROM jobs WHERE task_id = ?", (task_id,))
+        cursor.execute(
+            "SELECT task_id, repo_url, status, created_at, updated_at FROM jobs WHERE task_id = ?",
+            (task_id,),
+        )
         row = cursor.fetchone()
         conn.close()
         if row:
@@ -123,7 +139,7 @@ class JobManager:
                 "repo_url": row[1],
                 "status": row[2],
                 "created_at": row[3],
-                "updated_at": row[4]
+                "updated_at": row[4],
             }
         return None
 
@@ -134,20 +150,22 @@ class JobManager:
         cursor = conn.cursor()
         cursor.execute(
             "SELECT sequence, status, event_name, data, timestamp FROM job_events WHERE task_id = ? AND sequence >= ? ORDER BY sequence ASC",
-            (task_id, after_sequence)
+            (task_id, after_sequence),
         )
         rows = cursor.fetchall()
         conn.close()
-        
+
         events = []
         for r in rows:
-            events.append({
-                "sequence": r[0],
-                "status": r[1],
-                "event": r[2],
-                "data": json.loads(r[3]),
-                "timestamp": r[4]
-            })
+            events.append(
+                {
+                    "sequence": r[0],
+                    "status": r[1],
+                    "event": r[2],
+                    "data": json.loads(r[3]),
+                    "timestamp": r[4],
+                }
+            )
         return events
 
     @classmethod

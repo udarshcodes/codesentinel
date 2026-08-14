@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from api.job_manager import JobManager
 
 approval_events: dict[str, dict] = {}
 sse_queues: dict[str, asyncio.Queue] = {}
@@ -30,5 +31,10 @@ metrics = Metrics()
 
 
 async def broadcast_sse(task_id: str, payload: dict):
-    if task_id in sse_queues:
-        await sse_queues[task_id].put(payload)
+    # Unify with JobManager's live queues which supports multiple clients
+    if task_id in JobManager._live_queues:
+        for q in JobManager._live_queues[task_id]:
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                pass

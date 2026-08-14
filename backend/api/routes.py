@@ -6,7 +6,7 @@ import hmac
 import hashlib
 import httpx
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from state import approval_events
 from limiter import limiter
 from api.job_manager import JobManager
@@ -22,7 +22,9 @@ class AnalyzeRequest(BaseModel):
 @router.post("/v1/analyze")
 @router.post("/analyze")
 @limiter.limit("2/minute")
-async def start_analysis(request: Request, body: AnalyzeRequest, background_tasks: BackgroundTasks):
+async def start_analysis(
+    request: Request, body: AnalyzeRequest, background_tasks: BackgroundTasks
+):
     base_url = str(request.base_url).rstrip("/")
     repo_url = body.repo_url.strip()
     if repo_url.startswith("github.com/"):
@@ -98,11 +100,13 @@ async def start_analysis(request: Request, body: AnalyzeRequest, background_task
     }
 
 
-async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = None, dynamic_backend_url: str = None):
+async def trigger_github_worker(
+    task_id: str, repo_url: str, commit_sha: str = None, dynamic_backend_url: str = None
+):
     # Dispatch webhook to GitHub Actions worker repository
     github_token = os.getenv("GITHUB_TOKEN", "")
     worker_repo = os.getenv("WORKER_REPO", "udarshcodes/codesentinel")
-    
+
     # Strip URL prefixes if WORKER_REPO is misconfigured
     if "github.com/" in worker_repo:
         worker_repo = worker_repo.split("github.com/")[-1].strip("/")
@@ -110,23 +114,28 @@ async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = N
     if dynamic_backend_url:
         backend_url = os.getenv("BACKEND_URL", dynamic_backend_url)
     else:
-        backend_url = os.getenv("BACKEND_URL", "http://codesentinel-api") # Fallback for local
-    
+        backend_url = os.getenv(
+            "BACKEND_URL", "http://codesentinel-api"
+        )  # Fallback for local
+
     if not github_token:
         print("Warning: No GITHUB_TOKEN set. Cannot trigger worker action.")
-        JobManager.add_event(task_id, 0, JobManager.FAILED, "error", {"error": "No GITHUB_TOKEN configured on backend."}, datetime.utcnow().isoformat())
+        JobManager.add_event(
+            task_id,
+            0,
+            JobManager.FAILED,
+            "error",
+            {"error": "No GITHUB_TOKEN configured on backend."},
+            datetime.utcnow().isoformat(),
+        )
         return
 
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "Authorization": f"token {github_token}",
     }
-    
-    inputs = {
-        "task_id": task_id,
-        "repo_url": repo_url,
-        "backend_url": backend_url
-    }
+
+    inputs = {"task_id": task_id, "repo_url": repo_url, "backend_url": backend_url}
     if commit_sha:
         inputs["commit_sha"] = commit_sha
 
@@ -136,14 +145,28 @@ async def trigger_github_worker(task_id: str, repo_url: str, commit_sha: str = N
                 f"https://api.github.com/repos/{worker_repo}/actions/workflows/worker.yml/dispatches",
                 headers=headers,
                 json={"ref": "main", "inputs": inputs},
-                timeout=10.0
+                timeout=10.0,
             )
             if res.status_code >= 400:
                 print(f"Error triggering worker: {res.status_code} - {res.text}")
-                JobManager.add_event(task_id, -1, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {res.text}"}, datetime.utcnow().isoformat())
+                JobManager.add_event(
+                    task_id,
+                    -1,
+                    JobManager.FAILED,
+                    "error",
+                    {"error": f"Failed to trigger worker action: {res.text}"},
+                    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                )
         except Exception as e:
             print(f"Exception triggering worker: {e}")
-            JobManager.add_event(task_id, -1, JobManager.FAILED, "error", {"error": f"Failed to trigger worker action: {e}"}, datetime.utcnow().isoformat())
+            JobManager.add_event(
+                task_id,
+                -1,
+                JobManager.FAILED,
+                "error",
+                {"error": f"Failed to trigger worker action: {e}"},
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            )
 
 
 class WorkerEvent(BaseModel):
@@ -153,20 +176,53 @@ class WorkerEvent(BaseModel):
     data: dict
     timestamp: str
 
+
 @router.post("/v1/job/{task_id}/event")
 @router.post("/job/{task_id}/event")  # Backward compatibility
-async def worker_event_webhook(task_id: str, event: WorkerEvent):
+async def worker_event_webhook(request: Request, task_id: str, event: WorkerEvent):
     """Called by the GitHub Action worker to stream granular state updates."""
+    # HMAC Replay Protection
+    worker_secret = os.getenv("WORKER_WEBHOOK_SECRET", "")
+    if worker_secret:
+        signature_header = request.headers.get("X-Worker-Signature", "")
+        if not signature_header:
+            raise HTTPException(status_code=403, detail="Missing X-Worker-Signature header")
+
+        body_bytes = await request.body()
+        
+        # Protect against replay by ensuring timestamp is fresh (within 5 minutes)
+        try:
+            event_time = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")).timestamp()
+            now = datetime.now(timezone.utc).timestamp()
+            if abs(now - event_time) > 300:
+                raise HTTPException(status_code=403, detail="Expired timestamp (replay protection)")
+        except ValueError:
+            pass # fallback if timestamp is malformed
+
+        # The signature includes method, path, task_id, sequence, timestamp, and body
+        msg = f"{request.method}:{request.url.path}:{task_id}:{event.sequence}:{event.timestamp}:".encode() + body_bytes
+        expected_sig = "sha256=" + hmac.HMAC(worker_secret.encode(), msg, hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(expected_sig, signature_header):
+            raise HTTPException(status_code=403, detail="Invalid worker signature")
     success = JobManager.add_event(
         task_id, event.sequence, event.status, event.event, event.data, event.timestamp
     )
     # Persist validated patches to ChromaDB upon pipeline completion
     if event.event == "pipeline_complete" and event.status == JobManager.COMPLETED:
         from tools import vector_store
+
         validated_fixes = event.data.get("validated_fixes", [])
+        
+        # RAG Authenticity: Scope to specific repo to prevent cross-tenant data leaks
+        job = JobManager.get_job(task_id)
+        repo_url = job.get("repo_url", "") if job else ""
+        
         for fix in validated_fixes:
-            vector_store.store_validated_fix(fix["issue"], fix["patch"], fix["confidence"])
-            
+            vector_store.store_validated_fix(
+                repo_url, fix["issue"], fix["patch"], fix["confidence"]
+            )
+
     if success:
         return {"status": "ok"}
     else:
@@ -175,11 +231,17 @@ async def worker_event_webhook(task_id: str, event: WorkerEvent):
 
 @router.post("/v1/approve/{task_id}")
 @router.post("/approve/{task_id}")
-async def submit_approval(task_id: str, body: dict):
+async def submit_approval(request: Request, task_id: str, body: dict):
     """
     Body: {decision: 'approved' | 'rejected'}
     Unblocks the pipeline that is paused at awaiting_approval.
     """
+    admin_secret = os.getenv("ADMIN_SECRET", "")
+    if admin_secret:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header != f"Bearer {admin_secret}":
+            raise HTTPException(401, "Unauthorized")
+
     decision = body.get("decision")
     if decision not in ("approved", "rejected"):
         raise HTTPException(400, "decision must be approved or rejected")
@@ -189,15 +251,13 @@ async def submit_approval(task_id: str, body: dict):
         raise HTTPException(404, "No pipeline awaiting approval for this task")
 
     event_dict["decision"] = decision
+    event_dict["approved_by"] = "admin" # Can be extracted from token in future
+    event_dict["approved_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     event_dict["event"].set()
 
     # Broadcast pipeline resumption via SSE
-    from state import sse_queues
-
-    if task_id in sse_queues:
-        await sse_queues[task_id].put(
-            {"event": "approval_resolved", "data": {"decision": decision}}
-        )
+    from state import broadcast_sse
+    await broadcast_sse(task_id, {"event": "approval_resolved", "data": {"decision": decision}})
 
     return {"status": "ok", "decision": decision}
 
@@ -256,6 +316,7 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
 
     if should_analyze:
         task_id = str(uuid.uuid4())
+        JobManager.create_job(task_id, repo_url)
         background_tasks.add_task(trigger_github_worker, task_id, repo_url, commit_sha)
         return {"status": "accepted", "task_id": task_id, "repo_url": repo_url}
 

@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 import asyncio
 import httpx
 from datetime import datetime
@@ -17,6 +16,7 @@ BACKEND_URL = os.environ.get("BACKEND_URL")
 
 sequence_counter = 0
 
+
 def make_serializable(obj):
     """Recursively convert non-serializable objects to strings."""
     if isinstance(obj, dict):
@@ -28,35 +28,35 @@ def make_serializable(obj):
     else:
         return str(obj)
 
+
 async def post_event(status: str, event_name: str, data: dict):
     global sequence_counter
     sequence_counter += 1
-    
+
     payload = {
         "sequence": sequence_counter,
         "status": status,
         "event": event_name,
         "data": data,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
     }
-    
+
     try:
         async with httpx.AsyncClient() as client:
             res = await client.post(
-                f"{BACKEND_URL}/api/v1/job/{TASK_ID}/event",
-                json=payload,
-                timeout=10.0
+                f"{BACKEND_URL}/api/v1/job/{TASK_ID}/event", json=payload, timeout=10.0
             )
             if res.status_code != 200:
                 print(f"Failed to post event {event_name}: {res.text}")
     except Exception as e:
         print(f"Exception posting event {event_name}: {e}")
 
+
 async def run_worker():
     if not TASK_ID or not REPO_URL or not BACKEND_URL:
         print("Missing required environment variables (TASK_ID, REPO_URL, BACKEND_URL)")
         sys.exit(1)
-        
+
     print(f"Starting worker for task {TASK_ID} on {REPO_URL}")
     await post_event("STARTING", "pipeline_started", {"repo_url": REPO_URL})
 
@@ -88,7 +88,7 @@ async def run_worker():
 
     try:
         astream_iter = langgraph_app.astream(state)
-        
+
         while True:
             try:
                 output = await anext(astream_iter, None)
@@ -96,10 +96,10 @@ async def run_worker():
                 print(f"LangGraph execution error: {e}")
                 await post_event("FAILED", "error", {"error": str(e)})
                 break
-                
+
             if output is None:
                 break
-                
+
             for node_name, state_update in output.items():
                 safe_update = make_serializable(state_update)
 
@@ -113,11 +113,13 @@ async def run_worker():
                     # Collect passed fixes to send to the backend's ChromaDB
                     for val in safe_update["validation_results"]:
                         if val.get("passed"):
-                            validated_fixes.append({
-                                "issue": val.get("issue_description", ""),
-                                "patch": val.get("patch", ""),
-                                "confidence": final_confidence
-                            })
+                            validated_fixes.append(
+                                {
+                                    "issue": val.get("issue_description", ""),
+                                    "patch": val.get("patch", ""),
+                                    "confidence": final_confidence,
+                                }
+                            )
 
                 status = "RUNNING_SCANNERS"
                 if node_name == "bug_investigator":
@@ -128,7 +130,7 @@ async def run_worker():
                     status = "VALIDATING_PATCH"
                 elif node_name == "pr_author":
                     status = "CREATING_PULL_REQUEST"
-                    
+
                 event_data = {
                     "agent": node_name,
                     "status": "success",
@@ -138,17 +140,22 @@ async def run_worker():
                 await post_event(status, "agent_complete", event_data)
 
         print("Pipeline complete.")
-        await post_event("COMPLETED", "pipeline_complete", {
-            "status": "done",
-            "pr_url": final_pr_url,
-            "pr_error": final_pr_error,
-            "confidence_score": final_confidence,
-            "validated_fixes": validated_fixes
-        })
+        await post_event(
+            "COMPLETED",
+            "pipeline_complete",
+            {
+                "status": "done",
+                "pr_url": final_pr_url,
+                "pr_error": final_pr_error,
+                "confidence_score": final_confidence,
+                "validated_fixes": validated_fixes,
+            },
+        )
 
     except Exception as e:
         print(f"Fatal worker crash: {e}")
         await post_event("FAILED", "error", {"error": str(e)})
+
 
 if __name__ == "__main__":
     asyncio.run(run_worker())

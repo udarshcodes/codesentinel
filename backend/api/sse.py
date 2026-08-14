@@ -6,12 +6,13 @@ from api.job_manager import JobManager
 
 router = APIRouter()
 
+
 async def event_generator(task_id: str):
     historical_events = JobManager.get_events(task_id, after_sequence=-2)
     last_sequence = -2
-    
+
     is_completed = False
-    
+
     for evt in historical_events:
         yield {
             "event": evt["event"],
@@ -20,19 +21,19 @@ async def event_generator(task_id: str):
         last_sequence = evt["sequence"]
         if evt["event"] in ["pipeline_complete", "error"]:
             is_completed = True
-            
+
     if is_completed:
         return
-        
+
     q = JobManager.subscribe(task_id)
     try:
         while True:
             payload = await q.get()
-            
+
             # Deduplicate sequences already yielded historically
             if payload["sequence"] <= last_sequence:
                 continue
-                
+
             yield {
                 "event": payload["event"],
                 "data": json.dumps(payload["data"]),
@@ -45,6 +46,7 @@ async def event_generator(task_id: str):
         print(f"SSE stream error: {e}")
     finally:
         JobManager.unsubscribe(task_id, q)
+
 
 @router.get("/v1/stream")
 @router.get("/stream")

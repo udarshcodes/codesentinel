@@ -36,6 +36,7 @@ async def lifespan(app):
     os.makedirs(temp_repo, exist_ok=True)
     yield
 
+
 app = FastAPI(title="CodeSentinel", lifespan=lifespan)
 
 app.state.limiter = limiter
