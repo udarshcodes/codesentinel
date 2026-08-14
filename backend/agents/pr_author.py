@@ -5,6 +5,7 @@ from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import PR_AUTHOR_SYSTEM
 from tools.confidence_calc import calculate_pipeline_confidence
+from tools.subprocess_runner import run_isolated_subprocess
 
 
 async def agent_pr_author(state: PipelineState):
@@ -13,11 +14,11 @@ async def agent_pr_author(state: PipelineState):
     repair_plan = state.get("repair_plan", [])
     security_verified = state.get("security_verified", False)
 
-    if state.get("approval_decision") == "rejected":
+    if state.get("approval_decision") in ("rejected", "EXPIRED"):
         return {
             "pr_url": "",
             "confidence_score": _calculate_confidence(state, security_verified),
-            "pr_error": "Repair plan was rejected by a human reviewer.",
+            "pr_error": f"Repair plan was {state.get('approval_decision')}.",
         }
 
     if not GROQ_API_KEYS:
@@ -40,6 +41,20 @@ async def agent_pr_author(state: PipelineState):
             "confidence_score": _calculate_confidence(state, security_verified),
             "pr_error": error_msg,
         }
+
+    # Determine state: was validation or security failed?
+    latest = state.get("validation_results", [])[-1] if state.get("validation_results") else {}
+    validation_failed = latest.get("build_failed", False) or latest.get("suite_failed", False)
+    failed_ids = latest.get("failed_issue_ids", [])
+    if failed_ids and len(failed_ids) >= len(patches):
+        validation_failed = True
+
+    if validation_failed or not security_verified:
+        # State machine dictates we NEVER create a successful PR here.
+        # It goes to NEEDS_REVIEW / DRAFT
+        needs_review = True
+    else:
+        needs_review = False
 
     # Tier 1 — PR title/description is simple text generation, not reasoning.
     prompt = f"""{PR_AUTHOR_SYSTEM}
@@ -90,35 +105,36 @@ Return JSON: {{"title": "...", "description": "..."}}"""
             # 1. Prepare fork and branch
             github_data = prepare_repo_for_push(repo_url, repo_local_path, GITHUB_TOKEN)
 
-            # 2. Add modified files
+            # 2. Add modified files & Diff Integrity Check
             files_to_commit = []
             for patch in patches:
                 if patch.get("applied") and patch.get("file"):
                     files_to_commit.append(patch["file"])
 
+            # Check Git Diff Integrity (Block unexpected modifications)
+            res_diff = run_isolated_subprocess(["git", "diff", "--name-only"], cwd=repo_local_path)
+            res_staged = run_isolated_subprocess(["git", "diff", "--staged", "--name-only"], cwd=repo_local_path)
+            
+            all_modified = set()
+            if res_diff["status"] == "SUCCESS" and res_diff["stdout"]:
+                all_modified.update(res_diff["stdout"].strip().splitlines())
+            if res_staged["status"] == "SUCCESS" and res_staged["stdout"]:
+                all_modified.update(res_staged["stdout"].strip().splitlines())
+                
+            unexpected_files = [f for f in all_modified if f not in files_to_commit]
+            if unexpected_files:
+                pr_error = f"Git diff integrity check failed. Unexpected files modified: {', '.join(unexpected_files)}"
+                return {
+                    "pr_url": "",
+                    "confidence_score": _calculate_confidence(state, security_verified),
+                    "pr_error": pr_error,
+                }
+
             # 3. Commit and push
             title = pr_data.get("title", "Automated Security Fixes")
 
-            total_patches = len(state.get("patches", []))
-            latest = state.get("validation_results", [])[-1] if state.get("validation_results") else {}
-            failed_ids = latest.get("failed_issue_ids", [])
-            
-            build_failed = latest.get("build_failed", False)
-            suite_failed = latest.get("suite_failed", False)
-            
-            validation_failed = False
-            partial_failure = False
-            
-            if build_failed or suite_failed:
-                validation_failed = True
-            elif total_patches and failed_ids:
-                if len(failed_ids) >= total_patches:
-                    validation_failed = True
-                else:
-                    partial_failure = True
-
-            if validation_failed or partial_failure:
-                title = f"[NEEDS WORK] {title}"
+            if needs_review:
+                title = f"[NEEDS REVIEW] {title}"
 
             has_changes = commit_and_push(
                 local_path=repo_local_path,
@@ -144,22 +160,19 @@ Return JSON: {{"title": "...", "description": "..."}}"""
             elif not isinstance(desc, str):
                 desc = str(desc)
 
-            if validation_failed:
+            if needs_review:
                 desc = (
-                    "### ⚠️ Automated Validation Failed\nThe unit tests or syntax verification did not pass after maximum retries. This PR is submitted for manual developer review and remediation.\n\n"
-                    + desc
-                )
-            elif partial_failure:
-                desc = (
-                    "### ⚠️ Partial Success\nSome AI-generated patches could not be applied or failed validation and were skipped. The PR contains only the successful fixes.\n\n"
+                    "### ⚠️ [NEEDS REVIEW] Automated Validation or Security Checks Failed\n"
+                    "The unit tests, syntax verification, or security checks did not pass after maximum retries. "
+                    "This PR is submitted as a DRAFT for manual developer review and remediation.\n\n"
                     + desc
                 )
 
             if state.get("security_retry_context"):
                 unresolved = state.get("security_retry_context", [])
-                desc += "\n\n### ⚠️ Unresolved Security Risks\nThe following security issues could not be automatically verified/repaired after 3 retries:\n"
+                desc += "\n\n### ⚠️ Unresolved Security Risks\nThe following security issues could not be automatically verified/repaired after retries:\n"
                 for u in unresolved:
-                    desc += f"- **{u.get('severity', 'Risk')}**: {u.get('description', str(u))}\n"
+                    desc += f"- **{u.get('severity', 'Risk')}**: {u.get('issue', str(u))}\n"
 
             desc += "\n\n### 📦 Modified Files\n"
             for patch in patches:
@@ -174,10 +187,10 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 token=GITHUB_TOKEN,
                 is_owner=github_data["is_owner"],
                 user_login=github_data["user_login"],
+                is_draft=needs_review, # Force draft if needs review
             )
         except Exception as e:
             import traceback
-
             traceback.print_exc()
             pr_error = str(e)
             print(f"GitHub API Error: {e}")

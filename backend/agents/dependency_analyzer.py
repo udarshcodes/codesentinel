@@ -24,16 +24,34 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     for root_dir, dirs, fnames in os.walk(repo_local_path):
         dirs[:] = [
-            d for d in dirs
-            if d not in (".git", "node_modules", "dist", "build", "venv", ".venv", "__pycache__", "target")
+            d
+            for d in dirs
+            if d
+            not in (
+                ".git",
+                "node_modules",
+                "dist",
+                "build",
+                "venv",
+                ".venv",
+                "__pycache__",
+                "target",
+            )
         ]
-        if "requirements.txt" in fnames: req_paths.append(os.path.join(root_dir, "requirements.txt"))
-        if "package.json" in fnames: pkg_paths.append(os.path.join(root_dir, "package.json"))
-        if "pom.xml" in fnames: pom_paths.append(os.path.join(root_dir, "pom.xml"))
-        if "build.gradle" in fnames: gradle_paths.append(os.path.join(root_dir, "build.gradle"))
-        if "build.gradle.kts" in fnames: gradle_kts_paths.append(os.path.join(root_dir, "build.gradle.kts"))
-        if "go.mod" in fnames: gomod_paths.append(os.path.join(root_dir, "go.mod"))
-        if "Cargo.toml" in fnames: cargo_paths.append(os.path.join(root_dir, "Cargo.toml"))
+        if "requirements.txt" in fnames:
+            req_paths.append(os.path.join(root_dir, "requirements.txt"))
+        if "package.json" in fnames:
+            pkg_paths.append(os.path.join(root_dir, "package.json"))
+        if "pom.xml" in fnames:
+            pom_paths.append(os.path.join(root_dir, "pom.xml"))
+        if "build.gradle" in fnames:
+            gradle_paths.append(os.path.join(root_dir, "build.gradle"))
+        if "build.gradle.kts" in fnames:
+            gradle_kts_paths.append(os.path.join(root_dir, "build.gradle.kts"))
+        if "go.mod" in fnames:
+            gomod_paths.append(os.path.join(root_dir, "go.mod"))
+        if "Cargo.toml" in fnames:
+            cargo_paths.append(os.path.join(root_dir, "Cargo.toml"))
 
     for req_path in req_paths:
         with open(req_path, "r") as f:
@@ -43,7 +61,7 @@ async def agent_dependency_analyzer(state: PipelineState):
                     continue
                 try:
                     if any(op in line for op in ["==", ">=", "<=", "~=", ">", "<"]):
-                        parts = re.split(r"==|>=|<=|~=|>|<", line, 1)
+                        parts = re.split(r"==|>=|<=|~=|>|<", line, maxsplit=1)
                         pkg = parts[0].strip()
                         ver = parts[1].strip()
                     else:
@@ -298,7 +316,7 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     outdated_results = await asyncio.gather(*(check_outdated(d) for d in dependencies))
 
-    for dep, latest in zip(dependencies, outdated_results):
+    for dep, latest in zip(dependencies, outdated_results, strict=True):
         if latest:
             file_name = dep.get("file", "requirements.txt")
             if not dep.get("file"):
@@ -338,7 +356,7 @@ async def agent_dependency_analyzer(state: PipelineState):
         cves = cves_map.get(dep["name"], [])
         if not cves:
             continue
-        
+
         highest_severity = "LOW"
         cve_ids = []
         for vuln in cves:
@@ -350,17 +368,24 @@ async def agent_dependency_analyzer(state: PipelineState):
             severity_arr = full_vuln.get("severity", [])
             if severity_arr:
                 for sev_entry in severity_arr:
-                    if isinstance(sev_entry, dict) and sev_entry.get("type") == "CVSS_V3":
+                    if (
+                        isinstance(sev_entry, dict)
+                        and sev_entry.get("type") == "CVSS_V3"
+                    ):
                         score_str = sev_entry.get("score", "")
                         if ":" in score_str:
                             pass
                         elif score_str:
                             try:
                                 cvss_score = float(score_str)
-                                if cvss_score >= 9.0: severity = "CRITICAL"
-                                elif cvss_score >= 7.0: severity = "HIGH"
-                                elif cvss_score >= 4.0: severity = "MEDIUM"
-                                else: severity = "LOW"
+                                if cvss_score >= 9.0:
+                                    severity = "CRITICAL"
+                                elif cvss_score >= 7.0:
+                                    severity = "HIGH"
+                                elif cvss_score >= 4.0:
+                                    severity = "MEDIUM"
+                                else:
+                                    severity = "LOW"
                             except ValueError:
                                 pass
                         break
@@ -368,18 +393,24 @@ async def agent_dependency_analyzer(state: PipelineState):
             db_spec = full_vuln.get("database_specific", {})
             if db_spec and db_spec.get("severity"):
                 severity = db_spec.get("severity").upper()
-            
+
             # Keep track of highest severity
             severity_levels = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
-            if severity_levels.get(severity, 0) > severity_levels.get(highest_severity, 0):
+            if severity_levels.get(severity, 0) > severity_levels.get(
+                highest_severity, 0
+            ):
                 highest_severity = severity
 
         file_name = dep.get("file", "requirements.txt")
         if not dep.get("file"):
-            if dep["ecosystem"] == "npm": file_name = "package.json"
-            elif dep["ecosystem"] == "Maven": file_name = "pom.xml"
-            elif dep["ecosystem"] == "Go": file_name = "go.mod"
-            elif dep["ecosystem"] == "crates.io": file_name = "Cargo.toml"
+            if dep["ecosystem"] == "npm":
+                file_name = "package.json"
+            elif dep["ecosystem"] == "Maven":
+                file_name = "pom.xml"
+            elif dep["ecosystem"] == "Go":
+                file_name = "go.mod"
+            elif dep["ecosystem"] == "crates.io":
+                file_name = "Cargo.toml"
 
         findings.append(
             {

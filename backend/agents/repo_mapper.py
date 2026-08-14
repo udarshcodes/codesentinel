@@ -39,13 +39,19 @@ async def agent_repo_mapper(state: PipelineState):
         env["GIT_TERMINAL_PROMPT"] = "0"
         env["GIT_ASKPASS"] = "echo"
         env["GCM_INTERACTIVE"] = "false"  # Disable Windows Git Credential Manager GUI
-        
-        subprocess.run(["git", "clone", clone_url, temp_dir], check=True, timeout=300, env=env)
+
+        subprocess.run(
+            ["git", "clone", clone_url, temp_dir], check=True, timeout=300, env=env
+        )
 
         commit_sha = state.get("commit_sha", "")
         if commit_sha:
             subprocess.run(
-                ["git", "checkout", commit_sha], cwd=temp_dir, check=True, timeout=30, env=env
+                ["git", "checkout", commit_sha],
+                cwd=temp_dir,
+                check=True,
+                timeout=30,
+                env=env,
             )
             print(f"[RepoMapper] Checked out commit {commit_sha}")
 
@@ -88,15 +94,10 @@ async def agent_repo_mapper(state: PipelineState):
         "UPDATE ",
     ]
 
-    for root, dirs, files in os.walk(temp_dir):
-        if (
-            ".git" in root
-            or "node_modules" in root
-            or "venv" in root
-            or "__pycache__" in root
-        ):
-            continue
+    from config import IGNORED_DIRS
 
+    for root, dirs, files in os.walk(temp_dir):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         rel_root = os.path.relpath(root, temp_dir).replace("\\", "/")
         if rel_root != ".":
             file_tree.append(rel_root + "/")
@@ -196,20 +197,25 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpo
                 "test_framework": "",
             }
     else:
-        # Fallback mock to allow pipeline progression without LLM keys
+        print("[RepoMapper] No LLM keys configured, proceeding with empty knowledge graph")
         knowledge_graph = {
-            "language": "Python (Mock)",
-            "framework": "FastAPI",
+            "language": "unknown",
+            "framework": "unknown",
             "modules": [],
             "api_endpoints": [],
             "db_interactions": [],
-            "test_framework": "pytest",
+            "test_framework": "",
         }
 
     # Build structural dependency graph (import parsing, cycle detection)
     dependency_graph = {}
     try:
         from tools.knowledge_graph import build_knowledge_graph
+        from tools.vector_store import index_codebase
+        import asyncio
+
+        # RAG Authenticity: Asynchronously index the codebase for semantic retrieval
+        asyncio.create_task(asyncio.to_thread(index_codebase, repo_url, temp_dir))
 
         kg = build_knowledge_graph(temp_dir)
         dependency_graph = kg.to_dict()

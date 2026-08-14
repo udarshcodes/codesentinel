@@ -1,13 +1,13 @@
 import os
 import json
-import asyncio
+
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 
 from tools.llm_router import invoke_llm
 from tools import context_cache
 from tools.prompt_cache import BUG_INVESTIGATOR_SYSTEM
-from tools.vector_store import query_similar_fixes
+from tools.vector_store import query_similar_fixes, query_codebase
 
 
 async def agent_bug_investigator(state: PipelineState):
@@ -114,13 +114,25 @@ If no bugs, return: {{"found": false}}"""
         else:
             pruned_content = file_content[:3000]
 
-
-
         localized_graph = context_cache.get_localized_graph(repo_url, file_path)
-        similar_fixes = query_similar_fixes(issue_desc)
+        
+        # RAG Authenticity: Fetch strictly isolated past fixes for this repository
+        similar_fixes = query_similar_fixes(repo_url, issue_desc)
         similar_fixes_context = ""
         if similar_fixes:
-            similar_fixes_context = "\nSimilar Past Fixes from Knowledge Base:\n" + json.dumps(similar_fixes, indent=2)
+            similar_fixes_context = (
+                "\\nSimilar Past Fixes from Knowledge Base:\\n"
+                + json.dumps(similar_fixes, indent=2)
+            )
+            
+        # TRUE RAG: Fetch codebase context semantically
+        codebase_snippets = query_codebase(repo_url, issue_desc)
+        codebase_context = ""
+        if codebase_snippets:
+            codebase_context = (
+                "\\nSemantic Codebase Context:\\n"
+                + json.dumps(codebase_snippets, indent=2)
+            )
 
         prompt = f"""{BUG_INVESTIGATOR_SYSTEM}
 
@@ -134,6 +146,7 @@ File Content:
 ```
 
 Repository Context: {json.dumps(localized_graph)}
+{codebase_context}
 {similar_fixes_context}
 
 Determine the root cause, severity ("low", "medium", "high"), impact, and affected files.

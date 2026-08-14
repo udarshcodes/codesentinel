@@ -126,17 +126,17 @@ async def agent_code_generator(state: PipelineState):
             previous_attempt_context = f"""
 Previous attempt for this issue (already applied in the file):
 Last Patch:
-{touched.get('last_patch')}
+{touched.get("last_patch")}
 
 Failure Reason:
-{touched.get('last_failure_reason')}
+{touched.get("last_failure_reason")}
 
-Attempt Count: {touched.get('attempt_count')}
+Attempt Count: {touched.get("attempt_count")}
 """
 
         prompt = f"""{CODE_GENERATOR_SYSTEM}
 
-Issue to fix: {plan.get('action')}
+Issue to fix: {plan.get("action")}
 Original Issue Context: {json.dumps(issue)}
 {failure_context}
 {previous_attempt_context}

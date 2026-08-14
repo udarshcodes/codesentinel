@@ -4,15 +4,17 @@ import shutil
 import subprocess
 import ast
 import re
+from config import IGNORED_DIRS
 from models.pipeline_state import PipelineState
 
 
 async def agent_static_analysis(state: PipelineState):
     repo_local_path = state.get("repo_local_path", "")
     findings = []
+    scanners_failed = False
 
     if not repo_local_path or not os.path.exists(repo_local_path):
-        return {"static_findings": findings}
+        return {"static_findings": findings, "scanners_failed": scanners_failed}
 
     # 1. Semgrep
     semgrep_path = shutil.which("semgrep")
@@ -43,6 +45,7 @@ async def agent_static_analysis(state: PipelineState):
                         }
                     )
         except Exception as e:
+            scanners_failed = True
             print(f"Semgrep execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] semgrep not found in PATH, skipping.")
@@ -85,6 +88,7 @@ async def agent_static_analysis(state: PipelineState):
                         }
                     )
         except Exception as e:
+            scanners_failed = True
             print(f"Bandit execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] bandit not found in PATH, skipping.")
@@ -135,6 +139,7 @@ async def agent_static_analysis(state: PipelineState):
             except Exception:
                 pass
     except Exception as e:
+        scanners_failed = True
         print(f"ESLint execution skipped or failed: {e}")
 
     # 4. Pylint
@@ -178,6 +183,7 @@ async def agent_static_analysis(state: PipelineState):
                 except json.JSONDecodeError:
                     pass
         except Exception as e:
+            scanners_failed = True
             print(f"Pylint execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] pylint not found in PATH, skipping.")
@@ -209,6 +215,7 @@ async def agent_static_analysis(state: PipelineState):
                             }
                         )
         except Exception as e:
+            scanners_failed = True
             print(f"Flake8 execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] flake8 not found in PATH, skipping.")
@@ -260,6 +267,7 @@ async def agent_static_analysis(state: PipelineState):
                     "[StaticAnalysis] SonarQube analysis completed but no local report found."
                 )
         except Exception as e:
+            scanners_failed = True
             print(f"SonarQube execution skipped or failed: {e}")
     else:
         print("[StaticAnalysis] sonar-scanner not found in PATH, skipping.")
@@ -273,7 +281,7 @@ async def agent_static_analysis(state: PipelineState):
                 dirs.remove("node_modules")
             if "go.mod" in files:
                 gomod_paths.append(root_dir)
-        
+
         for gmdir in gomod_paths:
             try:
                 result = subprocess.run(
@@ -289,7 +297,9 @@ async def agent_static_analysis(state: PipelineState):
                         parts = line.split(":", 3)
                         if len(parts) >= 4 and parts[0].endswith(".go"):
                             # parts[0] is relative to gmdir
-                            rel_file = os.path.relpath(os.path.join(gmdir, parts[0]), repo_local_path).replace("\\", "/")
+                            rel_file = os.path.relpath(
+                                os.path.join(gmdir, parts[0]), repo_local_path
+                            ).replace("\\", "/")
                             findings.append(
                                 {
                                     "file": rel_file,
@@ -301,6 +311,7 @@ async def agent_static_analysis(state: PipelineState):
                                 }
                             )
             except Exception as e:
+                scanners_failed = True
                 print(f"go vet execution skipped or failed in {gmdir}: {e}")
     else:
         print("[StaticAnalysis] go not found in PATH, skipping go vet.")
@@ -314,7 +325,7 @@ async def agent_static_analysis(state: PipelineState):
                 dirs.remove("node_modules")
             if "Cargo.toml" in files:
                 cargo_paths.append(root_dir)
-                
+
         for cdir in cargo_paths:
             try:
                 result = subprocess.run(
@@ -343,7 +354,10 @@ async def agent_static_analysis(state: PipelineState):
                                     (s for s in spans if s.get("is_primary")),
                                     spans[0] if spans else {},
                                 )
-                                rel_file = os.path.relpath(os.path.join(cdir, primary.get("file_name", "")), repo_local_path).replace("\\", "/")
+                                rel_file = os.path.relpath(
+                                    os.path.join(cdir, primary.get("file_name", "")),
+                                    repo_local_path,
+                                ).replace("\\", "/")
                                 findings.append(
                                     {
                                         "file": rel_file,
@@ -361,6 +375,7 @@ async def agent_static_analysis(state: PipelineState):
                         except json.JSONDecodeError:
                             pass
             except Exception as e:
+                scanners_failed = True
                 print(f"Cargo clippy skipped or failed in {cdir}: {e}")
     else:
         if not cargo_path:
@@ -385,9 +400,8 @@ async def agent_static_analysis(state: PipelineState):
         "objects",
         "select",
     }
-    for root, _, files in os.walk(repo_local_path):
-        if "venv" in root or ".git" in root or "__pycache__" in root:
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
@@ -444,6 +458,7 @@ async def agent_static_analysis(state: PipelineState):
                                             }
                                         )
                 except Exception as e:
+                    scanners_failed = True
                     print(f"Error parsing {file_path} for AST perf check: {e}")
 
     # 8. JS/TS Performance Checker (Prisma / Mongoose N+1)
@@ -453,14 +468,8 @@ async def agent_static_analysis(state: PipelineState):
         r"await\s+[a-zA-Z0-9_.]+\.(findMany|findUnique|findOne|find|query)\s*\("
     )
 
-    for root, _, files in os.walk(repo_local_path):
-        if (
-            "node_modules" in root
-            or ".git" in root
-            or "dist" in root
-            or "build" in root
-        ):
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith((".js", ".ts", ".jsx", ".tsx")):
                 file_path = os.path.join(root, file)
@@ -495,12 +504,12 @@ async def agent_static_analysis(state: PipelineState):
                                 }
                             )
                 except Exception as e:
+                    scanners_failed = True
                     print(f"Error parsing {file_path} for JS perf check: {e}")
 
     # 9. Memory Leak Detection — Python (open() without 'with')
-    for root, _, files in os.walk(repo_local_path):
-        if "venv" in root or ".git" in root or "__pycache__" in root:
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
@@ -546,9 +555,8 @@ async def agent_static_analysis(state: PipelineState):
         ("setTimeout", "clearTimeout"),
         (".on(", ".off("),
     ]
-    for root, _, files in os.walk(repo_local_path):
-        if "node_modules" in root or ".git" in root or "dist" in root:
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith((".js", ".ts", ".jsx", ".tsx")):
                 file_path = os.path.join(root, file)
@@ -584,12 +592,8 @@ async def agent_static_analysis(state: PipelineState):
         re.compile(r"\([^)]*\+\)\*"),
         re.compile(r"\([^)]*\*\)\+"),
     ]
-    for root, _, files in os.walk(repo_local_path):
-        if any(
-            skip in root
-            for skip in [".git", "node_modules", "dist", "build", "venv", "__pycache__"]
-        ):
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith((".js", ".ts", ".jsx", ".tsx", ".py")):
                 file_path = os.path.join(root, file)
@@ -631,21 +635,18 @@ async def agent_static_analysis(state: PipelineState):
                 }
             )
     except Exception as e:
+        scanners_failed = True
         print(f"[StaticAnalysis] Circular dependency check failed: {e}")
 
     # 12. Duplicate Code Detection (function body hashing)
     import hashlib
 
-    function_hashes: dict[str, list[tuple[str, str, int]]] = (
-        {}
-    )  # hash -> [(file, name, line)]
+    function_hashes: dict[
+        str, list[tuple[str, str, int]]
+    ] = {}  # hash -> [(file, name, line)]
 
-    for root, _, files in os.walk(repo_local_path):
-        if any(
-            skip in root
-            for skip in [".git", "node_modules", "venv", "__pycache__", "dist"]
-        ):
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
@@ -701,13 +702,16 @@ async def agent_static_analysis(state: PipelineState):
                 except Exception:
                     pass
 
-    for h, locations in function_hashes.items():
+    for _, locations in function_hashes.items():
         if len(locations) >= 2:
             for loc in locations:
                 other_locs = [loc_item for loc_item in locations if loc_item != loc]
                 if not other_locs:
                     continue
-                files_str = ", ".join(f"{loc_item[0]}:{loc_item[1]}(L{loc_item[2]})" for loc_item in other_locs)
+                files_str = ", ".join(
+                    f"{loc_item[0]}:{loc_item[1]}(L{loc_item[2]})"
+                    for loc_item in other_locs
+                )
                 findings.append(
                     {
                         "file": loc[0],
@@ -725,9 +729,8 @@ async def agent_static_analysis(state: PipelineState):
         r"InputStreamReader|OutputStreamWriter|FileReader|FileWriter|PrintWriter|"
         r"Scanner|Socket|ServerSocket|Connection|PreparedStatement|ResultSet)\s*\("
     )
-    for root, _, files in os.walk(repo_local_path):
-        if any(skip in root for skip in [".git", "node_modules", "build", "target"]):
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".java"):
                 file_path = os.path.join(root, file)
@@ -776,9 +779,8 @@ async def agent_static_analysis(state: PipelineState):
     )
     _GO_LOOP_PATTERN = re.compile(r"^\s*for\s+")
     _JAVA_LOOP_PATTERN = re.compile(r"^\s*(?:for|while)\s*\(")
-    for root, _, files in os.walk(repo_local_path):
-        if any(skip in root for skip in [".git", "vendor", "target", "node_modules"]):
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".go"):
                 file_path = os.path.join(root, file)
@@ -886,11 +888,8 @@ async def agent_static_analysis(state: PipelineState):
         "<strike",
         "<tt",
     ]
-    for root, _, files in os.walk(repo_local_path):
-        if any(
-            skip in root for skip in [".git", "node_modules", "dist", "build", "venv"]
-        ):
-            continue
+    for root, dirs, files in os.walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".html"):
                 file_path = os.path.join(root, file)
@@ -1227,7 +1226,7 @@ async def agent_static_analysis(state: PipelineState):
         "setup.py",
     }
     if len(all_repo_sources) > 1:
-        for rel_path, source in all_repo_sources.items():
+        for rel_path, _ in all_repo_sources.items():
             fname = os.path.basename(rel_path)
             if (
                 fname.lower() in entrypoint_names
@@ -1505,6 +1504,7 @@ async def agent_static_analysis(state: PipelineState):
 
     # Deduplicate findings by file and line
     deduped_findings = []
+    scanners_failed = False
     seen = set()
     for f in findings:
         key = f"{f['file']}:{f['line']}:{f['tool']}"

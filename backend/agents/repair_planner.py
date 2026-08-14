@@ -99,15 +99,24 @@ Return ONLY valid JSON array:
             await asyncio.wait_for(event.wait(), timeout=300)  # 5-minute timeout
         except asyncio.TimeoutError:
             print(
-                f"[RepairPlanner] Approval timed out after 300s for task {task_id}. Auto-approving."
+                f"[RepairPlanner] Approval timed out after 300s for task {task_id}. Halting securely as EXPIRED."
             )
-            approval_events[task_id]["decision"] = "approved"
-        decision = approval_events.pop(task_id).get("decision")
+            approval_events[task_id]["decision"] = "EXPIRED"
+            approval_events[task_id]["approved_by"] = "system"
+            
+        approval_data = approval_events.pop(task_id)
+        decision = approval_data.get("decision", "EXPIRED")
 
         return {
             "repair_plan": repair_plan,
             "awaiting_approval": False,  # Consumed
             "approval_decision": decision,
+            "approval_audit": {
+                "decision": decision,
+                "approved_by": approval_data.get("approved_by"),
+                "approved_at": approval_data.get("approved_at"),
+                "task_id": task_id
+            }
         }
 
     result = {"repair_plan": repair_plan, "awaiting_approval": awaiting_approval}
