@@ -51,10 +51,13 @@ def prepare_repo_for_push(repo_url: str, local_path: str, token: str) -> dict:
             else:
                 os.remove(junk_path)
 
-    for root, dirs, files in os.walk(local_path):
-        for d in dirs:
+    from config import IGNORED_DIRS
+
+    for root, dirs, _ in os.walk(local_path):
+        for d in list(dirs):
             if d == "__pycache__":
                 shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
 
     return {
         "is_owner": is_owner,
@@ -130,6 +133,15 @@ def commit_and_push(
         check=True,
         timeout=120,
     )
+    
+    # Task 10: Ephemeral Credentials. Immediately remove the authenticated remote
+    # so tokens are not persisted in .git/config.
+    subprocess.run(
+        ["git", "remote", "remove", "auth_origin"],
+        cwd=local_path,
+        capture_output=True,
+        timeout=10,
+    )
     return True
 
 
@@ -141,6 +153,7 @@ def open_pull_request(
     token: str,
     is_owner: bool,
     user_login: str,
+    is_draft: bool = False,
 ) -> str:
     g = Github(token)
     try:
@@ -153,7 +166,9 @@ def open_pull_request(
 
         head_ref = branch_name if is_owner else f"{user_login}:{branch_name}"
 
-        pr = source_repo.create_pull(title=title, body=body, head=head_ref, base=base)
+        pr = source_repo.create_pull(
+            title=title, body=body, head=head_ref, base=base, draft=is_draft
+        )
         return pr.html_url
     except Exception as e:
         print(f"Error opening PR: {e}")

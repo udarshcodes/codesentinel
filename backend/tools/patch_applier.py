@@ -1,9 +1,8 @@
 import os
 import shutil
-import difflib
 import re
 import ast
-
+from tools.safe_path import resolve_safe_path
 
 def strip_markdown(text: str, target_file: str) -> str:
     """Removes markdown code fences if present, unless targeting a markdown file."""
@@ -37,7 +36,11 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
     if not diff_content:
         return {"success": False, "stderr": "Diff content is empty."}
 
-    full_path = os.path.join(repo_local_path, target_file)
+    try:
+        full_path = resolve_safe_path(repo_local_path, target_file)
+    except ValueError as e:
+        return {"success": False, "stderr": f"Path traversal attack detected: {e}"}
+
     if not os.path.exists(full_path):
         return {"success": False, "stderr": f"File not found: {target_file}"}
 
@@ -116,37 +119,9 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
                 modifications += 1
                 continue
 
-            # --- Attempt 3: Fuzzy line-by-line matching ---
-            search_lines = search_str.strip().splitlines()
-            content_lines = content.splitlines()
-
-            if len(search_lines) >= 2:
-                best_ratio = 0.0
-                best_start = -1
-
-                for i in range(len(content_lines) - len(search_lines) + 1):
-                    candidate = content_lines[i : i + len(search_lines)]
-                    ratio = difflib.SequenceMatcher(
-                        None,
-                        "\n".join(s.strip() for s in search_lines),
-                        "\n".join(s.strip() for s in candidate),
-                    ).ratio()
-                    if ratio > best_ratio:
-                        best_ratio = ratio
-                        best_start = i
-
-                if best_ratio >= 0.85 and best_start >= 0:
-                    # Replace the matched range
-                    replace_lines = replace_str.strip().splitlines()
-                    content_lines[best_start : best_start + len(search_lines)] = (
-                        replace_lines
-                    )
-                    content = "\n".join(content_lines) + "\n"
-                    modifications += 1
-                    print(
-                        f"[PatchApplier] Fuzzy match applied (ratio={best_ratio:.2f}) in {target_file}"
-                    )
-                    continue
+            # Attempt 3 (Fuzzy matching) has been removed for strict security constraints.
+            # If Exact (Attempt 1) and Whitespace-normalized (Attempt 2) fail, we reject the patch
+            # to prevent malicious hallucinated patch modifications and force deterministic retries.
 
             if os.path.exists(backup_path):
                 os.remove(backup_path)

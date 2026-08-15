@@ -121,7 +121,6 @@ async def invoke_llm(
         prompt = prompt[:max_chars] + "\n```\n[FILE TRUNCATED DUE TO TOKEN LIMIT]\n"
         prompt_tokens = count_tokens(prompt)
 
-
     if tier == 1 and prompt_tokens <= ESCALATION_TOKEN_THRESHOLD:
         current_model = TIER1_MODEL
     else:
@@ -167,7 +166,7 @@ async def invoke_llm(
             total_tokens = usage.get("total_tokens", 0)
             if total_tokens:
                 record_usage(key_idx, total_tokens)
-            
+
             completion_tokens = usage.get("output_tokens", 0)
             if not completion_tokens:
                 completion_tokens = count_tokens(raw)
@@ -177,11 +176,11 @@ async def invoke_llm(
                 try:
                     open_char = "[" if json_array else "{"
                     close_char = "]" if json_array else "}"
-                    
+
                     start_idx = cleaned.find(open_char)
                     if start_idx == -1:
                         raise ValueError("No JSON block found in response")
-                    
+
                     depth = 0
                     end_idx = -1
                     for i in range(start_idx, len(cleaned)):
@@ -192,14 +191,14 @@ async def invoke_llm(
                             if depth == 0:
                                 end_idx = i
                                 break
-                    
+
                     if end_idx == -1:
                         raise ValueError("Mismatched braces/brackets in JSON response")
-                        
+
                     json_str = cleaned[start_idx : end_idx + 1]
                     parsed_json = json.loads(json_str)
                 except Exception as e:
-                    raise ValueError(f"JSON parse error: {e}")
+                    raise ValueError(f"JSON parse error: {e}") from e
 
             break
 
@@ -232,7 +231,6 @@ async def invoke_llm(
     _record(agent_name, prompt_tokens, completion_tokens, current_model)
 
     if raw:
-
         if not expect_json:
             if res_content is None:
                 set_cached(prompt, current_model, raw)
