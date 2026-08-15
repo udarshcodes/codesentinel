@@ -72,7 +72,7 @@ class TestRouteAfterSecurity(unittest.TestCase):
     def test_security_verified(self):
         state = {
             "security_verified": True,
-            "retry_count": 0,
+            "security_retry_count": 0,
         }
         result = route_after_security(state)
         self.assertEqual(result, "pr_author")
@@ -80,7 +80,7 @@ class TestRouteAfterSecurity(unittest.TestCase):
     def test_security_failed_retries_left(self):
         state = {
             "security_verified": False,
-            "retry_count": 1,
+            "security_retry_count": 1,
             "security_retry_context": [{"id": "CVE-1"}],
         }
         result = route_after_security(state)
@@ -89,7 +89,7 @@ class TestRouteAfterSecurity(unittest.TestCase):
     def test_security_failed_max_retries(self):
         state = {
             "security_verified": False,
-            "retry_count": 3,
+            "security_retry_count": 3,
             "security_retry_context": [{"id": "CVE-1"}],
         }
         result = route_after_security(state)

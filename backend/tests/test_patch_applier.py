@@ -19,12 +19,7 @@ class TestApplyPatchExactMatch(unittest.TestCase):
             with open(target, "w") as f:
                 f.write("def add(a, b):\n    return a - b\n")
 
-            diff = (
-                "<<<SEARCH>>>\n"
-                "    return a - b\n"
-                "<<<REPLACE>>>\n"
-                "    return a + b\n"
-            )
+            diff = "<<<SEARCH>>>\n    return a - b\n<<<REPLACE>>>\n    return a + b\n"
             result = apply_patch(diff, tmp_dir, "example.py")
             self.assertTrue(result["success"])
             with open(target) as f:
@@ -36,12 +31,7 @@ class TestApplyPatchExactMatch(unittest.TestCase):
             with open(target, "w") as f:
                 f.write("def add(a, b):\n    return a + b\n")
 
-            diff = (
-                "<<<SEARCH>>>\n"
-                "    return a * b\n"
-                "<<<REPLACE>>>\n"
-                "    return a - b\n"
-            )
+            diff = "<<<SEARCH>>>\n    return a * b\n<<<REPLACE>>>\n    return a - b\n"
             result = apply_patch(diff, tmp_dir, "example.py")
             self.assertIsInstance(result, dict)
             self.assertIn("success", result)
@@ -77,7 +67,7 @@ class TestApplyPatchEdgeCases(unittest.TestCase):
             with open(target, "w") as f:
                 f.write("")
 
-            diff = "<<<SEARCH>>>\n" "\n" "<<<REPLACE>>>\n" "# Added content\n"
+            diff = "<<<SEARCH>>>\n\n<<<REPLACE>>>\n# Added content\n"
             result = apply_patch(diff, tmp_dir, "empty.py")
             self.assertIsInstance(result, dict)
 
@@ -97,7 +87,7 @@ class TestApplyPatchEdgeCases(unittest.TestCase):
             with open(target, "w") as f:
                 f.write("def foo():\n    return 42\n")
 
-            diff = "<<<SEARCH>>>\n" "    return 42\n" "<<<REPLACE>>>\n" "    return (\n"
+            diff = "<<<SEARCH>>>\n    return 42\n<<<REPLACE>>>\n    return (\n"
             result = apply_patch(diff, tmp_dir, "valid.py")
             self.assertIsInstance(result, dict)
 

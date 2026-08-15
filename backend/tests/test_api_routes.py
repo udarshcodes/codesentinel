@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from main import app
 
 
-@patch("api.routes.run_pipeline_worker")
+@patch("api.routes.trigger_github_worker")
 class TestApiRoutes(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
@@ -159,6 +159,90 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn(
             "Could not find any active public repositories", response.json()["detail"]
         )
+
+
+    def test_worker_webhook_signature_verification(self, mock_worker):
+        secret = "worker_secret_123"
+        task_id = "test-task"
+        with patch.dict(os.environ, {"WORKER_WEBHOOK_SECRET": secret}):
+            from datetime import datetime, timezone
+            now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            
+            payload_dict = {
+                "sequence": 1,
+                "status": "QUEUED",
+                "event": "started",
+                "data": {},
+                "timestamp": now_iso
+            }
+            payload_bytes = json.dumps(payload_dict).encode()
+            
+            # Construct signature: method:path:task_id:sequence:timestamp:body
+            msg = f"POST:/api/v1/job/{task_id}/event:{task_id}:1:{now_iso}:".encode() + payload_bytes
+            sig = "sha256=" + hmac.HMAC(secret.encode(), msg, hashlib.sha256).hexdigest()
+            
+            response = self.client.post(
+                f"/api/v1/job/{task_id}/event",
+                content=payload_bytes,
+                headers={
+                    "X-Worker-Signature": sig,
+                    "Content-Type": "application/json",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+
+    def test_worker_webhook_replay_protection(self, mock_worker):
+        secret = "worker_secret_123"
+        task_id = "test-task"
+        with patch.dict(os.environ, {"WORKER_WEBHOOK_SECRET": secret}):
+            # Use an expired timestamp (10 minutes ago)
+            from datetime import datetime, timedelta, timezone
+            expired_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+            
+            payload_dict = {
+                "sequence": 1,
+                "status": "QUEUED",
+                "event": "started",
+                "data": {},
+                "timestamp": expired_time
+            }
+            payload_bytes = json.dumps(payload_dict).encode()
+            
+            msg = f"POST:/api/v1/job/{task_id}/event:{task_id}:1:{expired_time}:".encode() + payload_bytes
+            sig = "sha256=" + hmac.HMAC(secret.encode(), msg, hashlib.sha256).hexdigest()
+            
+            response = self.client.post(
+                f"/api/v1/job/{task_id}/event",
+                content=payload_bytes,
+                headers={
+                    "X-Worker-Signature": sig,
+                    "Content-Type": "application/json",
+                },
+            )
+            # Should fail replay protection
+            self.assertEqual(response.status_code, 403)
+            self.assertIn("Expired timestamp", response.json()["detail"])
+
+    def test_worker_webhook_missing_signature(self, mock_worker):
+        secret = "worker_secret_123"
+        task_id = "test-task"
+        with patch.dict(os.environ, {"WORKER_WEBHOOK_SECRET": secret}):
+            from datetime import datetime, timezone
+            now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            
+            payload_dict = {
+                "sequence": 1,
+                "status": "QUEUED",
+                "event": "started",
+                "data": {},
+                "timestamp": now_iso
+            }
+            response = self.client.post(
+                f"/api/v1/job/{task_id}/event",
+                json=payload_dict
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertIn("Missing X-Worker-Signature", response.json()["detail"])
 
 
 if __name__ == "__main__":
