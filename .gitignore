@@ -24,3 +24,5 @@ temp.patch
 .pytest_cache/
 *.db
 *.sqlite
+
+*.patch
