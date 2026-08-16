@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Activity, Key, ShieldAlert, Zap, Clock, Lock } from 'lucide-react';
 import ThemeToggle from './components/ThemeToggle';
 
@@ -9,34 +9,43 @@ export default function App() {
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  const fetchUsage = useCallback(async () => {
-    try {
-      const res = await fetch('/admin/token-usage', {
-        headers: { 'x-admin-token': secret }
-      });
-      if (res.status === 401) {
-        setIsAuthenticated(false);
-        localStorage.removeItem('adminSecret');
-        setError('Invalid Admin Secret');
-        return;
-      }
-      if (!res.ok) throw new Error('Network response was not ok');
-      const json = await res.json();
-      setData(json);
-      setError(null);
-      setLastRefreshed(new Date());
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [secret]);
-
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchUsage();
-      const interval = setInterval(fetchUsage, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [isAuthenticated, fetchUsage]);
+    if (!isAuthenticated) return;
+
+    let isMounted = true;
+    const fetchUsage = () => {
+      fetch('/admin/token-usage', { headers: { 'x-admin-token': secret } })
+        .then(res => {
+          if (!isMounted) return null;
+          if (res.status === 401) {
+            setIsAuthenticated(false);
+            localStorage.removeItem('adminSecret');
+            setError('Invalid Admin Secret');
+            return null;
+          }
+          if (!res.ok) throw new Error('Network response was not ok');
+          return res.json();
+        })
+        .then(json => {
+          if (isMounted && json) {
+            setData(json);
+            setError(null);
+            setLastRefreshed(new Date());
+          }
+        })
+        .catch(err => {
+          if (isMounted) setError(err.message);
+        });
+    };
+
+    fetchUsage();
+    const interval = setInterval(fetchUsage, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, secret]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -210,17 +219,11 @@ function StatCard({ icon, title, value, sub, alert }) {
 function KeyProgress({ index, data, isEmergency }) {
   const percent = data.percent_used;
   let color = 'bg-emerald-500';
-  let lightColor = 'bg-emerald-100';
-  let textColor = 'text-emerald-700';
   
   if (percent >= 85) {
     color = 'bg-destructive';
-    lightColor = 'bg-destructive/20';
-    textColor = 'text-destructive';
   } else if (percent >= 60) {
     color = 'bg-amber-500';
-    lightColor = 'bg-amber-100';
-    textColor = 'text-amber-700';
   }
 
   const isExhausted = data.status === 'exhausted' || percent >= 100;

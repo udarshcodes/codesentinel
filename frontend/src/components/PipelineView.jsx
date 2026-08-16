@@ -30,8 +30,15 @@ export default function PipelineView({ events }) {
   let isError = false
 
   events.forEach(e => {
+    if (e.event === 'agent_start' && e.data?.agent) {
+      currentAgent = e.data.agent
+    }
     if (e.event === 'agent_complete' && e.data?.agent) {
       completedAgents.add(e.data.agent)
+      // Clear currentAgent if the complete event matches
+      if (currentAgent === e.data.agent) {
+        currentAgent = null
+      }
     }
     if (e.event === 'approval_required') {
       currentAgent = 'repair_planner' // Paused here
@@ -41,10 +48,8 @@ export default function PipelineView({ events }) {
     }
   })
 
-  if (isError) {
+  if (isError || (events.length > 0 && events[events.length - 1].event === 'pipeline_complete')) {
     currentAgent = null
-  } else if (!currentAgent && !isError && (events.length === 0 || events[events.length - 1].event !== 'pipeline_complete')) {
-    currentAgent = AGENT_ORDER.find(a => !completedAgents.has(a))
   }
 
   // Track implicitly skipped agents based on state progression

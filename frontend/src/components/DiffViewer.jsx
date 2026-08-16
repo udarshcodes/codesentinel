@@ -91,12 +91,11 @@ export default function DiffViewer({ events }) {
 function PatchItem({ patch, parseDiff, newStyles }) {
   const [isOpen, ReactSetIsOpen] = React.useState(false)
   const { oldString, newString } = parseDiff(patch.diff)
-  const [isDark, setIsDark] = React.useState(false)
+  const [isDark, setIsDark] = React.useState(() => document.documentElement.classList.contains('dark'))
 
-  const [isSplitView, setIsSplitView] = React.useState(window.innerWidth >= 768)
+  const [isSplitView, setIsSplitView] = React.useState(() => window.innerWidth >= 768)
 
   React.useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'))
     const observer = new MutationObserver(() => {
       setIsDark(document.documentElement.classList.contains('dark'))
     })
