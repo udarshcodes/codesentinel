@@ -2,27 +2,35 @@
 __pycache__/
 venv/
 .venv/
+.venv-test/
 .env
 .env.local
 *.pyc
 *.pyo
+.pytest_cache/
+coverage/
+.coverage
 
 # Node
 node_modules/
 .vite/
 dist/
 build/
+frontend/node_modules/
+frontend/dist/
 
 # Database
 chroma_data/
+backend/chroma_db/
+backend/jobs.db
+*.db
+*.sqlite
 
 # Cache & temp
 temp.patch
 .response_cache.json
 *.bak
 *.log
-.pytest_cache/
-*.db
-*.sqlite
-
 *.patch
+scratch/
+*.ses

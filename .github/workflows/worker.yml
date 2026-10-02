@@ -16,6 +16,9 @@ on:
         description: 'Optional commit SHA to analyze'
         required: false
         default: ''
+      worker_attempt_id:
+        description: 'Worker attempt ID for lease validation'
+        required: true
 
 jobs:
   analyze:
@@ -23,6 +26,8 @@ jobs:
     steps:
       - name: Checkout CodeSentinel Code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
         
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,35 +36,8 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'backend/requirements*.txt'
           
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-          
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-        
-      - name: Install Sonar Scanner
-        run: npm install -g sonarqube-scanner
-        
       - name: Install uv
         run: pip install uv
-
-      - name: Install Semgrep
-        run: uv pip install --system semgrep
         
       - name: Install Python Dependencies
         run: |
@@ -69,12 +47,21 @@ jobs:
           
       - name: Run CodeSentinel AI Worker
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          GROQ_API_KEY_4: ${{ secrets.GROQ_API_KEY_4 }}
+          GROQ_API_KEY_5: ${{ secrets.GROQ_API_KEY_5 }}
+          GROQ_API_KEY_6: ${{ secrets.GROQ_API_KEY_6 }}
           GITHUB_TOKEN: ${{ secrets.WORKER_GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          WORKER_WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
+          SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:fb278d0bfc65d86802b5783a41b1312beebc4c0d6aabb227f62959d739947c50
           TASK_ID: ${{ github.event.inputs.task_id }}
           REPO_URL: ${{ github.event.inputs.repo_url }}
           BACKEND_URL: ${{ github.event.inputs.backend_url }}
           COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
+          WORKER_ATTEMPT_ID: ${{ github.event.inputs.worker_attempt_id }}
+          ENVIRONMENT: production
         run: |
           python backend/worker.py

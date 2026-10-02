@@ -18,10 +18,22 @@ services:
       - ./backend/.env
     environment:
       - PORT=8000
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DATABASE_URL
+      - WORKER_WEBHOOK_SECRET
+      - GITHUB_WEBHOOK_SECRET
+      - GROQ_API_KEY_1
+      - GROQ_API_KEY_2
+      - GROQ_API_KEY_3
+      - GROQ_API_KEY_4
+      - GROQ_API_KEY_5
+      - GROQ_API_KEY_6
+      - GITHUB_TOKEN
+      - ADMIN_SECRET
+      - CORS_ORIGINS
     volumes:
       - ./backend:/app
-      - /app/admin_dashboard/dist
-      - /app/admin_dashboard/node_modules
+      - /var/run/docker.sock:/var/run/docker.sock
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
@@ -37,10 +49,6 @@ services:
       - "5173:5173"
     environment:
       - BACKEND_URL=http://backend:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    command: npm run dev -- --host
     depends_on:
       backend:
         condition: service_healthy

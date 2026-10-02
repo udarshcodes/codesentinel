@@ -51,15 +51,15 @@ Originally, CodeSentinel packaged all language runtimes, build tools, and SAST s
 We decoupled the heavy lifting into an ephemeral architecture.
 
 #### 1. The Lightweight Orchestrator (Backend)
-- **Single Source of Truth**: The FastAPI backend acts as the central command. It manages webhooks, authenticates requests, and maintains job state using **SQLite**. 
-- **Why SQLite?**: SQLite was selected because it provides robust, persistent job tracking and idempotent state management without the overhead, cost, or complexity of managing a dedicated database service (like PostgreSQL) for a lightweight orchestrator.
+- **Single Source of Truth**: The FastAPI backend acts as the central command. It manages webhooks, authenticates requests, and maintains job state using a dynamic database abstraction layer supporting both **SQLite** and **PostgreSQL**.
+- **Database Strategy**: CodeSentinel runs seamlessly on **SQLite** out-of-the-box for local development and lightweight orchestration, providing robust state management with zero setup. For mission-critical deployments and high concurrency, the system dynamically switches to **PostgreSQL** by simply providing a `DATABASE_URL`, securing row-level locking (`FOR UPDATE`) across workers.
 - **Micro-Container**: By stripping out heavy toolchains (Node, Java, Rust, Go), the orchestrator Docker image is now under 250MB, deploying instantly on Azure's free tier.
-- **Persistent Streams**: Real-time Server-Sent Events (SSE) read directly from SQLite, ensuring that if a user disconnects, they instantly receive the full history upon reconnecting.
+- **Persistent Streams**: Real-time Server-Sent Events (SSE) read directly from the database, ensuring that if a user disconnects, they instantly receive the full history upon reconnecting.
 
 #### 2. The Ephemeral Worker (GitHub Actions)
-- **Why GitHub Actions?**: We shifted the actual LangGraph execution and SAST scanning to GitHub Actions (`workflow_dispatch`). This provides free, ephemeral, on-demand compute environments that come pre-installed with almost every language runtime and build tool imaginable.
-- **Stateless Execution**: The worker clones the target repository, runs the AI agents, executes the heavy scans, and posts granular state updates back to the orchestrator via HTTP webhooks.
-- **LangGraph & ChromaDB**: The AI workflow (powered by Groq and LangGraph) runs inside the worker, while validated patches are sent back to the orchestrator to be permanently stored in ChromaDB (RAG).
+- **Why GitHub Actions Worker?**: We shifted the LangGraph execution and SAST scanning to an ephemeral GitHub Actions worker model triggered via HTTP webhooks. This provides isolated execution environments, zero-maintenance scaling, and seamless telemetry streaming via authenticated HTTP callbacks, completely eliminating the need for complex localized worker infrastructure.
+- **Agent Mesh (`backend/agents/`)**: A swarm of stateless, specialized agents that execute within the worker process. Each agent acts as a distinct node in the LangGraph, executing heavy scans and posting granular state updates back to the orchestrator via HTTP webhooks.
+- **LangGraph & ChromaDB**: The AI workflow (powered by the unified LLM provider and LangGraph) runs inside the worker, while validated patches are sent back to the orchestrator to be permanently stored in ChromaDB (RAG).
 
 ### Frontend
 - **React 18 & Vite:** Lightning-fast HMR and optimized production builds.
@@ -67,7 +67,7 @@ We decoupled the heavy lifting into an ephemeral architecture.
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners & Analyzers:** 21 specialized scanning modules — 8 standard SAST tools (`Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy`) serve as the deterministic baseline, plus 13 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
+- **SAST Runners & Analyzers:** 25 specialized scanning modules — 8 standard SAST tools (`Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy`) serve as the deterministic baseline, plus 17 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
 - **Dependency & Registry Checks:** Real-time vulnerability queries via OSV.dev and live registry queries across NPM, PyPI, Maven Central, Go Proxy, and Crates.io.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
@@ -80,7 +80,7 @@ We decoupled the heavy lifting into an ephemeral architecture.
 graph TD
     A[User Submits Repo URL] -->|POST /api/analyze| B(FastAPI Orchestrator)
     B -->|Creates SQLite Job| C[(SQLite State)]
-    B -->|Triggers Workflow| D[GitHub Actions Worker]
+    B -->|Triggers Worker| D[Python Worker Process]
     
     subgraph Ephemeral Worker
     D --> E[LangGraph Execution]
@@ -131,33 +131,26 @@ cd ../frontend
 npm install
 ```
 
-### 4. Admin Dashboard Setup (Required for /admin route)
-```bash
-cd ../backend/admin_dashboard
-npm install
-npm run build
-```
-
-### 5. Environment Variables
+### 4. Environment Variables
 Create a `.env` file in the `backend/` directory (see `.env.example` for a full template):
 ```env
-# Required: Comma-separated Groq API keys for automated round-robin rotation
-GROQ_API_KEY=gsk_abc123,gsk_def456,gsk_ghi789
+# Required: Unified pool of up to 6 API keys for rate limit load balancing
+GROQ_API_KEY_1=gsk_your_key_1
+GROQ_API_KEY_2=gsk_your_key_2
+GROQ_API_KEY_3=gsk_your_key_3
+GROQ_API_KEY_4=gsk_your_key_4
+GROQ_API_KEY_5=gsk_your_key_5
+GROQ_API_KEY_6=gsk_your_key_6
 
-# Optional: Emergency key (activates only when all primary keys are exhausted)
-GROQ_EMERGENCY_KEY=gsk_emergency_key
-
-# Optional: Daily token budget per key (default: 100000)
-GROQ_TOKENS_PER_KEY=100000
+# Optional: Daily token budget per key is determined dynamically via rate limit headers
 
 # Required: For cloning, pushing, and opening PRs
 GITHUB_TOKEN=ghp_your_personal_access_token
 
-# Optional: GitHub Actions Worker Configuration
-# The repo containing the worker.yml workflow (default: udarshcodes/codesentinel)
-WORKER_REPO=udarshcodes/codesentinel
+# Optional: Worker Configuration
+WORKER_WEBHOOK_SECRET=your_worker_secret_here
 
-# Optional: Public URL of this backend (the GitHub Action worker posts state updates here)
+# Optional: Public URL of this backend (the worker posts state updates here)
 BACKEND_URL=http://localhost:8000
 
 # Required: Master password to access the /admin observability dashboard
@@ -175,9 +168,12 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 
 # Optional: GitHub Webhook Secret (for HMAC SHA-256 payload verification)
 # GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
+
+# Optional: PostgreSQL connection string for production deployments
+# DATABASE_URL=postgresql://user:password@localhost/codesentinel
 ```
 
-### 6. Run the Application
+### 5. Run the Application
 **Start the Backend (Terminal 1):**
 ```bash
 cd backend
@@ -201,21 +197,20 @@ Navigate to `http://localhost:5173` to use the app.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/analyze` (or `/api/v1/analyze`) | Initiates the headless pipeline for a single `repo_url` or multi-repository organization wildcard (`github.com/org/*`), returning unique UUID `task_id`(s) without blocking HTTP response. |
-| `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads, filterable by `task_id`. |
-| `POST` | `/api/job/{task_id}/event` (or `/api/v1/job/{task_id}/event`) | Internal webhook used by the GitHub Action worker to stream granular state updates to the orchestrator. |
-| `POST` | `/api/approve/{task_id}` (or `/api/v1/approve/{task_id}`) | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. |
+| `GET`  | `/api/v1/job/{task_id}/stream-capability` | Generates a short-lived, single-use SSE capability token for authorized viewers. |
+| `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads. Requires `task_id` and `capability` query parameters. |
+| `POST` | `/api/job/{task_id}/event` (or `/api/v1/job/{task_id}/event`) | Internal webhook used by the background worker to stream granular state updates to the orchestrator. |
+| `POST` | `/api/approve/{task_id}` (or `/api/v1/approve/{task_id}`) | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. Requires task-scoped `approval_token`. |
 | `POST` | `/api/webhook/github` (or `/api/v1/webhook/github`) | Automated CI/CD webhook endpoint triggering analysis on GitHub push and PR events with HMAC SHA-256 signature verification (`X-Hub-Signature-256`). |
 | `GET`  | `/health`, `/live`, `/ready`, `/metrics` | Observability endpoints returning system health status, liveness, readiness, and queue/execution job metrics. |
-| `GET`  | `/admin/token-usage` | Protected endpoint returning LLM key rotation stats. Requires `X-Admin-Token` header. |
+| `GET`  | `/api/v1/admin/telemetry` | Protected endpoint returning LLM key rotation stats, agent token usage, and key pool status. Requires `admin_session` cookie. |
 | `GET`  | `/admin` | Serves the statically built React Admin Dashboard. |
 
 ---
 
-## CI/CD Integration (GitHub Actions)
+## CI/CD Integration (GitHub Webhooks)
 
-CodeSentinel comes with a pre-configured GitHub Actions workflow template located in `ci-cd-template/.github/workflows/codesentinel.yml`.
-
-By copying this workflow into your target repository, you can automatically trigger the CodeSentinel pipeline whenever a Pull Request is opened or a push lands on `main`.
+CodeSentinel analyzes repositories automatically when a Pull Request is opened or code is pushed. To set this up, configure a webhook in your GitHub repository pointing to your deployed backend's `/v1/webhook/github` endpoint. Ensure you configure a `GITHUB_WEBHOOK_SECRET` to secure the payloads and automatically trigger the CodeSentinel pipeline whenever a Pull Request is opened or a push lands on `main`.
 
 **Setup Instructions:**
 1. Navigate to your target repository on GitHub.
@@ -230,10 +225,12 @@ Once configured, CodeSentinel will automatically analyze incoming code and post 
 ## Security Considerations
 
 1. **Deterministic Patching:** The custom Python patch engine ensures exactly what the AI suggests is applied, bypassing brittle system patch limits while maintaining strict character matching and forbidding LLM abbreviations.
-2. **Ephemeral Branching:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit. Note: Code execution during validation runs directly on the host, not in an isolated sandbox. Future updates plan to shift this execution into ephemeral, isolated Docker containers to prevent malicious LLM code generation from executing arbitrary operations.
+2. **Ephemeral Branching & Sandboxing:** The pipeline operates on temporary Git branches (`agent/fix-*`). Local file modifications are completely discarded if validation loops hit the maximum retry limit. To prevent malicious LLM code generation from executing arbitrary operations on the host, all untrusted code execution (such as `npm run build`, `pytest`, or compilation during validation) runs strictly within memory-bounded, ephemeral Docker sandboxes featuring dropped capabilities, restricted network access, and read-only filesystems.
 3. **Secret Management & Transport:** LLM API keys and GitHub tokens are strictly confined to the backend environment. Tokens are handled securely via local git configuration (`http.extraheader`) rather than command-line remote URLs, ensuring they never leak into process logs or `.git/config`.
 4. **Input Validation:** All repository URLs are strictly validated against allowlist regex patterns to prevent Server-Side Request Forgery (SSRF) and command injection before any cloning occurs.
-5. **Rate Limiting & Anti-Brute Force:** Key API endpoints, including the main analysis trigger and the administrative dashboard, are strictly protected with IP-based rate limiting (SlowAPI). This prevents Denial of Wallet (exhausting LLM tokens) and Denial of Service (overloading concurrent Git cloning).
+5. **Approval State Integrity:** The orchestration layer enforces strict state machine fencing. When a job is in the pending human approval state (`WAITING_FOR_APPROVAL`), all generic worker state updates via the webhook are aggressively rejected (`HTTP 409 Conflict`). This guarantees that only cryptographically verifiable human decisions from the authorized frontend can resolve the approval.
+6. **Transactional Event Consistency:** All state transitions in the orchestrator utilize strict database transactional locking (SQLite `BEGIN EXCLUSIVE` or PostgreSQL `FOR UPDATE`). Server-Sent Events (SSE) and worker dispatches are strictly executed *after* a successful database commit, ensuring absolute telemetry consistency between the UI and backend and avoiding split-brain scenarios.
+7. **Rate Limiting & Anti-Brute Force:** Key API endpoints, including the main analysis trigger and the administrative dashboard, are strictly protected with IP-based rate limiting (SlowAPI). This prevents Denial of Wallet (exhausting LLM tokens) and Denial of Service (overloading concurrent Git cloning).
 
 ---
 
@@ -244,15 +241,15 @@ codesentinel/
 ├── .github/workflows/           # Project deployment & worker workflows
 │   ├── azure-static-web-apps-*.yml  # Azure Static Web Apps deployment
 │   ├── codesentinel-api-*.yml       # Azure Container Apps API deployment
+│   ├── sandbox.yml                  # Docker sandbox image build workflow
 │   └── worker.yml                   # Ephemeral LangGraph worker dispatch
 ├── backend/
-│   ├── main.py                  # FastAPI entry point & static asset mounter
+│   ├── main.py                  # FastAPI entry point & lifespan manager
 │   ├── state.py                 # Global state and SSE queues
 │   ├── orchestrator.py          # LangGraph state machine
 │   ├── worker.py                # Standalone LangGraph agent worker execution
 │   ├── config.py                # Environment & LLM key rotation pool
 │   ├── limiter.py               # SlowAPI rate limiter instance
-│   ├── self_scan.py             # Self-scan utility
 │   ├── codesentinel.db          # SQLite orchestrator state database
 │   ├── Dockerfile               # Backend container image
 │   ├── requirements.txt         # Core dependencies
@@ -261,11 +258,13 @@ codesentinel/
 │   ├── api/
 │   │   ├── routes.py            # POST endpoints (analysis initiation, approvals, webhooks)
 │   │   ├── sse.py               # SSE streaming endpoint for pipeline observability
-│   │   └── job_manager.py       # SQLite interface for job state persistence
+│   │   ├── job_manager.py       # Database interface for job state persistence
+│   │   ├── db.py                # Database abstraction layer (SQLite/PostgreSQL)
+│   │   └── worker_auth.py       # Worker-to-Orchestrator HMAC signature verification
 │   ├── agents/                  # LangGraph Node Actors
 │   │   ├── repo_mapper.py       # Builds LLM architectural map of target repo
 │   │   ├── dependency_analyzer.py # Identifies outdated packages and CVEs (PyPI/npm/Maven/Go)
-│   │   ├── static_analysis.py   # 21 scanning modules (8 SAST tools + 13 custom)
+│   │   ├── static_analysis.py   # 25 scanning modules (8 SAST tools + 17 custom)
 │   │   ├── bug_investigator.py  # LLM RAG root-cause analysis
 │   │   ├── repair_planner.py    # Formulates fixes & requests human approval
 │   │   ├── code_generator.py    # Generates Search/Replace blocks
@@ -274,26 +273,32 @@ codesentinel/
 │   │   └── pr_author.py         # Pull Request synthesizer
 │   ├── models/
 │   │   └── pipeline_state.py    # Strictly typed state schema
-│   ├── tests/                   # Automated unit and integration test suite (11 test files)
+│   ├── tests/                   # Automated unit and integration test suite (83 test files, 330+ tests)
 │   ├── tools/
 │   │   ├── llm_router.py        # Multi-tier LLM routing with token budgets
-│   │   ├── key_dispatcher.py    # Round-robin API key rotation & emergency failover
+│   │   ├── key_dispatcher.py    # Round-robin API key rotation with daily budgets
+│   │   ├── auth.py              # Worker-to-Orchestrator HMAC auth client
 │   │   ├── patch_applier.py     # Pure Python search & replace patch engine
 │   │   ├── github_client.py     # PyGithub abstraction layer
 │   │   ├── vector_store.py      # ChromaDB fix memory (RAG store)
 │   │   ├── osv_client.py        # OSV.dev vulnerability batch query client
-│   │   ├── analysis_runner.py   # Scoped Semgrep/Bandit/Pylint/Flake8 runner
-│   │   ├── confidence_calc.py   # Unified 4-part confidence score engine used by validator and pr_author
+│   │   ├── safe_path.py         # Directory traversal prevention utility
+│   │   ├── safe_repo.py         # Safe filesystem operations for repo access
+│   │   ├── subprocess_runner.py # Async safe subprocess executor
+│   │   ├── sandbox_runner.py    # Docker sandbox execution engine
+│   │   ├── confidence_calc.py   # Unified 4-part confidence score engine
 │   │   ├── knowledge_graph.py   # AST import dependency graph & circular cycle detector
 │   │   ├── context_cache.py     # In-memory LRU session cache for repo context
 │   │   ├── context_pruner.py    # AST-aware function extraction & diff pruning
 │   │   ├── response_cache.py    # LLM response LRU cache with disk persistence
 │   │   └── prompt_cache.py      # Version-controlled system prompts
-│   └── admin_dashboard/         # Isolated Vite/React app for Token Observability
 ├── ci-cd-template/              # Drop-in automation scripts for target repos
 │   └── .github/workflows/       
-│       ├── codesentinel.yml     # GitHub Actions CI/CD trigger workflow
+│       ├── codesentinel.yml     # GitHub webhook CI/CD reference config
 │       └── azure-container-apps.yml # Azure Container Apps deployment
+├── sandbox/                     # Docker sandbox for untrusted code execution
+│   ├── Dockerfile               # Sandbox container image (memory-bounded, capabilities dropped)
+│   └── scripts/                 # Sandbox helper scripts
 ├── scripts/
 │   └── setup.sh                 # Environment setup and setup helper script
 ├── docker-compose.yml           # Multi-container orchestration configuration
@@ -304,6 +309,7 @@ codesentinel/
     ├── vite.config.js           # API proxy configuration
     ├── tailwind.config.js       # Tailwind CSS configuration
     ├── postcss.config.js        # PostCSS plugin configuration
+    ├── eslint.config.js         # ESLint flat configuration
     └── src/
         ├── main.jsx             # React DOM root mount
         ├── index.css            # Global styles & Tailwind directives
@@ -313,13 +319,36 @@ codesentinel/
         ├── hooks/
         │   ├── usePipeline.js   # SSE connection management & auto-retry
         │   └── useApproval.js   # Async mutation hook for human intervention
-        └── components/          # Reusable UI components
-            ├── ApprovalModal.jsx   # Human-in-the-loop approval dialog
-            ├── ConfidenceScore.jsx # Pipeline confidence gauge
-            ├── DiffViewer.jsx      # Side-by-side patch diff renderer
-            ├── FindingsPanel.jsx   # SAST findings display panel
-            ├── PRSummary.jsx       # Pull Request summary card
-            ├── PipelineDashboard.jsx # Top-level dashboard layout
-            ├── PipelineView.jsx    # Real-time pipeline stage tracker
-            └── ThemeToggle.jsx     # Dark/light mode switch
+        ├── services/
+        │   └── credentialStore.js # Secure credential storage service
+        ├── pages/
+        │   └── admin/
+        │       └── AdminDashboard.jsx # System observability dashboard
+        └── components/
+            ├── dashboard/       # Pipeline UI components
+            │   ├── ApprovalModal.jsx   # Human-in-the-loop approval dialog
+            │   ├── ConfidenceScore.jsx # Pipeline confidence gauge
+            │   ├── DiffViewer.jsx      # Side-by-side patch diff renderer
+            │   ├── FindingsPanel.jsx   # SAST findings display panel
+            │   ├── LLMWaitingState.jsx # LLM capacity waiting indicator
+            │   ├── PRSummary.jsx       # Pull Request summary card
+            │   ├── PipelineDashboard.jsx # Top-level dashboard layout
+            │   ├── PipelineView.jsx    # Real-time pipeline stage tracker
+            │   └── ThemeToggle.jsx     # Dark/light mode switch
+            └── landing/         # Landing page components
+                ├── LandingPage.jsx     # Landing page layout
+                ├── Navbar.jsx          # Navigation bar
+                ├── Hero.jsx            # Hero section
+                ├── ProblemSection.jsx   # Problem statement section
+                ├── FeaturesSection.jsx  # Feature highlights
+                ├── WorkflowSection.jsx  # Pipeline workflow visualization
+                ├── AgentsSection.jsx    # Agent mesh overview
+                ├── ArchitectureSection.jsx # Architecture diagram
+                ├── MultiRepoSection.jsx # Multi-repo wildcard feature
+                ├── GithubIntegration.jsx # GitHub webhook integration
+                ├── SecuritySection.jsx  # Security features
+                ├── SupportedLanguages.jsx # Language support grid
+                ├── RepositoryAnalyzer.jsx # Repo analysis input
+                ├── FinalCTA.jsx         # Call-to-action footer
+                └── Footer.jsx          # Page footer
 ```
