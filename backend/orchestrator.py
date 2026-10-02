@@ -114,8 +114,52 @@ workflow.add_node("validator", agent_validator)
 workflow.add_node("security_verifier", agent_security_verifier)
 workflow.add_node("pr_author", agent_pr_author)
 
+def get_entry_node(state: PipelineState) -> str:
+    """Determine the correct starting node for a newly spun-up worker."""
+    last_node = state.get("last_completed_node")
+    if not last_node:
+        return "repo_mapper"
+    
+    # Map the next logical step according to the workflow graph
+    next_node_map = {
+        "repo_mapper": "dependency_analyzer",
+        "dependency_analyzer": "static_analysis",
+        "static_analysis": "bug_investigator",
+        "bug_investigator": "repair_planner",
+        "repair_planner": "code_generator",
+        "code_generator": "validator",
+    }
+    
+    if last_node in next_node_map:
+        return next_node_map[last_node]
+        
+    # For conditional edges, re-evaluate the router logic using current state
+    if last_node == "validator":
+        return orchestrator.route_after_validator(state)
+    if last_node == "security_verifier":
+        return orchestrator.route_after_security(state)
+    if last_node == "pr_author":
+        # Cannot resume if already finished
+        raise RuntimeError("Cannot resume a pipeline that finished pr_author.")
+        
+    return "repo_mapper"
+
 # Set edges
-workflow.set_entry_point("repo_mapper")
+workflow.set_conditional_entry_point(
+    get_entry_node,
+    {
+        "repo_mapper": "repo_mapper",
+        "dependency_analyzer": "dependency_analyzer",
+        "static_analysis": "static_analysis",
+        "bug_investigator": "bug_investigator",
+        "repair_planner": "repair_planner",
+        "code_generator": "code_generator",
+        "validator": "validator",
+        "security_verifier": "security_verifier",
+        "pr_author": "pr_author",
+    }
+)
+
 workflow.add_edge("repo_mapper", "dependency_analyzer")
 workflow.add_edge("dependency_analyzer", "static_analysis")
 workflow.add_edge("static_analysis", "bug_investigator")

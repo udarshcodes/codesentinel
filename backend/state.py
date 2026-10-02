@@ -2,7 +2,6 @@ import asyncio
 import threading
 from api.job_manager import JobManager
 
-approval_events: dict[str, dict] = {}
 sse_queues: dict[str, asyncio.Queue] = {}
 
 

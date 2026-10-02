@@ -1,6 +1,8 @@
 import os
 import shutil
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+import asyncio
 
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
@@ -16,26 +18,75 @@ from api.routes import router as api_router
 from api.sse import router as sse_router
 from tools.key_dispatcher import get_usage_report
 from state import metrics
+import config
 
+
+import logging
+
+class CapabilityScrubber(logging.Filter):
+    def filter(self, record):
+        if record.args and len(record.args) > 2:
+            try:
+                url = record.args[2]
+                if "capability=" in url:
+                    import re
+                    scrubbed = re.sub(r'capability=[^&]+', 'capability=***', url)
+                    args_list = list(record.args)
+                    args_list[2] = scrubbed
+                    record.args = tuple(args_list)
+            except Exception:
+                pass
+        return True
+
+logging.getLogger("uvicorn.access").addFilter(CapabilityScrubber())
 
 @asynccontextmanager
 async def lifespan(app):
-    if not os.getenv("GROQ_API_KEY"):
-        print("[WARNING] GROQ_API_KEY not set!")
+    if os.getenv("ENVIRONMENT") == "production":
+        if not os.getenv("WORKER_WEBHOOK_SECRET"):
+            raise RuntimeError("FATAL: WORKER_WEBHOOK_SECRET is required in production environment.")
+        if not os.getenv("GITHUB_WEBHOOK_SECRET"):
+            raise RuntimeError("FATAL: GITHUB_WEBHOOK_SECRET is required in production environment.")
+        
+    if not config.GROQ_API_KEYS:
+        print("[WARNING] GROQ_API_KEYS not set! LLM analysis will fail.")
     if not os.getenv("GITHUB_TOKEN"):
         print("[WARNING] GITHUB_TOKEN not set!")
-    if not shutil.which("semgrep"):
-        print("[WARNING] semgrep not found in PATH. Security scanning will be limited.")
-    if not shutil.which("bandit"):
-        print("[WARNING] bandit not found in PATH. Security scanning will be limited.")
     import tempfile
 
     temp_repo = os.getenv(
         "TEMP_REPO_PATH", os.path.join(tempfile.gettempdir(), "repos")
     )
     os.makedirs(temp_repo, exist_ok=True)
+    
+    task = asyncio.create_task(resume_waiting_jobs_loop())
     yield
+    task.cancel()
 
+
+async def resume_waiting_jobs_loop():
+    import asyncio
+    from api.job_manager import JobManager
+    from api.routes import trigger_github_worker
+    while True:
+        try:
+            ready_jobs = JobManager.get_waiting_jobs_ready()
+            for job in ready_jobs:
+                if job.get("status") in ("RUNNING", "DISPATCHING"):
+                    worker_attempt_id = JobManager.recover_stale_worker_claim(job["task_id"])
+                else:
+                    worker_attempt_id = JobManager.claim_waiting_job(job["task_id"])
+                    
+                if worker_attempt_id:
+                    print(f"[AutoResume] Resuming/Dispatching job {job['task_id']} ...")
+                    try:
+                        await trigger_github_worker(job["task_id"], job["repo_url"], job.get("commit_sha"), worker_attempt_id)
+                    except Exception as e:
+                        print(f"[AutoResume] Dispatch failed for {job['task_id']}: {e}")
+                        JobManager.record_dispatch_failure(job["task_id"], str(e), worker_attempt_id)
+        except Exception as e:
+            print(f"[AutoResume] Error in loop: {e}")
+        await asyncio.sleep(60)
 
 app = FastAPI(title="CodeSentinel", lifespan=lifespan)
 
@@ -45,9 +96,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 _cors_origins = os.getenv(
     "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
 ).split(",")
+
+# If credentials are allowed, origins cannot be a wildcard
+safe_origins = [o.strip() for o in _cors_origins if o.strip() and o.strip() != "*"]
+if not safe_origins:
+    safe_origins = ["http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in _cors_origins],
+    allow_origins=safe_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -86,54 +143,23 @@ def live_check():
 
 @app.get("/ready")
 def ready_check():
+    from api.job_manager import JobManager
+    if not JobManager.check_database_ready():
+        raise HTTPException(status_code=503, detail="Database not ready")
+    
+    if os.getenv("ENVIRONMENT") == "production" and not os.getenv("WORKER_WEBHOOK_SECRET"):
+        raise HTTPException(status_code=503, detail="Configuration not ready")
+        
     return {"status": "ready"}
 
 
 if not os.getenv("ADMIN_SECRET", ""):
     print(
-        "[WARNING] ADMIN_SECRET not set! The /admin/token-usage endpoint will reject all requests."
+        "[WARNING] ADMIN_SECRET not set! The /api/v1/admin/login and /api/v1/admin/telemetry endpoints will reject all requests."
     )
 
 
-@app.get("/admin/token-usage")
-@limiter.limit("5/minute")
-def token_usage(request: Request, x_admin_token: str = Header(None)):
-    admin_secret = os.getenv("ADMIN_SECRET", "")
-    if not admin_secret or x_admin_token != admin_secret:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return get_usage_report()
-
-
-try:
-    admin_dist_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "admin_dashboard", "dist"
-    )
-    if not os.path.exists(admin_dist_path) and os.path.exists("admin_dashboard/dist"):
-        admin_dist_path = "admin_dashboard/dist"
-
-    if os.path.exists(admin_dist_path):
-        app.mount(
-            "/admin",
-            StaticFiles(directory=admin_dist_path, html=True),
-            name="admin",
-        )
-    else:
-        from fastapi.responses import HTMLResponse
-
-        @app.get("/admin", response_class=HTMLResponse)
-        def admin_dashboard():
-            return f"""
-            <html>
-                <head><title>Admin Dashboard Not Built</title></head>
-                <body>
-                    <h1>Admin Dashboard Not Found</h1>
-                    <p>The admin dashboard has not been built yet. Please run <code>npm run build</code> in the <code>admin_dashboard</code> directory (expected path: {admin_dist_path}).</p>
-                </body>
-            </html>
-            """
-
-except Exception as e:
-    print(f"[Warning] Error mounting admin dashboard: {e}")
+# Admin endpoints are now handled in api.routes
 
 if __name__ == "__main__":
     import uvicorn

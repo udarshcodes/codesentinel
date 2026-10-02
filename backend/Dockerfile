@@ -1,9 +1,3 @@
-# Build frontend dashboard
-FROM node:20 AS builder
-WORKDIR /app
-COPY admin_dashboard ./admin_dashboard
-RUN cd admin_dashboard && npm install && npm run build
-
 # Build lightweight orchestrator backend
 FROM python:3.10-slim
 
@@ -26,9 +20,6 @@ RUN pip install uv && uv pip install --system -r requirements.txt
 
 # Copy application code
 COPY . .
-
-# Overwrite the unbuilt admin_dashboard with the built dist from the builder stage
-COPY --from=builder /app/admin_dashboard/dist ./admin_dashboard/dist
 
 # Add Healthcheck for Azure Container Apps
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

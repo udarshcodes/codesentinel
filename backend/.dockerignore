@@ -18,3 +18,12 @@ self_scan_results.json
 **/node_modules/
 **/dist/
 .DS_Store
+.venv-test/
+.pytest_cache/
+scratch/
+*.db
+*.ses
+*.sqlite
+*.sqlite3
+coverage/
+.coverage
