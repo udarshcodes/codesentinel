@@ -1,8 +1,11 @@
 import os
 import json
+import re
+from typing import Dict, Any, List
 
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
+from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists, open_safe
 
 from tools.llm_router import invoke_llm
 from tools import context_cache
@@ -18,6 +21,21 @@ async def agent_bug_investigator(state: PipelineState):
 
     all_findings = static_findings + dependency_findings
     investigated_issues = []
+    
+    rag_task = context_cache.get(repo_url, "rag_task")
+    if rag_task:
+        try:
+            rag_status = await rag_task
+            state["rag_status"] = rag_status
+        except Exception as e:
+            rag_status = {"status": "error", "error": str(e)}
+            state["rag_status"] = rag_status
+    else:
+        rag_status = state.get("rag_status", {})
+    if rag_status.get("status") == "success":
+        print(f"[BugInvestigator] Repository RAG available: {rag_status.get('documents_indexed')} chunks indexed.")
+    else:
+        print(f"[BugInvestigator] Repository RAG UNAVAILABLE or failed: {rag_status.get('error', 'Not indexed')}")
 
     if not GROQ_API_KEYS:
         return {"investigated_issues": investigated_issues}
@@ -25,7 +43,7 @@ async def agent_bug_investigator(state: PipelineState):
     if not all_findings:
         print("No static findings, falling back to deep LLM code review...")
         source_files = []
-        for root, _, files in os.walk(repo_local_path):
+        for root, dirs, files, _ in safe_walk(repo_local_path):
             if ".git" in root or "node_modules" in root or "__pycache__" in root:
                 continue
             for file in files:
@@ -48,7 +66,7 @@ async def agent_bug_investigator(state: PipelineState):
         # Prevent context overflow by limiting file count
         for file_path in source_files[:5]:
             try:
-                with open(file_path, "r", errors="ignore") as f:
+                with open_safe(repo_local_path, file_path, "r", errors="ignore") as f:
                     content = f.read()
                 rel_path = os.path.relpath(file_path, repo_local_path).replace(
                     "\\", "/"
@@ -71,7 +89,7 @@ If no bugs, return: {{"found": false}}"""
                 result = await invoke_llm(
                     prompt,
                     agent_name="bug_investigator",
-                    tier=1,
+                    task_class="LIGHT",
                     expect_json=True,
                 )
 
@@ -96,13 +114,10 @@ If no bugs, return: {{"found": false}}"""
 
         file_content = ""
         if file_path and repo_local_path:
-            full_path = os.path.join(repo_local_path, file_path)
-            if os.path.exists(full_path):
-                try:
-                    with open(full_path, "r", errors="ignore") as f:
-                        file_content = f.read()
-                except Exception as e:
-                    print(f"Error reading file {full_path}: {e}")
+            try:
+                file_content = safe_read_text(repo_local_path, file_path, errors="ignore", max_bytes=500000)
+            except Exception as e:
+                print(f"Error reading file {file_path}: {e}")
 
         line_num = finding.get("line")
         if file_content and line_num:
@@ -118,21 +133,32 @@ If no bugs, return: {{"found": false}}"""
         
         # RAG Authenticity: Fetch strictly isolated past fixes for this repository
         similar_fixes = query_similar_fixes(repo_url, issue_desc)
-        similar_fixes_context = ""
         if similar_fixes:
             similar_fixes_context = (
                 "\\nSimilar Past Fixes from Knowledge Base:\\n"
                 + json.dumps(similar_fixes, indent=2)
             )
+        else:
+            similar_fixes_context = "\\nSimilar Past Fixes from Knowledge Base: No relevant historical fixes retrieved."
             
         # TRUE RAG: Fetch codebase context semantically
         codebase_snippets = query_codebase(repo_url, issue_desc)
-        codebase_context = ""
         if codebase_snippets:
             codebase_context = (
                 "\\nSemantic Codebase Context:\\n"
                 + json.dumps(codebase_snippets, indent=2)
             )
+        else:
+            codebase_context = "\\nSemantic Codebase Context: No relevant repository code retrieved."
+            
+        print(f"\\n--- RAG Retrieval Started ---")
+        print(f"Repository: {repo_url}")
+        print(f"Repository chunks retrieved: {len(codebase_snippets)}")
+        if codebase_snippets:
+            files_retrieved = list(set([s['file'] for s in codebase_snippets]))
+            print(f"Files: {', '.join(files_retrieved)}")
+        print(f"Historical fixes retrieved: {len(similar_fixes)}")
+        print(f"RAG context injected into Bug Investigator\\n-----------------------------")
 
         prompt = f"""{BUG_INVESTIGATOR_SYSTEM}
 
@@ -157,7 +183,7 @@ Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "..."
             issue_data = await invoke_llm(
                 prompt,
                 agent_name="bug_investigator",
-                tier=1,
+                task_class="LIGHT",
                 expect_json=True,
             )
             if isinstance(issue_data, dict) and not issue_data.get("error"):

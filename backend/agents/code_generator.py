@@ -98,13 +98,12 @@ async def agent_code_generator(state: PipelineState):
         affected = issue.get("affected_files", [])
         if affected:
             target_file = affected[0]
-            full_path = os.path.join(repo_local_path, target_file)
-            if os.path.exists(full_path):
+            if safe_path_exists(repo_local_path, target_file):
                 try:
-                    with open(full_path, "r", errors="ignore") as f:
+                    with open_safe(repo_local_path, target_file, "r", errors="ignore") as f:
                         file_content = f.read()
                 except Exception as e:
-                    print(f"Error reading file {full_path}: {e}")
+                    print(f"Error reading file {target_file}: {e}")
 
         if not target_file:
             print(
@@ -151,7 +150,7 @@ Current file content:
             fixed_content = await invoke_llm(
                 prompt,
                 agent_name="code_generator",
-                tier=2,
+                task_class="DEEP",
                 expect_json=False,
             )
 
@@ -180,7 +179,7 @@ Current file content:
                     )
                     patch_applied = True
                     # Read back the modified content to create a diff for the UI
-                    with open(full_path, "r", errors="ignore") as f:
+                    with open_safe(repo_local_path, target_file, "r", errors="ignore") as f:
                         new_content = f.read()
                     diff = _generate_diff(file_content, new_content, target_file)
                     if not diff.strip():

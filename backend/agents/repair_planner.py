@@ -1,14 +1,15 @@
 import json
 import asyncio
+from datetime import datetime, timezone
 from models.pipeline_state import PipelineState
-from state import approval_events, broadcast_sse
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import REPAIR_PLANNER_SYSTEM
 
 
 async def agent_repair_planner(state: PipelineState):
-    investigated_issues = state.get("investigated_issues", [])
+    import copy
+    investigated_issues = copy.deepcopy(state.get("investigated_issues", []))
 
     if not investigated_issues or not GROQ_API_KEYS:
         return {"repair_plan": [], "awaiting_approval": False}
@@ -19,9 +20,24 @@ async def agent_repair_planner(state: PipelineState):
     ):
         investigated_issues.pop()
 
-    # Tier 2 — Repair planning requires deep reasoning about fix ordering
-    # and risk classification.
-    prompt = f"""{REPAIR_PLANNER_SYSTEM}
+    # Check if all issues are just dependency updates
+    all_dependency = all(
+        "dependency" in str(issue.get("issue", "")).lower()
+        for issue in investigated_issues
+    )
+    
+    if all_dependency:
+        repair_plan = [{
+            "issue_id": 1, 
+            "proposed_action": "Update vulnerable dependencies to their latest secure versions.", 
+            "risk_level": "low-risk", 
+            "reasoning": "Standard dependency update.",
+            "issue_summary": "Vulnerable dependencies found."
+        }]
+    else:
+        # Tier 2 — Repair planning requires deep reasoning about fix ordering
+        # and risk classification.
+        prompt = f"""{REPAIR_PLANNER_SYSTEM}
 
 Given these investigated issues:
 {json.dumps(investigated_issues)}
@@ -31,22 +47,25 @@ Classify each fix as "low-risk" or "high-risk". High-risk categories: authentica
 
 Return ONLY valid JSON array:
 [
-  {{"issue_id": 1, "action": "...", "risk": "low-risk" | "high-risk", "reasoning": "..."}}
+  {{"issue_id": 1, "issue_summary": "...", "proposed_action": "...", "risk_level": "low-risk" | "high-risk", "reasoning": "..."}}
 ]"""
 
-    try:
-        repair_plan = await invoke_llm(
-            prompt,
-            agent_name="repair_planner",
-            tier=2,
-            expect_json=True,
-            json_array=True,
-        )
-        if not isinstance(repair_plan, list):
+        try:
+            repair_plan = await invoke_llm(
+                prompt,
+                agent_name="repair_planner",
+                task_class="DEEP",
+                expect_json=True,
+                json_array=True,
+            )
+            if not isinstance(repair_plan, list):
+                repair_plan = []
+        except Exception as e:
+            from tools.llm_router import LLMExhaustionError
+            if isinstance(e, LLMExhaustionError):
+                raise
+            print(f"Error planning repairs: {e}")
             repair_plan = []
-    except Exception as e:
-        print(f"Error planning repairs: {e}")
-        repair_plan = []
 
     HIGH_RISK_KEYWORDS = [
         "jwt",
@@ -65,61 +84,49 @@ Return ONLY valid JSON array:
 
     def classify_risk(fix: dict) -> str:
         description = (
-            str(fix.get("description", ""))
-            + str(fix.get("files_to_change", ""))
+            str(fix.get("issue_summary", ""))
             + str(fix.get("reasoning", ""))
-            + str(fix.get("action", ""))
+            + str(fix.get("proposed_action", ""))
         ).lower()
         for kw in HIGH_RISK_KEYWORDS:
             if kw in description:
                 return "high-risk"
         return "low-risk"
 
+    import hashlib
     for fix in repair_plan:
-        if fix.get("risk") != "high-risk":
-            fix["risk"] = classify_risk(fix)
+        if fix.get("risk_level") != "high-risk":
+            fix["risk_level"] = classify_risk(fix)
+            
+        fix["issue_id"] = fix.get("issue_id", "unknown")
+        fix["issue_summary"] = fix.get("issue_summary", "")
+        fix["proposed_action"] = fix.get("proposed_action", "")
+        fix["reasoning"] = fix.get("reasoning", "")
+        fix["status"] = fix.get("status", "pending")
+        
+        if "id" in fix and "fix_id" not in fix:
+            fix["fix_id"] = str(fix.pop("id"))
+        elif "id" in fix:
+            fix.pop("id")
+            
+        if "fix_id" not in fix:
+            unique_str = f"{fix.get('issue_id')}-{fix.get('proposed_action')}-{fix.get('issue_summary')}"
+            fix["fix_id"] = hashlib.sha256(unique_str.encode()).hexdigest()[:12]
 
     # Check if any fix is high-risk to pause pipeline
-    awaiting_approval = any(item.get("risk") == "high-risk" for item in repair_plan)
+    awaiting_approval = any(item.get("risk_level") == "high-risk" for item in repair_plan)
     task_id = state.get("task_id", "")
 
     if awaiting_approval and task_id:
-        event = asyncio.Event()
-        approval_events[task_id] = {"event": event, "decision": None}
-
-        await broadcast_sse(
-            task_id,
-            {
-                "event": "approval_required",
-                "data": {"agent": "repair_planner", "fix": repair_plan},
-            },
-        )
-
-        try:
-            await asyncio.wait_for(event.wait(), timeout=300)  # 5-minute timeout
-        except asyncio.TimeoutError:
-            print(
-                f"[RepairPlanner] Approval timed out after 300s for task {task_id}. Halting securely as EXPIRED."
-            )
-            approval_events[task_id]["decision"] = "EXPIRED"
-            approval_events[task_id]["approved_by"] = "system"
-            
-        approval_data = approval_events.pop(task_id)
-        decision = approval_data.get("decision", "EXPIRED")
-
+        # The state persistence and waiting_for_approval event is now handled atomically by worker.py
+        # We just need to return the state telling the worker to wait.
         return {
             "repair_plan": repair_plan,
-            "awaiting_approval": False,  # Consumed
-            "approval_decision": decision,
-            "approval_audit": {
-                "decision": decision,
-                "approved_by": approval_data.get("approved_by"),
-                "approved_at": approval_data.get("approved_at"),
-                "task_id": task_id
-            }
+            "awaiting_approval": True,
+            "approval_decision": None
         }
 
-    result = {"repair_plan": repair_plan, "awaiting_approval": awaiting_approval}
+    result = {"repair_plan": repair_plan, "awaiting_approval": False}
 
     if not repair_plan and investigated_issues:
         result["pr_error"] = (

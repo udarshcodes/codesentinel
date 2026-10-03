@@ -1,3 +1,4 @@
+import codecs
 import os
 import json
 import shutil
@@ -6,6 +7,8 @@ import ast
 import re
 from config import IGNORED_DIRS
 from models.pipeline_state import PipelineState
+from tools.sandbox_runner import run_sandboxed_subprocess
+from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists
 
 
 async def agent_static_analysis(state: PipelineState):
@@ -17,98 +20,90 @@ async def agent_static_analysis(state: PipelineState):
         return {"static_findings": findings, "scanners_failed": scanners_failed}
 
     # 1. Semgrep
-    semgrep_path = shutil.which("semgrep")
-    if semgrep_path:
-        try:
-            result = subprocess.run(
-                [semgrep_path, "--config=auto", "--json", "."],
-                cwd=repo_local_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                shell=(os.name == "nt"),
-            )
-            if result.stdout:
-                data = json.loads(result.stdout)
-                for hit in data.get("results", []):
-                    findings.append(
-                        {
-                            "file": hit.get("path", ""),
-                            "issue": hit.get("extra", {}).get(
-                                "message", "Semgrep issue"
-                            ),
-                            "rule": hit.get("check_id", ""),
-                            "tool": "semgrep",
-                            "severity": hit.get("extra", {}).get("severity", "WARNING"),
-                            "line": hit.get("start", {}).get("line", 1),
-                            "category": "security",
-                        }
-                    )
-        except Exception as e:
+    try:
+        result = run_sandboxed_subprocess(
+            ["semgrep", "--config=auto", "--json", "."],
+            repo_path=repo_local_path,
+            timeout=120,
+        )
+        if result.get("status") in ("ERROR", "TIMEOUT"):
             scanners_failed = True
-            print(f"Semgrep execution skipped or failed: {e}")
-    else:
-        print("[StaticAnalysis] semgrep not found in PATH, skipping.")
+            print(f"Semgrep execution failed: {result.get('stderr')}")
+        elif result.get("stdout"):
+            data = json.loads(result["stdout"])
+            for hit in data.get("results", []):
+                findings.append(
+                    {
+                        "file": hit.get("path", ""),
+                        "issue": hit.get("extra", {}).get(
+                            "message", "Semgrep issue"
+                        ),
+                        "rule": hit.get("check_id", ""),
+                        "tool": "semgrep",
+                        "severity": hit.get("extra", {}).get("severity", "WARNING"),
+                        "line": hit.get("start", {}).get("line", 1),
+                        "category": "security",
+                    }
+                )
+    except Exception as e:
+        scanners_failed = True
+        print(f"Semgrep execution skipped or failed: {e}")
 
     # 2. Bandit
-    bandit_path = shutil.which("bandit")
-    if bandit_path:
-        try:
-            result = subprocess.run(
-                [bandit_path, "-r", ".", "-f", "json"],
-                cwd=repo_local_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                shell=(os.name == "nt"),
-            )
-            if result.stdout:
-                data = json.loads(result.stdout)
-                for hit in data.get("results", []):
-                    file_path = hit.get("filename", "")
-                    if os.path.isabs(file_path):
-                        try:
-                            file_path = os.path.relpath(
-                                file_path, repo_local_path
-                            ).replace("\\", "/")
-                        except ValueError:
-                            pass
-                    if file_path.startswith("./") or file_path.startswith(".\\"):
-                        file_path = file_path[2:]
-
-                    findings.append(
-                        {
-                            "file": file_path,
-                            "issue": hit.get("issue_text", "Bandit issue"),
-                            "rule": hit.get("test_id", ""),
-                            "tool": "bandit",
-                            "severity": hit.get("issue_severity", "MEDIUM"),
-                            "line": hit.get("line_number", 1),
-                            "category": "security",
-                        }
-                    )
-        except Exception as e:
+    try:
+        result = run_sandboxed_subprocess(
+            ["bandit", "-r", ".", "-f", "json"],
+            repo_path=repo_local_path,
+            timeout=120,
+        )
+        if result.get("status") in ("ERROR", "TIMEOUT"):
             scanners_failed = True
-            print(f"Bandit execution skipped or failed: {e}")
-    else:
-        print("[StaticAnalysis] bandit not found in PATH, skipping.")
+            print(f"Bandit execution failed: {result.get('stderr')}")
+        elif result.get("stdout"):
+            data = json.loads(result["stdout"])
+            for hit in data.get("results", []):
+                file_path = hit.get("filename", "")
+                if os.path.isabs(file_path):
+                    try:
+                        file_path = os.path.relpath(
+                            file_path, repo_local_path
+                        ).replace("\\", "/")
+                    except ValueError:
+                        pass
+                if file_path.startswith("./") or file_path.startswith(".\\"):
+                    file_path = file_path[2:]
+
+                findings.append(
+                    {
+                        "file": file_path,
+                        "issue": hit.get("issue_text", "Bandit issue"),
+                        "rule": hit.get("test_id", ""),
+                        "tool": "bandit",
+                        "severity": hit.get("issue_severity", "MEDIUM"),
+                        "line": hit.get("line_number", 1),
+                        "category": "security",
+                    }
+                )
+    except Exception as e:
+        scanners_failed = True
+        print(f"Bandit execution skipped or failed: {e}")
 
     # 3. ESLint
     try:
         # ESLint might return non-zero exit code if it finds errors, but it still prints json to stdout
-        result = subprocess.run(
-            ["npx", "--yes", "eslint", ".", "--format", "json"],
-            cwd=repo_local_path,
-            capture_output=True,
-            text=True,
+        result = run_sandboxed_subprocess(
+            ["eslint", ".", "--format", "json"],
+            repo_path=repo_local_path,
             timeout=120,
-            shell=(os.name == "nt"),
         )
-        if result.stdout:
+        if result.get("status") in ("ERROR", "TIMEOUT"):
+            scanners_failed = True
+            print(f"ESLint execution failed: {result.get('stderr')}")
+        elif result.get("stdout"):
             try:
-                start_idx = result.stdout.find("[")
+                start_idx = result["stdout"].find("[")
                 json_str = (
-                    result.stdout[start_idx:] if start_idx != -1 else result.stdout
+                    result["stdout"][start_idx:] if start_idx != -1 else result["stdout"]
                 )
                 data = json.loads(json_str)
                 for file_result in data:
@@ -143,103 +138,91 @@ async def agent_static_analysis(state: PipelineState):
         print(f"ESLint execution skipped or failed: {e}")
 
     # 4. Pylint
-    pylint_path = shutil.which("pylint")
-    if pylint_path:
-        try:
-            result = subprocess.run(
-                [
-                    pylint_path,
-                    "--disable=all",
-                    "--enable=W0611,W0612,R0801,R0401,R0915",
-                    "-f",
-                    "json",
-                    ".",
-                ],
-                cwd=repo_local_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                shell=(os.name == "nt"),
-            )
-            if result.stdout:
-                try:
-                    start_idx = result.stdout.find("[")
-                    json_str = (
-                        result.stdout[start_idx:] if start_idx != -1 else result.stdout
-                    )
-                    data = json.loads(json_str)
-                    for hit in data:
-                        file_path = hit.get("path", "")
-                        findings.append(
-                            {
-                                "file": file_path,
-                                "issue": hit.get("message", "Pylint issue"),
-                                "tool": "pylint",
-                                "severity": "MEDIUM",
-                                "line": hit.get("line", 1),
-                                "category": "quality",
-                            }
-                        )
-                except json.JSONDecodeError:
-                    pass
-        except Exception as e:
+    try:
+        result = run_sandboxed_subprocess(
+            [
+                "pylint",
+                "--disable=all",
+                "--enable=W0611,W0612,R0801,R0401,R0915",
+                "-f",
+                "json",
+                ".",
+            ],
+            repo_path=repo_local_path,
+            timeout=120,
+        )
+        if result.get("status") in ("ERROR", "TIMEOUT"):
             scanners_failed = True
-            print(f"Pylint execution skipped or failed: {e}")
-    else:
-        print("[StaticAnalysis] pylint not found in PATH, skipping.")
+            print(f"Pylint execution failed: {result.get('stderr')}")
+        elif result.get("stdout"):
+            try:
+                start_idx = result["stdout"].find("[")
+                json_str = (
+                    result["stdout"][start_idx:] if start_idx != -1 else result["stdout"]
+                )
+                data = json.loads(json_str)
+                for hit in data:
+                    file_path = hit.get("path", "")
+                    findings.append(
+                        {
+                            "file": file_path,
+                            "issue": hit.get("message", "Pylint issue"),
+                            "tool": "pylint",
+                            "severity": "MEDIUM",
+                            "line": hit.get("line", 1),
+                            "category": "quality",
+                        }
+                    )
+            except json.JSONDecodeError:
+                pass
+    except Exception as e:
+        scanners_failed = True
+        print(f"Pylint execution skipped or failed: {e}")
 
     # 5. Flake8
-    flake8_path = shutil.which("flake8")
-    if flake8_path:
-        try:
-            result = subprocess.run(
-                [flake8_path, "--select=E9,F63,F7,F82", "."],
-                cwd=repo_local_path,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                shell=(os.name == "nt"),
-            )
-            if result.stdout:
-                for line in result.stdout.splitlines():
-                    parts = line.split(":", 3)
-                    if len(parts) >= 4:
-                        findings.append(
-                            {
-                                "file": parts[0],
-                                "issue": parts[3].strip(),
-                                "tool": "flake8",
-                                "severity": "LOW",
-                                "line": int(parts[1]),
-                                "category": "quality",
-                            }
-                        )
-        except Exception as e:
+    try:
+        result = run_sandboxed_subprocess(
+            ["flake8", "--select=E9,F63,F7,F82", "."],
+            repo_path=repo_local_path,
+            timeout=120,
+        )
+        if result.get("status") in ("ERROR", "TIMEOUT"):
             scanners_failed = True
-            print(f"Flake8 execution skipped or failed: {e}")
-    else:
-        print("[StaticAnalysis] flake8 not found in PATH, skipping.")
+            print(f"Flake8 execution failed: {result.get('stderr')}")
+        elif result.get("stdout"):
+            for line in result["stdout"].splitlines():
+                parts = line.split(":", 3)
+                if len(parts) >= 4:
+                    findings.append(
+                        {
+                            "file": parts[0],
+                            "issue": parts[3].strip(),
+                            "tool": "flake8",
+                            "severity": "LOW",
+                            "line": int(parts[1]),
+                            "category": "quality",
+                        }
+                    )
+    except Exception as e:
+        scanners_failed = True
+        print(f"Flake8 execution skipped or failed: {e}")
 
     # 6. SonarQube
-    sonar_path = shutil.which("sonar-scanner")
-    if sonar_path:
-        try:
-            result = subprocess.run(
-                [sonar_path],
-                cwd=repo_local_path,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                shell=(os.name == "nt"),
-            )
+    try:
+        result = run_sandboxed_subprocess(
+            ["sonar-scanner"],
+            repo_path=repo_local_path,
+            timeout=300,
+        )
+        if result.get("status") in ("ERROR", "TIMEOUT"):
+            scanners_failed = True
+            print(f"SonarQube execution failed: {result.get('stderr')}")
+        else:
             # Attempt to parse the SonarQube issues report if available
-            issues_report = os.path.join(
-                repo_local_path, ".scannerwork", "scanner-report", "issues-report.json"
-            )
-            if os.path.exists(issues_report) and result.returncode == 0:
+            issues_report_rel = os.path.join(".scannerwork", "scanner-report", "issues-report.json")
+            if result.get("returncode") == 0 and safe_path_exists(repo_local_path, issues_report_rel):
                 try:
-                    with open(issues_report, "r") as f:
-                        sonar_data = json.loads(f.read())
+                    sonar_data = json.loads(safe_read_text(repo_local_path, issues_report_rel))
                     for issue in (
                         sonar_data
                         if isinstance(sonar_data, list)
@@ -262,124 +245,110 @@ async def agent_static_analysis(state: PipelineState):
                         )
                 except Exception as parse_err:
                     print(f"[StaticAnalysis] SonarQube report parse error: {parse_err}")
-            elif result.returncode == 0:
+            elif result.get("returncode") == 0:
                 print(
                     "[StaticAnalysis] SonarQube analysis completed but no local report found."
                 )
-        except Exception as e:
-            scanners_failed = True
-            print(f"SonarQube execution skipped or failed: {e}")
-    else:
-        print("[StaticAnalysis] sonar-scanner not found in PATH, skipping.")
+    except Exception as e:
+        scanners_failed = True
+        print(f"SonarQube execution skipped or failed: {e}")
 
     # 6b. Go Vet
-    go_path = shutil.which("go")
-    if go_path:
-        gomod_paths = []
-        for root_dir, dirs, files in os.walk(repo_local_path):
-            if "node_modules" in dirs:
-                dirs.remove("node_modules")
-            if "go.mod" in files:
-                gomod_paths.append(root_dir)
+    gomod_paths = []
+    for root_dir, dirs, files, _ in safe_walk(repo_local_path):
+        if "node_modules" in dirs:
+            dirs.remove("node_modules")
+        if "go.mod" in files:
+            gomod_paths.append(root_dir)
 
-        for gmdir in gomod_paths:
-            try:
-                result = subprocess.run(
-                    [go_path, "vet", "./..."],
-                    cwd=gmdir,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    shell=(os.name == "nt"),
-                )
-                if result.stderr:
-                    for line in result.stderr.splitlines():
-                        parts = line.split(":", 3)
-                        if len(parts) >= 4 and parts[0].endswith(".go"):
-                            # parts[0] is relative to gmdir
+    for gmdir in gomod_paths:
+        try:
+            rel_gmdir = os.path.relpath(gmdir, repo_local_path).replace("\\", "/")
+            cmd_str = f"cd {rel_gmdir} && go vet ./..." if rel_gmdir != "." else "go vet ./..."
+            result = run_sandboxed_subprocess(
+                ["sh", "-c", cmd_str],
+                repo_path=repo_local_path,
+                timeout=120,
+            )
+            if result.get("status") in ("ERROR", "TIMEOUT"):
+                scanners_failed = True
+                print(f"Go vet execution failed: {result.get('stderr')}")
+            elif result.get("stderr"):
+                for line in result["stderr"].splitlines():
+                    parts = line.split(":", 3)
+                    if len(parts) >= 4 and parts[0].endswith(".go"):
+                        # parts[0] is relative to gmdir
+                        rel_file = os.path.relpath(
+                            os.path.join(gmdir, parts[0]), repo_local_path
+                        ).replace("\\", "/")
+                        findings.append(
+                            {
+                                "file": rel_file,
+                                "issue": parts[3].strip(),
+                                "tool": "go_vet",
+                                "severity": "MEDIUM",
+                                "line": int(parts[1]) if parts[1].isdigit() else 1,
+                                "category": "quality",
+                            }
+                        )
+        except Exception as e:
+            scanners_failed = True
+            print(f"go vet execution skipped or failed in {gmdir}: {e}")
+
+    # 6c. Cargo Clippy (Rust static analysis)
+    cargo_paths = []
+    for root_dir, dirs, files, _ in safe_walk(repo_local_path):
+        if "node_modules" in dirs:
+            dirs.remove("node_modules")
+        if "Cargo.toml" in files:
+            cargo_paths.append(root_dir)
+
+    for cdir in cargo_paths:
+        try:
+            rel_cdir = os.path.relpath(cdir, repo_local_path).replace("\\", "/")
+            cmd_str = f"cd {rel_cdir} && cargo clippy --message-format=json -- -W clippy::all" if rel_cdir != "." else "cargo clippy --message-format=json -- -W clippy::all"
+            result = run_sandboxed_subprocess(
+                ["sh", "-c", cmd_str],
+                repo_path=repo_local_path,
+                timeout=180,
+            )
+            if result.get("status") in ("ERROR", "TIMEOUT"):
+                scanners_failed = True
+                print(f"Cargo clippy execution failed: {result.get('stderr')}")
+            elif result.get("stdout"):
+                for json_line in result["stdout"].splitlines():
+                    try:
+                        msg = json.loads(json_line)
+                        if msg.get("reason") == "compiler-message":
+                            cm = msg.get("message", {})
+                            spans = cm.get("spans", [])
+                            primary = next(
+                                (s for s in spans if s.get("is_primary")),
+                                spans[0] if spans else {},
+                            )
                             rel_file = os.path.relpath(
-                                os.path.join(gmdir, parts[0]), repo_local_path
+                                os.path.join(cdir, primary.get("file_name", "")),
+                                repo_local_path,
                             ).replace("\\", "/")
                             findings.append(
                                 {
                                     "file": rel_file,
-                                    "issue": parts[3].strip(),
-                                    "tool": "go_vet",
-                                    "severity": "MEDIUM",
-                                    "line": int(parts[1]) if parts[1].isdigit() else 1,
+                                    "issue": cm.get("message", "Clippy warning"),
+                                    "tool": "cargo_clippy",
+                                    "severity": (
+                                        "MEDIUM"
+                                        if cm.get("level") == "warning"
+                                        else "HIGH"
+                                    ),
+                                    "line": primary.get("line_start", 1),
                                     "category": "quality",
                                 }
                             )
-            except Exception as e:
-                scanners_failed = True
-                print(f"go vet execution skipped or failed in {gmdir}: {e}")
-    else:
-        print("[StaticAnalysis] go not found in PATH, skipping go vet.")
-
-    # 6c. Cargo Clippy (Rust static analysis)
-    cargo_path = shutil.which("cargo")
-    if cargo_path:
-        cargo_paths = []
-        for root_dir, dirs, files in os.walk(repo_local_path):
-            if "node_modules" in dirs:
-                dirs.remove("node_modules")
-            if "Cargo.toml" in files:
-                cargo_paths.append(root_dir)
-
-        for cdir in cargo_paths:
-            try:
-                result = subprocess.run(
-                    [
-                        cargo_path,
-                        "clippy",
-                        "--message-format=json",
-                        "--",
-                        "-W",
-                        "clippy::all",
-                    ],
-                    cwd=cdir,
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                    shell=(os.name == "nt"),
-                )
-                if result.stdout:
-                    for json_line in result.stdout.splitlines():
-                        try:
-                            msg = json.loads(json_line)
-                            if msg.get("reason") == "compiler-message":
-                                cm = msg.get("message", {})
-                                spans = cm.get("spans", [])
-                                primary = next(
-                                    (s for s in spans if s.get("is_primary")),
-                                    spans[0] if spans else {},
-                                )
-                                rel_file = os.path.relpath(
-                                    os.path.join(cdir, primary.get("file_name", "")),
-                                    repo_local_path,
-                                ).replace("\\", "/")
-                                findings.append(
-                                    {
-                                        "file": rel_file,
-                                        "issue": cm.get("message", "Clippy warning"),
-                                        "tool": "cargo_clippy",
-                                        "severity": (
-                                            "MEDIUM"
-                                            if cm.get("level") == "warning"
-                                            else "HIGH"
-                                        ),
-                                        "line": primary.get("line_start", 1),
-                                        "category": "quality",
-                                    }
-                                )
-                        except json.JSONDecodeError:
-                            pass
-            except Exception as e:
-                scanners_failed = True
-                print(f"Cargo clippy skipped or failed in {cdir}: {e}")
-    else:
-        if not cargo_path:
-            print("[StaticAnalysis] cargo not found in PATH, skipping clippy.")
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            scanners_failed = True
+            print(f"Cargo clippy skipped or failed in {cdir}: {e}")
 
     # 7. Performance AST Checker (SQLAlchemy / ORM N+1)
 
@@ -400,14 +369,13 @@ async def agent_static_analysis(state: PipelineState):
         "objects",
         "select",
     }
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        source = f.read()
+                    source = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     tree = ast.parse(source, filename=file)
 
                     # Quick check: skip files with no ORM indicators
@@ -468,14 +436,13 @@ async def agent_static_analysis(state: PipelineState):
         r"await\s+[a-zA-Z0-9_.]+\.(findMany|findUnique|findOne|find|query)\s*\("
     )
 
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith((".js", ".ts", ".jsx", ".tsx")):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
+                    lines = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000).splitlines(True)
 
                     in_loop = False
                     brace_count = 0
@@ -508,14 +475,13 @@ async def agent_static_analysis(state: PipelineState):
                     print(f"Error parsing {file_path} for JS perf check: {e}")
 
     # 9. Memory Leak Detection — Python (open() without 'with')
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        source = f.read()
+                    source = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     tree = ast.parse(source, filename=file)
                     for node in ast.walk(tree):
                         if isinstance(node, ast.Assign):
@@ -555,14 +521,13 @@ async def agent_static_analysis(state: PipelineState):
         ("setTimeout", "clearTimeout"),
         (".on(", ".off("),
     ]
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith((".js", ".ts", ".jsx", ".tsx")):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    content = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     for add_call, remove_call in _LEAK_PAIRS:
                         if add_call in content and remove_call not in content:
                             # Find the line number of the first occurrence
@@ -592,14 +557,13 @@ async def agent_static_analysis(state: PipelineState):
         re.compile(r"\([^)]*\+\)\*"),
         re.compile(r"\([^)]*\*\)\+"),
     ]
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith((".js", ".ts", ".jsx", ".tsx", ".py")):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
+                    lines = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000).splitlines(True)
                     for i, line in enumerate(lines):
                         if any(pat.search(line) for pat in _REDOS_PATTERNS):
                             rel_path = os.path.relpath(
@@ -645,14 +609,13 @@ async def agent_static_analysis(state: PipelineState):
         str, list[tuple[str, str, int]]
     ] = {}  # hash -> [(file, name, line)]
 
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".py"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        source = f.read()
+                    source = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     tree = ast.parse(source, filename=file)
                     lines = source.splitlines()
                     for node in ast.walk(tree):
@@ -670,7 +633,7 @@ async def agent_static_analysis(state: PipelineState):
                             normalized = "\n".join(
                                 line.strip() for line in body_lines if line.strip()
                             )
-                            h = hashlib.md5(normalized.encode()).hexdigest()
+                            h = hashlib.sha256(normalized.encode()).hexdigest()
                             rel_path = os.path.relpath(
                                 file_path, repo_local_path
                             ).replace("\\", "/")
@@ -684,8 +647,7 @@ async def agent_static_analysis(state: PipelineState):
             elif file.endswith((".js", ".ts", ".jsx", ".tsx")):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    content = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     _extract_and_hash_js_functions(
                         content, file_path, repo_local_path, function_hashes
                     )
@@ -694,8 +656,7 @@ async def agent_static_analysis(state: PipelineState):
             elif file.endswith((".go", ".java", ".rs")):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    content = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     _extract_and_hash_brace_functions(
                         content, file_path, repo_local_path, function_hashes
                     )
@@ -729,14 +690,13 @@ async def agent_static_analysis(state: PipelineState):
         r"InputStreamReader|OutputStreamWriter|FileReader|FileWriter|PrintWriter|"
         r"Scanner|Socket|ServerSocket|Connection|PreparedStatement|ResultSet)\s*\("
     )
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".java"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    content = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     rel_path = os.path.relpath(file_path, repo_local_path).replace(
                         "\\", "/"
                     )
@@ -779,14 +739,13 @@ async def agent_static_analysis(state: PipelineState):
     )
     _GO_LOOP_PATTERN = re.compile(r"^\s*for\s+")
     _JAVA_LOOP_PATTERN = re.compile(r"^\s*(?:for|while)\s*\(")
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".go"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
+                    lines = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000).splitlines(True)
                     in_loop = False
                     brace_count = 0
                     for i, line in enumerate(lines):
@@ -816,8 +775,7 @@ async def agent_static_analysis(state: PipelineState):
             elif file.endswith(".rs"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
+                    lines = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000).splitlines(True)
                     in_loop = False
                     brace_count = 0
                     for i, line in enumerate(lines):
@@ -849,8 +807,7 @@ async def agent_static_analysis(state: PipelineState):
             elif file.endswith(".java"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
+                    lines = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000).splitlines(True)
                     in_loop = False
                     brace_count = 0
                     for i, line in enumerate(lines):
@@ -888,14 +845,13 @@ async def agent_static_analysis(state: PipelineState):
         "<strike",
         "<tt",
     ]
-    for root, dirs, files in os.walk(repo_local_path):
+    for root, dirs, files, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
         for file in files:
             if file.endswith(".html"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    content = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     rel_path = os.path.relpath(file_path, repo_local_path).replace(
                         "\\", "/"
                     )
@@ -932,8 +888,7 @@ async def agent_static_analysis(state: PipelineState):
             elif file.endswith(".css"):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    content = safe_read_text(repo_local_path, os.path.relpath(file_path, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     rel_path = os.path.relpath(file_path, repo_local_path).replace(
                         "\\", "/"
                     )
@@ -975,7 +930,7 @@ async def agent_static_analysis(state: PipelineState):
 
     # ── 16. Dead Code Detection (unused functions / classes / files) ──────
     all_repo_sources: dict[str, str] = {}
-    for root_dir, dirs, fnames in os.walk(repo_local_path):
+    for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [
             d
             for d in dirs
@@ -1011,8 +966,7 @@ async def agent_static_analysis(state: PipelineState):
                 fpath = os.path.join(root_dir, fname)
                 rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
                 try:
-                    with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
-                        all_repo_sources[rel_path] = fh.read()
+                    all_repo_sources[rel_path] = safe_read_text(repo_local_path, os.path.relpath(fpath, repo_local_path).replace("\\", "/"), encoding="utf-8", errors="ignore", max_bytes=500000)
                 except Exception:
                     pass
 
@@ -1275,7 +1229,7 @@ async def agent_static_analysis(state: PipelineState):
             "http.Get/Post",
         ),
     ]
-    for root_dir, dirs, fnames in os.walk(repo_local_path):
+    for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [
             d for d in dirs if d not in (".git", "node_modules", "vendor", "target")
         ]
@@ -1285,8 +1239,7 @@ async def agent_static_analysis(state: PipelineState):
             fpath = os.path.join(root_dir, fname)
             rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
             try:
-                with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
-                    content = fh.read()
+                content = safe_read_text(repo_local_path, os.path.relpath(fpath, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                 lines = content.splitlines()
                 for i, line in enumerate(lines):
                     for pattern, desc in _GO_OPEN_PATTERNS:
@@ -1315,7 +1268,7 @@ async def agent_static_analysis(state: PipelineState):
 
     # ── 17. Long Methods Detection ────────────────────────────────────────
     LONG_METHOD_THRESHOLD = 50  # lines
-    for root_dir, dirs, fnames in os.walk(repo_local_path):
+    for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [
             d
             for d in dirs
@@ -1339,8 +1292,7 @@ async def agent_static_analysis(state: PipelineState):
 
             if ext == ".py":
                 try:
-                    with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
-                        source = fh.read()
+                    source = safe_read_text(repo_local_path, os.path.relpath(fpath, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000)
                     tree = ast.parse(source)
                     for node in ast.walk(tree):
                         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1363,8 +1315,7 @@ async def agent_static_analysis(state: PipelineState):
             elif ext in (".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs"):
                 # Brace-matched function length check
                 try:
-                    with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
-                        lines = fh.readlines()
+                    lines = safe_read_text(repo_local_path, os.path.relpath(fpath, repo_local_path).replace('\\', '/'), encoding='utf-8', errors='ignore', max_bytes=500000).splitlines(True)
 
                     func_pattern = None
                     if ext in (".js", ".jsx", ".ts", ".tsx"):
@@ -1472,7 +1423,7 @@ async def agent_static_analysis(state: PipelineState):
         "target",
     }
 
-    for root_dir, dirs, fnames in os.walk(repo_local_path):
+    for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [d for d in dirs if d not in _SECRET_SKIP_DIRS]
         for fname in fnames:
             ext = os.path.splitext(fname)[1]
@@ -1484,8 +1435,9 @@ async def agent_static_analysis(state: PipelineState):
             fpath = os.path.join(root_dir, fname)
             rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
             try:
-                with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
-                    for lineno, line in enumerate(fh, 1):
+                content = safe_read_text(repo_local_path, os.path.relpath(fpath, repo_local_path).replace("\\", "/"), encoding="utf-8", errors="ignore", max_bytes=500000)
+                if content:
+                    for lineno, line in enumerate(content.splitlines(), 1):
                         for pattern, description in _SECRET_PATTERNS:
                             if pattern.search(line):
                                 findings.append(
@@ -1502,6 +1454,22 @@ async def agent_static_analysis(state: PipelineState):
             except Exception:
                 pass
 
+    # Symlink Checker
+    for root_dir, dirs, files, symlinks in safe_walk(repo_local_path):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        for fpath in symlinks:
+            rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
+            findings.append(
+                {
+                    "file": rel_path,
+                    "issue": f"Symlink detected '{rel_path}'. Ensure it does not point outside the repository.",
+                    "tool": "symlink_checker",
+                    "severity": "MEDIUM",
+                    "line": 1,
+                    "category": "security",
+                }
+            )
+
     # Deduplicate findings by file and line
     deduped_findings = []
     scanners_failed = False
@@ -1512,7 +1480,10 @@ async def agent_static_analysis(state: PipelineState):
             seen.add(key)
             deduped_findings.append(f)
 
-    return {"static_findings": deduped_findings}
+    if scanners_failed:
+        raise RuntimeError("Static analysis tools failed or were unavailable (Failing closed).")
+
+    return {"static_findings": deduped_findings, "scanners_failed": False}
 
 
 def _is_inside_with(tree, target_lineno: int) -> bool:
@@ -1551,7 +1522,7 @@ def _extract_and_hash_js_functions(
                         normalized = "\n".join(
                             line.strip() for line in body_lines if line.strip()
                         )
-                        h = hashlib.md5(normalized.encode()).hexdigest()
+                        h = hashlib.sha256(normalized.encode()).hexdigest()
                         rel_path = os.path.relpath(file_path, repo_local_path).replace(
                             "\\", "/"
                         )
@@ -1604,7 +1575,7 @@ def _extract_and_hash_brace_functions(
                         normalized = "\n".join(
                             line.strip() for line in body_lines if line.strip()
                         )
-                        h = hashlib.md5(normalized.encode()).hexdigest()
+                        h = hashlib.sha256(normalized.encode()).hexdigest()
                         rel_path = os.path.relpath(file_path, repo_local_path).replace(
                             "\\", "/"
                         )

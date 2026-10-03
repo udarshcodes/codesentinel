@@ -4,7 +4,8 @@ import json
 import shlex
 from models.pipeline_state import PipelineState
 from tools.confidence_calc import calculate_pipeline_confidence
-from tools.subprocess_runner import run_isolated_subprocess
+from tools.sandbox_runner import run_sandboxed_subprocess
+from tools.safe_repo import safe_path_exists, safe_read_text
 
 # Command registry to prevent arbitrary command injection.
 # We map the base command to the exact allowed executable and arguments.
@@ -66,9 +67,8 @@ async def agent_validator(state: PipelineState):
     for patch in patches:
         logs_len_before = len(logs_list)
         target_file = patch.get("file", "")
-        full_path = os.path.join(repo_local_path, target_file)
 
-        if not os.path.exists(full_path):
+        if not safe_path_exists(repo_local_path, target_file):
             logs_list.append(f"[SKIPPED] {target_file} - file not found")
             continue
 
@@ -79,7 +79,7 @@ async def agent_validator(state: PipelineState):
 
         # Python files: check syntax with py_compile
         if target_file.endswith(".py"):
-            res = run_isolated_subprocess([sys.executable, "-m", "py_compile", target_file], cwd=repo_local_path, timeout=30)
+            res = run_sandboxed_subprocess([sys.executable, "-m", "py_compile", target_file], cwd=repo_local_path, timeout=30)
             if res["status"] == "SUCCESS":
                 logs_list.append(f"[PASSED] {target_file} - syntax OK")
             else:
@@ -88,7 +88,7 @@ async def agent_validator(state: PipelineState):
 
         # JS files: syntax check with node --check (only plain JS)
         elif target_file.endswith((".js", ".mjs")):
-            res = run_isolated_subprocess(["node", "--check", target_file], cwd=repo_local_path, timeout=30)
+            res = run_sandboxed_subprocess(["node", "--check", target_file], cwd=repo_local_path, timeout=30)
             if res["status"] == "SUCCESS":
                 logs_list.append(f"[PASSED] {target_file} - syntax OK")
             elif "Unexpected token" in res["stderr"] or "Cannot use import" in res["stderr"]:
@@ -118,7 +118,7 @@ async def agent_validator(state: PipelineState):
                 else:
                     tsc_cmd = [tsc_bin, "--noEmit", "--allowJs", "--checkJs", "--skipLibCheck", target_file]
 
-                res = run_isolated_subprocess(tsc_cmd, cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(tsc_cmd, cwd=repo_local_path, timeout=60)
                 if res["status"] == "SUCCESS":
                     logs_list.append(f"[PASSED] {target_file} - TypeScript syntax OK")
                 else:
@@ -129,7 +129,7 @@ async def agent_validator(state: PipelineState):
         elif target_file.endswith(".go"):
             go_dir = os.path.dirname(target_file)
             go_vet_path = "./" + go_dir + "/..." if go_dir else "./..."
-            res = run_isolated_subprocess(["go", "vet", go_vet_path], cwd=repo_local_path, timeout=60)
+            res = run_sandboxed_subprocess(["go", "vet", go_vet_path], cwd=repo_local_path, timeout=60)
             if res["status"] == "SUCCESS":
                 logs_list.append(f"[PASSED] {target_file} - Go vet OK")
             elif res["status"] == "UNAVAILABLE":
@@ -148,7 +148,7 @@ async def agent_validator(state: PipelineState):
             import shutil as _shutil
             _javac_tmp = _tmpmod.mkdtemp(prefix="cs_javac_")
             try:
-                res = run_isolated_subprocess(["javac", "-d", _javac_tmp, target_file], cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(["javac", "-d", _javac_tmp, target_file], cwd=repo_local_path, timeout=60)
                 if res["status"] == "SUCCESS":
                     logs_list.append(f"[PASSED] {target_file} - Java syntax OK")
                 elif res["status"] == "UNAVAILABLE":
@@ -166,8 +166,7 @@ async def agent_validator(state: PipelineState):
         # HTML files: basic structure check
         elif target_file.endswith((".html", ".htm")):
             try:
-                with open(full_path, "r", errors="ignore") as f:
-                    content = f.read()
+                content = safe_read_text(repo_local_path, target_file)
                 from html.parser import HTMLParser
                 parser = HTMLParser()
                 parser.feed(content)
@@ -179,8 +178,7 @@ async def agent_validator(state: PipelineState):
         # CSS files: check for balanced braces
         elif target_file.endswith(".css"):
             try:
-                with open(full_path, "r", errors="ignore") as f:
-                    content = f.read()
+                content = safe_read_text(repo_local_path, target_file)
                 open_count = content.count("{")
                 close_count = content.count("}")
                 if open_count == close_count:
@@ -212,14 +210,14 @@ async def agent_validator(state: PipelineState):
                 pkg = json.load(f)
 
             # Install dependencies first securely
-            res = run_isolated_subprocess(
+            res = run_sandboxed_subprocess(
                 ["npm", "install", "--no-audit", "--no-fund"],
                 cwd=build_cwd,
                 timeout=180
             )
 
             if "scripts" in pkg and "build" in pkg["scripts"]:
-                res = run_isolated_subprocess(
+                res = run_sandboxed_subprocess(
                     ["npm", "run", "build"],
                     cwd=build_cwd,
                     timeout=60
@@ -234,7 +232,7 @@ async def agent_validator(state: PipelineState):
             logs_list.append(f"[ERROR] package.json build error in {build_cwd}: {e}")
 
     if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
-        res = run_isolated_subprocess(
+        res = run_sandboxed_subprocess(
             [sys.executable, "-m", "build"],
             cwd=repo_local_path,
             timeout=60
@@ -247,7 +245,7 @@ async def agent_validator(state: PipelineState):
             logs_list.append("[PASSED] Build verification passed (python -m build)")
 
     if os.path.exists(os.path.join(repo_local_path, "pom.xml")):
-        res = run_isolated_subprocess(
+        res = run_sandboxed_subprocess(
             ["mvn", "package", "-DskipTests"],
             cwd=repo_local_path,
             timeout=60
@@ -261,7 +259,7 @@ async def agent_validator(state: PipelineState):
 
     if os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
         gradle_cmd = ["./gradlew", "assemble"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "assemble"]
-        res = run_isolated_subprocess(
+        res = run_sandboxed_subprocess(
             gradle_cmd,
             cwd=repo_local_path,
             timeout=60
@@ -274,7 +272,7 @@ async def agent_validator(state: PipelineState):
             logs_list.append(f"[PASSED] Build verification passed ({' '.join(gradle_cmd)})")
 
     if os.path.exists(os.path.join(repo_local_path, "go.mod")):
-        res = run_isolated_subprocess(
+        res = run_sandboxed_subprocess(
             ["go", "build", "./..."],
             cwd=repo_local_path,
             timeout=120
@@ -287,7 +285,7 @@ async def agent_validator(state: PipelineState):
             logs_list.append("[PASSED] Build verification passed (go build)")
 
     if os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
-        res = run_isolated_subprocess(
+        res = run_sandboxed_subprocess(
             ["cargo", "build"],
             cwd=repo_local_path,
             timeout=120
@@ -316,7 +314,7 @@ async def agent_validator(state: PipelineState):
             if cmd:
                 # We skip venv creation for dynamically configured python tests to avoid complexity and reliance on pip.
                 # All tests should run purely through the isolated runner.
-                res = run_isolated_subprocess(cmd, cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(cmd, cwd=repo_local_path, timeout=60)
                 
                 test_logs += f"\n[{test_framework} Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 
@@ -333,7 +331,7 @@ async def agent_validator(state: PipelineState):
         if tests_run == 0:
             # Intelligent fallback: Execute tests for all relevant ecosystems found
             if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")) or os.path.exists(os.path.join(repo_local_path, "requirements.txt")):
-                res = run_isolated_subprocess(["python", "-m", "pytest", "--tb=short", "-q"], cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(["python", "-m", "pytest", "--tb=short", "-q"], cwd=repo_local_path, timeout=60)
                 test_logs += f"\n[Python Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 if res["status"] != "SUCCESS" and "no tests ran" not in test_logs.lower() and "zero tests" not in test_logs.lower():
                     suite_failed = True
@@ -347,7 +345,7 @@ async def agent_validator(state: PipelineState):
                         with open(p, "r", encoding="utf-8") as f:
                             pkg = json.load(f)
                         if "scripts" in pkg and "test" in pkg["scripts"] and 'echo "Error: no test specified"' not in pkg["scripts"]["test"]:
-                            res = run_isolated_subprocess(["npm", "test"], cwd=os.path.dirname(p), timeout=60)
+                            res = run_sandboxed_subprocess(["npm", "test"], cwd=os.path.dirname(p), timeout=60)
                             test_logs += f"\n[Node.js Test Results in {candidate}]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                             if res["status"] != "SUCCESS":
                                 suite_failed = True
@@ -359,7 +357,7 @@ async def agent_validator(state: PipelineState):
                         all_passed = False
 
             if os.path.exists(os.path.join(repo_local_path, "go.mod")):
-                res = run_isolated_subprocess(["go", "test", "./..."], cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(["go", "test", "./..."], cwd=repo_local_path, timeout=60)
                 test_logs += f"\n[Go Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 if res["status"] != "SUCCESS" and "no test files" not in test_logs.lower():
                     suite_failed = True
@@ -368,14 +366,14 @@ async def agent_validator(state: PipelineState):
 
             if os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
                 cmd = ["./gradlew", "test"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "test"]
-                res = run_isolated_subprocess(cmd, cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(cmd, cwd=repo_local_path, timeout=60)
                 test_logs += f"\n[Gradle Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 if res["status"] != "SUCCESS":
                     suite_failed = True
                     all_passed = False
                 tests_run += 1
             elif os.path.exists(os.path.join(repo_local_path, "pom.xml")):
-                res = run_isolated_subprocess(["mvn", "test"], cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(["mvn", "test"], cwd=repo_local_path, timeout=60)
                 test_logs += f"\n[Maven Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 if res["status"] != "SUCCESS":
                     suite_failed = True
@@ -383,7 +381,7 @@ async def agent_validator(state: PipelineState):
                 tests_run += 1
 
             if os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
-                res = run_isolated_subprocess(["cargo", "test"], cwd=repo_local_path, timeout=60)
+                res = run_sandboxed_subprocess(["cargo", "test"], cwd=repo_local_path, timeout=60)
                 test_logs += f"\n[Rust Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 if res["status"] != "SUCCESS":
                     suite_failed = True

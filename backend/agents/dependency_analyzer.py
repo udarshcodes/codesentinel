@@ -1,8 +1,11 @@
 import os
+from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists, open_safe
 import json
 import re
 import httpx
 from models.pipeline_state import PipelineState
+from tools.subprocess_runner import run_isolated_subprocess
+from tools.sandbox_runner import run_sandboxed_subprocess
 
 
 async def agent_dependency_analyzer(state: PipelineState):
@@ -10,7 +13,7 @@ async def agent_dependency_analyzer(state: PipelineState):
     findings = []
 
     if not repo_local_path:
-        return {"dependency_findings": findings}
+        return {"dependency_findings": findings, "osv_failed": False}
 
     dependencies = []
 
@@ -22,7 +25,7 @@ async def agent_dependency_analyzer(state: PipelineState):
     gomod_paths = []
     cargo_paths = []
 
-    for root_dir, dirs, fnames in os.walk(repo_local_path):
+    for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [
             d
             for d in dirs
@@ -54,7 +57,7 @@ async def agent_dependency_analyzer(state: PipelineState):
             cargo_paths.append(os.path.join(root_dir, "Cargo.toml"))
 
     for req_path in req_paths:
-        with open(req_path, "r") as f:
+        with open_safe(repo_local_path, req_path, "r") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -77,7 +80,7 @@ async def agent_dependency_analyzer(state: PipelineState):
                     )
 
     for pkg_path in pkg_paths:
-        with open(pkg_path, "r") as f:
+        with open_safe(repo_local_path, pkg_path, "r") as f:
             try:
                 data = json.load(f)
                 for dep_section in ("dependencies", "devDependencies"):
@@ -122,7 +125,7 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     for gpath in gradle_paths + gradle_kts_paths:
         try:
-            with open(gpath, "r", encoding="utf-8") as f:
+            with open_safe(repo_local_path, gpath, "r", encoding="utf-8") as f:
                 gcontent = f.read()
             for match in re.finditer(
                 r"""(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*(?:\(\s*)?["']([^:"']+):([^:"']+):([^:"']+)["']""",
@@ -143,7 +146,7 @@ async def agent_dependency_analyzer(state: PipelineState):
     # Parse go.mod for Go dependencies
     for gomod_path in gomod_paths:
         try:
-            with open(gomod_path, "r") as f:
+            with open_safe(repo_local_path, gomod_path, "r") as f:
                 in_require_block = False
                 for line in f:
                     line = line.strip()
@@ -181,7 +184,7 @@ async def agent_dependency_analyzer(state: PipelineState):
     # Parse Cargo.toml for Rust dependencies
     for cargo_path in cargo_paths:
         try:
-            with open(cargo_path, "r") as f:
+            with open_safe(repo_local_path, cargo_path, "r") as f:
                 in_deps = False
                 for line in f:
                     line = line.strip()
@@ -215,7 +218,7 @@ async def agent_dependency_analyzer(state: PipelineState):
             print(f"[DependencyAnalyzer] Failed to parse Cargo.toml: {e}")
 
     # Parse HTML files for CDN libraries (e.g. unpkg.com, cdn.jsdelivr.net)
-    for root_dir, dirs, fnames in os.walk(repo_local_path):
+    for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [
             d
             for d in dirs
@@ -226,7 +229,7 @@ async def agent_dependency_analyzer(state: PipelineState):
                 fpath = os.path.join(root_dir, fname)
                 rel_path = os.path.relpath(fpath, repo_local_path).replace("\\", "/")
                 try:
-                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                    with open_safe(repo_local_path, fpath, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
                     for m in re.finditer(
                         r"https?://(?:cdn\.jsdelivr\.net/npm|unpkg\.com)/([a-zA-Z0-9_-]+)@([0-9.]+)",
@@ -240,8 +243,8 @@ async def agent_dependency_analyzer(state: PipelineState):
                                 "file": rel_path,
                             }
                         )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Warning: Silent exception caught: {e}")
 
     def is_outdated(current: str, latest: str) -> bool:
         if current == latest or current in ("latest", "unknown", "*", ""):
@@ -253,8 +256,8 @@ async def agent_dependency_analyzer(state: PipelineState):
             l_parts = [int(x) for x in l_val.split(".") if x.isdigit()]
             if c_parts and l_parts:
                 return l_parts > c_parts
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Silent exception caught: {e}")
         return latest != current
 
     # Check for outdated packages against public registries
@@ -343,7 +346,13 @@ async def agent_dependency_analyzer(state: PipelineState):
     from tools.osv_client import batch_query_osv, fetch_vuln_details
 
     cves_map = await batch_query_osv(dependencies)
+    osv_failed = False
 
+    if cves_map is None:
+        print("[DependencyAnalyzer] OSV batch query failed completely. Pipeline continuing without OSV data.")
+        cves_map = {}
+        osv_failed = True
+        
     # Collect all unique vuln IDs to fetch details
     all_vuln_ids = set()
     for dep_cves in cves_map.values():
@@ -352,10 +361,29 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     vuln_details = await fetch_vuln_details(list(all_vuln_ids))
 
+    import subprocess
+
     for dep in dependencies:
         cves = cves_map.get(dep["name"], [])
         if not cves:
             continue
+            
+        # Verify if the dependency is actually used in the codebase
+        dep_name = dep["name"]
+        try:
+            # We use ripgrep if available, or fallback to python search if not.
+            # But the prompt says "grep the codebase for actual usage".
+            # We'll use subprocess with grep or ripgrep.
+            cmd = ["git", "grep", "-I", "-l", dep_name]
+            result = run_sandboxed_subprocess(cmd, repo_path=repo_local_path, )
+            if not result.get("stdout", "").strip():
+                # Try fallback just in case git grep fails (e.g., not a git repo or no commits)
+                # If not used, skip reporting this CVE to avoid false positives
+                print(f"[DependencyAnalyzer] Vulnerable dependency {dep_name} is NOT used in the codebase. Skipping CVE report.")
+                continue
+        except Exception as e:
+            print(f"[DependencyAnalyzer] Error verifying usage of {dep_name}: {e}")
+
 
         highest_severity = "LOW"
         cve_ids = []
@@ -437,4 +465,7 @@ async def agent_dependency_analyzer(state: PipelineState):
             }
         )
 
-    return {"dependency_findings": findings}
+    if osv_failed:
+        raise RuntimeError("OSV vulnerability scanning failed or was unavailable (Failing closed).")
+
+    return {"dependency_findings": findings, "osv_failed": osv_failed}

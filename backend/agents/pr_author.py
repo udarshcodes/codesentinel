@@ -67,7 +67,7 @@ Return JSON: {{"title": "...", "description": "..."}}"""
         pr_data = await invoke_llm(
             prompt,
             agent_name="pr_author",
-            tier=1,
+            task_class="LIGHT",
             expect_json=True,
         )
         if pr_data.get("error"):
@@ -91,7 +91,10 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 prepare_repo_for_push,
                 commit_and_push,
                 open_pull_request,
+                create_trusted_pr_workspace,
             )
+            from tools.safe_path import resolve_safe_path
+            import shutil
 
             repo_local_path = state.get("repo_local_path", "")
             if not repo_local_path or not os.path.exists(repo_local_path):
@@ -102,18 +105,52 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                     "pr_error": pr_error,
                 }
 
-            # 1. Prepare fork and branch
-            github_data = prepare_repo_for_push(repo_url, repo_local_path, GITHUB_TOKEN)
+            # 1. Create fresh trusted workspace
+            commit_sha = state.get("commit_sha", "")
+            trusted_workspace = create_trusted_pr_workspace(repo_url, GITHUB_TOKEN, commit_sha)
+            
+            # Verify repository HEAD is the intended commit before applying patches
+            if commit_sha:
+                res_head = run_isolated_subprocess(["git", "rev-parse", "HEAD"], cwd=trusted_workspace)
+                if res_head["stdout"].strip() != commit_sha:
+                    shutil.rmtree(trusted_workspace, ignore_errors=True)
+                    raise ValueError("Security Violation: Base commit mismatch before patch application")
 
-            # 2. Add modified files & Diff Integrity Check
+            # 2. Prepare fork and branch on trusted workspace
+            github_data = prepare_repo_for_push(repo_url, trusted_workspace, GITHUB_TOKEN)
+
+            # 3. Add modified files
             files_to_commit = []
             for patch in patches:
                 if patch.get("applied") and patch.get("file"):
                     files_to_commit.append(patch["file"])
 
-            # Check Git Diff Integrity (Block unexpected modifications)
-            res_diff = run_isolated_subprocess(["git", "diff", "--name-only"], cwd=repo_local_path)
-            res_staged = run_isolated_subprocess(["git", "diff", "--staged", "--name-only"], cwd=repo_local_path)
+            # 4. Transfer validated changes securely by reapplying the patch text
+            from tools.patch_applier import apply_patch
+            from tools.auth import is_lease_lost
+            
+            for patch in patches:
+                if is_lease_lost():
+                    shutil.rmtree(trusted_workspace, ignore_errors=True)
+                    return {
+                        "pr_url": "",
+                        "confidence_score": _calculate_confidence(state, security_verified),
+                        "pr_error": "Worker lease lost! Cannot apply patches.",
+                    }
+                if patch.get("applied") and patch.get("patch_text"):
+                    res = apply_patch(patch["patch_text"], trusted_workspace, patch["file"])
+                    if not res.get("success"):
+                        pr_error = f"Patch re-application failed on trusted workspace: {res.get('stderr')}"
+                        shutil.rmtree(trusted_workspace, ignore_errors=True)
+                        return {
+                            "pr_url": "",
+                            "confidence_score": _calculate_confidence(state, security_verified),
+                            "pr_error": pr_error,
+                        }
+
+            # Check Git Diff Integrity (Block unexpected modifications) on the trusted workspace
+            res_diff = run_isolated_subprocess(["git", "diff", "--name-only"], cwd=trusted_workspace)
+            res_staged = run_isolated_subprocess(["git", "diff", "--staged", "--name-only"], cwd=trusted_workspace)
             
             all_modified = set()
             if res_diff["status"] == "SUCCESS" and res_diff["stdout"]:
@@ -123,6 +160,7 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 
             unexpected_files = [f for f in all_modified if f not in files_to_commit]
             if unexpected_files:
+                shutil.rmtree(trusted_workspace, ignore_errors=True)
                 pr_error = f"Git diff integrity check failed. Unexpected files modified: {', '.join(unexpected_files)}"
                 return {
                     "pr_url": "",
@@ -130,20 +168,31 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                     "pr_error": pr_error,
                 }
 
-            # 3. Commit and push
+            # 5. Commit and push from trusted workspace
             title = pr_data.get("title", "Automated Security Fixes")
 
             if needs_review:
                 title = f"[NEEDS REVIEW] {title}"
 
+            if is_lease_lost():
+                shutil.rmtree(trusted_workspace, ignore_errors=True)
+                return {
+                    "pr_url": "",
+                    "confidence_score": _calculate_confidence(state, security_verified),
+                    "pr_error": "Worker lease lost! Cannot push PR.",
+                }
+
             has_changes = commit_and_push(
-                local_path=repo_local_path,
+                local_path=trusted_workspace,
                 branch_name=github_data["branch_name"],
                 message=title,
                 push_repo_url=github_data["push_repo_url"],
                 token=GITHUB_TOKEN,
                 files=files_to_commit,
             )
+            
+            # Clean up trusted workspace
+            shutil.rmtree(trusted_workspace, ignore_errors=True)
 
             if not has_changes:
                 pr_error = "No bugs were detected, or no valid code changes were generated by the AI."
