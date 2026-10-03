@@ -2,33 +2,35 @@ import os
 import subprocess
 from typing import Dict, Any
 
-def _set_resource_limits():
-    """Apply strict resource limits to the subprocess if supported natively (Linux)."""
-    try:
-        import resource
-        # CPU Limit (soft, hard) in seconds
-        resource.setrlimit(resource.RLIMIT_CPU, (180, 180))
-        
-        # Memory Limit (virtual memory size) in bytes -> 2 GB
-        mem_limit = 2 * 1024 * 1024 * 1024
-        resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
-        
-        # Max process count limit (prevent fork bombs)
-        resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
-        
-        # Max file size creation limit -> 50 MB
-        fsize_limit = 50 * 1024 * 1024
-        resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_limit, fsize_limit))
-    except (ImportError, AttributeError, ValueError, OSError):
-        # Platform (e.g., Windows) does not support these resource limits
-        pass
+
+def get_safe_env(keep_github_token: bool = False) -> Dict[str, str]:
+    """Returns a sanitized environment stripped of sensitive credentials."""
+    env = os.environ.copy()
+    secrets = [
+        "GROQ_API_KEY", "WORKER_WEBHOOK_SECRET", 
+        "ADMIN_SECRET", "GIT_ASKPASS", "SSH_AUTH_SOCK"
+    ]
+    if not keep_github_token:
+        secrets.extend(["GITHUB_TOKEN", "GH_TOKEN", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_0", "GIT_CONFIG_COUNT"])
+    
+    for key in list(env.keys()):
+        if any(key == s or key.startswith(s + "_") or (key.startswith(s) and s == "GROQ_API_KEY") for s in secrets):
+            env.pop(key, None)
+            
+    if not keep_github_token:
+        env.pop("HOME", None)
+        env.pop("USERPROFILE", None)
+
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
 
 
 def run_isolated_subprocess(
     cmd: list[str],
     cwd: str,
     timeout: int = 60,
-    max_output_bytes: int = 10 * 1024 * 1024  # 10 MB limit
+    max_output_bytes: int = 10 * 1024 * 1024,  # 10 MB limit
+    max_memory_mb: int = 2048
 ) -> Dict[str, Any]:
     """
     Safely executes an untrusted subprocess in the target repository.
@@ -37,6 +39,15 @@ def run_isolated_subprocess(
     - Strict timeouts and output capture size limits.
     - Resource limits applied where supported.
     """
+    from tools.auth import is_lease_lost
+    if is_lease_lost():
+        return {
+            "status": "ERROR",
+            "stdout": "",
+            "stderr": "Worker lease lost!",
+            "returncode": -1,
+            "error": "Worker lease lost!"
+        }
     
     # 1. Minimal Allowlisted Environment
     allowed_env_keys = {
@@ -66,7 +77,23 @@ def run_isolated_subprocess(
         
     try:
         # Preexec_fn is only supported on POSIX systems
-        preexec_fn = _set_resource_limits if os.name == 'posix' else None
+        if os.name == 'posix':
+            def preexec_fn():
+                os.setsid()
+                try:
+                    import resource
+                    resource.setrlimit(resource.RLIMIT_CPU, (180, 180))
+                    mem_limit = max_memory_mb * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_AS, (mem_limit, mem_limit))
+                    resource.setrlimit(resource.RLIMIT_NPROC, (128, 128))
+                    fsize_limit = 50 * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_FSIZE, (fsize_limit, fsize_limit))
+                except (ImportError, AttributeError, ValueError, OSError):
+                    pass
+            creationflags = 0
+        else:
+            preexec_fn = None
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP') else 0
 
         process = subprocess.Popen(
             cmd,
@@ -75,38 +102,105 @@ def run_isolated_subprocess(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=False,
-            preexec_fn=preexec_fn
+            preexec_fn=preexec_fn,
+            creationflags=creationflags
         )
         
-        try:
-            # wait for process to finish with timeout
-            stdout_data, stderr_data = process.communicate(timeout=timeout)
-            
-            # Output size limit enforcement
-            if len(stdout_data) > max_output_bytes or len(stderr_data) > max_output_bytes:
-                return {
-                    "status": "FAILED",
-                    "stdout": stdout_data[:max_output_bytes].decode('utf-8', errors='replace') + "\n...[TRUNCATED]",
-                    "stderr": stderr_data[:max_output_bytes].decode('utf-8', errors='replace') + "\n...[TRUNCATED]",
-                    "returncode": process.returncode,
-                    "error": "Output size limit exceeded"
-                }
+        out_dict = {}
+        import threading
+        
+        def _stream_reader(stream, max_bytes, out_dict, key):
+            data = bytearray()
+            truncated = False
+            try:
+                while True:
+                    chunk = stream.read(8192)
+                    if not chunk:
+                        break
+                    if len(data) + len(chunk) > max_bytes:
+                        data.extend(chunk[:max_bytes - len(data)])
+                        truncated = True
+                        break
+                    data.extend(chunk)
+            except Exception:
+                pass
+            finally:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            out_dict[key] = bytes(data)
+            out_dict[key + "_truncated"] = truncated
 
+        t_out = threading.Thread(target=_stream_reader, args=(process.stdout, max_output_bytes, out_dict, "stdout"))
+        t_err = threading.Thread(target=_stream_reader, args=(process.stderr, max_output_bytes, out_dict, "stderr"))
+        t_out.start()
+        t_err.start()
+        
+        try:
+            process.wait(timeout=timeout)
+            t_out.join()
+            t_err.join()
+            
+            stdout_data = out_dict.get("stdout", b"")
+            stderr_data = out_dict.get("stderr", b"")
+            
             status = "SUCCESS" if process.returncode == 0 else "FAILED"
+            
+            stdout_str = stdout_data.decode('utf-8', errors='replace')
+            stderr_str = stderr_data.decode('utf-8', errors='replace')
+            
+            if out_dict.get("stdout_truncated"):
+                stdout_str += "\n...[TRUNCATED]"
+            if out_dict.get("stderr_truncated"):
+                stderr_str += "\n...[TRUNCATED]"
+
             return {
                 "status": status,
-                "stdout": stdout_data.decode('utf-8', errors='replace'),
-                "stderr": stderr_data.decode('utf-8', errors='replace'),
+                "stdout": stdout_str,
+                "stderr": stderr_str,
+                "stdout_truncated": out_dict.get("stdout_truncated", False),
+                "stderr_truncated": out_dict.get("stderr_truncated", False),
                 "returncode": process.returncode
             }
             
         except subprocess.TimeoutExpired:
-            process.kill()
-            stdout_data, stderr_data = process.communicate()
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], capture_output=True)
+            elif os.name == 'posix':
+                import signal
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                except OSError:
+                    process.kill()
+            else:
+                process.kill()
+            
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            
+            t_out.join()
+            t_err.join()
+            
+            stdout_data = out_dict.get("stdout", b"")
+            stderr_data = out_dict.get("stderr", b"")
+            
+            stdout_str = stdout_data.decode('utf-8', errors='replace')
+            stderr_str = stderr_data.decode('utf-8', errors='replace')
+            
+            if out_dict.get("stdout_truncated"):
+                stdout_str += "\n...[TRUNCATED]"
+            if out_dict.get("stderr_truncated"):
+                stderr_str += "\n...[TRUNCATED]"
+                
             return {
                 "status": "TIMEOUT",
-                "stdout": stdout_data.decode('utf-8', errors='replace'),
-                "stderr": stderr_data.decode('utf-8', errors='replace'),
+                "stdout": stdout_str,
+                "stderr": stderr_str,
+                "stdout_truncated": out_dict.get("stdout_truncated", False),
+                "stderr_truncated": out_dict.get("stderr_truncated", False),
                 "returncode": -1,
                 "error": f"Command timed out after {timeout} seconds"
             }

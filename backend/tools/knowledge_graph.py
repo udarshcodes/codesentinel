@@ -144,9 +144,7 @@ class KnowledgeGraph:
         }
 
 
-# ---------------------------------------------------------------------------
 # Import parsers (per language)
-# ---------------------------------------------------------------------------
 
 
 def _parse_python_imports(file_path: str, content: str) -> list[str]:
@@ -161,8 +159,9 @@ def _parse_python_imports(file_path: str, content: str) -> list[str]:
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     imports.append(node.module)
-    except SyntaxError:
-        pass
+    except SyntaxError as sync_err:
+        print(f"[KnowledgeGraph] Syntax error extracting imports: {sync_err}")
+        return imports
     return imports
 
 
@@ -244,9 +243,7 @@ def _parse_css_imports(content: str) -> list[str]:
     return imports
 
 
-# ---------------------------------------------------------------------------
 # Resolve import string → relative file path
-# ---------------------------------------------------------------------------
 
 _EXTENSION_MAP = {
     ".py": [".py"],
@@ -332,9 +329,6 @@ def _resolve_import(
     return None
 
 
-# ---------------------------------------------------------------------------
-# Main builder
-# ---------------------------------------------------------------------------
 
 
 def build_knowledge_graph(repo_root: str) -> KnowledgeGraph:
@@ -384,10 +378,11 @@ def build_knowledge_graph(repo_root: str) -> KnowledgeGraph:
                 rel_path = os.path.relpath(abs_path, repo_root).replace("\\", "/")
                 all_files.add(rel_path)
                 try:
-                    with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
-                        file_contents[rel_path] = f.read(10000)  # Cap per file
-                except Exception:
-                    pass
+                    from tools.safe_repo import safe_read_text
+                    file_contents[rel_path] = safe_read_text(repo_root, rel_path, encoding="utf-8", errors="ignore", max_bytes=10000)
+                except Exception as py_err:
+                    path = abs_path
+                    print(f"[KnowledgeGraph] Failed to parse Python file {path}: {py_err}")
 
     # Add nodes
     for fp in all_files:

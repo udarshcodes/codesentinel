@@ -33,6 +33,7 @@ async def batch_query_osv(packages: list[dict]) -> dict:
                 }
     except Exception as e:
         print(f"[OSVClient] Error making batch request: {e}")
+        return None
 
     return {}
 

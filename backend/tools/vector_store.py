@@ -1,6 +1,7 @@
 import os
 import hashlib
 import chromadb
+from tools.safe_repo import safe_walk, safe_read_text
 
 CHROMA_PERSIST_PATH = os.getenv(
     "CHROMA_PERSIST_PATH",
@@ -70,26 +71,31 @@ def index_codebase(repo_url: str, repo_local_path: str):
         metadatas = []
         ids = []
         
-        for root, _, files in os.walk(repo_local_path):
-            if ".git" in root or "node_modules" in root or "venv" in root:
+        for root, _, files, _ in safe_walk(repo_local_path):
+            if "node_modules" in root or "venv" in root:
                 continue
             for file in files:
                 if not file.endswith((".py", ".js", ".ts", ".go", ".java", ".rs")):
                     continue
                 file_path = os.path.join(root, file)
-                rel_path = os.path.relpath(file_path, repo_local_path)
+                rel_path = os.path.relpath(file_path, repo_local_path).replace("\\", "/")
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        # Simple chunking: 100 lines per chunk
-                        lines = content.splitlines()
-                        for i in range(0, len(lines), 100):
-                            chunk = "\\n".join(lines[i:i+100])
-                            if not chunk.strip():
-                                continue
-                            docs.append(chunk)
-                            metadatas.append({"file": rel_path, "repo_url": repo_url})
-                            ids.append(f"{rel_path}_{i}")
+                    content = safe_read_text(
+                        repo_local_path,
+                        rel_path,
+                        encoding="utf-8",
+                        errors="ignore",
+                        max_bytes=1000000
+                    )
+                    # Simple chunking: 100 lines per chunk
+                    lines = content.splitlines()
+                    for i in range(0, len(lines), 100):
+                        chunk = "\\n".join(lines[i:i+100])
+                        if not chunk.strip():
+                            continue
+                        docs.append(chunk)
+                        metadatas.append({"file": rel_path, "repo_url": repo_url})
+                        ids.append(f"{rel_path}_{i}")
                 except Exception:
                     pass
                     
@@ -102,8 +108,10 @@ def index_codebase(repo_url: str, repo_local_path: str):
                     metadatas=metadatas[i:i+batch_size],
                     ids=ids[i:i+batch_size]
                 )
+        return {"status": "success", "documents_indexed": len(docs)}
     except Exception as e:
         print(f"Error indexing codebase: {e}")
+        return {"status": "error", "documents_indexed": 0}
 
 def query_codebase(repo_url: str, query: str, n_results: int = 3) -> list:
     # TRUE RAG (Retrieve): Fetches relevant code snippets directly from the embedded repository files.

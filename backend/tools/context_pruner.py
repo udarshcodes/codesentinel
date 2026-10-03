@@ -56,9 +56,6 @@ def extract_error_window(
     return header + "\n".join(lines[start:end])
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _get_extension(file_path: str) -> str:
@@ -69,9 +66,7 @@ def _get_extension(file_path: str) -> str:
     return file_path[dot:].lower() if dot != -1 else ""
 
 
-# ---------------------------------------------------------------------------
 # Python — AST-based
-# ---------------------------------------------------------------------------
 
 
 def _extract_python_functions(
@@ -98,15 +93,14 @@ def _extract_python_functions(
         if relevant_functions:
             return "\n\n".join(relevant_functions)
 
-    except SyntaxError:
-        pass
+    except SyntaxError as sync_err:
+        print(f"[ContextPruner] Syntax error analyzing code blocks: {sync_err}")
+        return False
 
     return None
 
 
-# ---------------------------------------------------------------------------
 # JS/TS — Regex + brace matching
-# ---------------------------------------------------------------------------
 
 # Patterns that start a function/method/class block
 _JS_FUNC_PATTERNS = [
@@ -120,7 +114,6 @@ _JS_FUNC_PATTERNS = [
     re.compile(
         r"^\s*(?:async\s+)?(?:static\s+)?(?:get\s+|set\s+)?\w+\s*\([^)]*\)\s*\{"
     ),
-    # Class declaration
     re.compile(r"^\s*(?:export\s+)?(?:default\s+)?class\s+\w+"),
 ]
 
@@ -131,9 +124,7 @@ def _extract_js_functions(file_content: str, changed_lines: list[int]) -> str | 
     )
 
 
-# ---------------------------------------------------------------------------
 # Go — Regex + brace matching
-# ---------------------------------------------------------------------------
 
 _GO_FUNC_PATTERNS = [
     # func name(...) ... {
@@ -147,16 +138,13 @@ def _extract_go_functions(file_content: str, changed_lines: list[int]) -> str | 
     )
 
 
-# ---------------------------------------------------------------------------
 # Java — Regex + brace matching
-# ---------------------------------------------------------------------------
 
 _JAVA_FUNC_PATTERNS = [
     # public/private/protected ... type methodName(...) {
     re.compile(
         r"^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?[\w<>\[\]]+\s+\w+\s*\("
     ),
-    # Class declaration
     re.compile(r"^\s*(?:public\s+)?(?:abstract\s+)?(?:final\s+)?class\s+\w+"),
 ]
 
@@ -167,9 +155,7 @@ def _extract_java_functions(file_content: str, changed_lines: list[int]) -> str 
     )
 
 
-# ---------------------------------------------------------------------------
 # Rust — Regex + brace matching
-# ---------------------------------------------------------------------------
 
 _RUST_FUNC_PATTERNS = [
     # fn name(...) -> ... {
@@ -185,9 +171,7 @@ def _extract_rust_functions(file_content: str, changed_lines: list[int]) -> str 
     )
 
 
-# ---------------------------------------------------------------------------
 # Generic brace-matching extractor (shared by JS/TS, Go, Java)
-# ---------------------------------------------------------------------------
 
 
 def _extract_brace_blocks(

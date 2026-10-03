@@ -7,12 +7,9 @@ import json
 import asyncio
 import tiktoken
 from langchain_groq import ChatGroq
-from config import GROQ_API_KEYS
+from config import GROQ_API_KEYS, PRIMARY_MODELS, FALLBACK_MODEL
 from tools.key_dispatcher import get_next_key, record_usage, mark_rate_limited
 from tools.response_cache import get_cached, set_cached
-
-TIER1_MODEL = "llama-3.1-8b-instant"  # Fast & cheap — scanning, mapping
-TIER2_MODEL = "llama-3.3-70b-versatile"  # Reasoning — repair planning, code gen
 
 AGENT_BUDGETS = {
     "repo_mapper": {"prompt": 4000, "completion": 1000},
@@ -24,15 +21,19 @@ AGENT_BUDGETS = {
     "pr_author": {"prompt": 4000, "completion": 1000},
 }
 
-# Escalate to Tier 2 if prompt tokens exceed threshold
-ESCALATION_TOKEN_THRESHOLD = 4000
-
 # Maximum schema-validation retries per tier before escalating / aborting.
-MAX_RETRIES_PER_TIER = 2
+MAX_RETRIES_PER_TIER = 3
+ESCALATION_TOKEN_THRESHOLD = 5000
 
-# Offline tokenizer (cl100k_base used as Llama-3 proxy)
+class LLMExhaustionError(Exception):
+    def __init__(self, status: str, model: str, reset_time: float, last_error: str):
+        self.status = status
+        self.model = model
+        self.reset_time = reset_time
+        self.last_error = last_error
+        super().__init__(f"LLM Exhaustion on {model}: {last_error}")
+
 _ENCODING = tiktoken.get_encoding("cl100k_base")
-
 
 def count_tokens(text: str) -> int:
     """Return an approximate token count using the offline tokenizer."""
@@ -79,31 +80,12 @@ async def invoke_llm(
     prompt: str,
     agent_name: str,
     *,
-    tier: int = 1,
+    task_class: str = None,
     expect_json: bool = True,
     json_array: bool = False,
 ) -> str | dict | list:
     """
     Central LLM invocation with deterministic tiering, budgets, and retries.
-
-    Parameters
-    ----------
-    prompt : str
-        The full prompt text to send.
-    agent_name : str
-        Key into AGENT_BUDGETS for budget enforcement and telemetry.
-    tier : int
-        1 = use Tier-1 (8b) model by default.
-        2 = use Tier-2 (70b) model directly.
-    expect_json : bool
-        If True, parse the response as JSON and retry on failure.
-    json_array : bool
-        If True and expect_json, expect a JSON array instead of object.
-
-    Returns
-    -------
-    Parsed JSON (dict or list) when expect_json=True, raw string otherwise.
-    Raises RuntimeError after exhausting all retries across both tiers.
     """
     if not GROQ_API_KEYS:
         raise RuntimeError("GROQ_API_KEYS is not configured.")
@@ -116,163 +98,151 @@ async def invoke_llm(
             f"[LLMRouter] WARNING: {agent_name} prompt ({prompt_tokens} tokens) "
             f"exceeds budget ({budget['prompt']}). Truncating end."
         )
-        # Truncate end to preserve system instructions and context
         max_chars = budget["prompt"] * 4
         prompt = prompt[:max_chars] + "\n```\n[FILE TRUNCATED DUE TO TOKEN LIMIT]\n"
         prompt_tokens = count_tokens(prompt)
 
-    if tier == 1 and prompt_tokens <= ESCALATION_TOKEN_THRESHOLD:
-        current_model = TIER1_MODEL
+    models_to_try = []
+    # Route by explicit task_class if provided, otherwise default to token-based heuristic.
+    # We map LIGHT to Tier 1 and DEEP to Tier 2 logic.
+    is_tier_1 = False
+    if task_class == "LIGHT":
+        is_tier_1 = True
+    elif task_class == "DEEP":
+        is_tier_1 = False
+    elif prompt_tokens <= ESCALATION_TOKEN_THRESHOLD:
+        is_tier_1 = True
+
+    if is_tier_1:
+        models_to_try.append(PRIMARY_MODELS[0])
+        models_to_try.append(PRIMARY_MODELS[1])
     else:
-        current_model = TIER2_MODEL
-
-    cached_response = get_cached(prompt, current_model)
-    if cached_response:
-        print(f"[LLMRouter] Cache hit for {current_model}. Skipping API call.")
-        res_content = cached_response
-        completion_tokens = 0
-    else:
-        res_content = None
-
-    total_attempts = MAX_RETRIES_PER_TIER * 2  # One set of retries per tier
-
-    raw = ""
-    completion_tokens = 0
-    parsed_json = None  # Store parsed result from validation inside the loop
-
-    for attempt in range(1, total_attempts + 1):
-        if res_content is not None:
-            # We had a cache hit, skip the API call
-            raw = res_content.strip()
-            break
-
-        api_key, key_idx = get_next_key()
-        if key_idx == -1:
-            print(f"[LLMRouter] Using emergency key (attempt {attempt})")
-
-        llm = ChatGroq(
-            model=current_model,
-            api_key=api_key,
-            max_tokens=budget["completion"],
-        )
-        if expect_json and not json_array:
-            llm = llm.bind(response_format={"type": "json_object"})
-
-        try:
-            res = await asyncio.to_thread(llm.invoke, prompt)
-            raw = res.content.strip()
-
-            usage = getattr(res, "usage_metadata", {}) or {}
-            total_tokens = usage.get("total_tokens", 0)
-            if total_tokens:
-                record_usage(key_idx, total_tokens)
-
-            completion_tokens = usage.get("output_tokens", 0)
-            if not completion_tokens:
-                completion_tokens = count_tokens(raw)
-
-            if expect_json:
-                cleaned = raw.replace("```json", "").replace("```", "").strip()
+        models_to_try.append(PRIMARY_MODELS[1])
+    
+    models_to_try.append(FALLBACK_MODEL)
+    
+    last_error_str = "max_retries_exceeded"
+    
+    for current_model in models_to_try:
+        cached_response = get_cached(prompt, current_model)
+        if cached_response:
+            print(f"[LLMRouter] Cache hit for {current_model}. Skipping API call.")
+            return _parse_cache_or_raw(cached_response, expect_json, json_array, agent_name, prompt_tokens, current_model, prompt)
+            
+        for attempt in range(1, MAX_RETRIES_PER_TIER + 1):
+            success = False
+            raw = ""
+            completion_tokens = 0
+            parsed_json = None
+            
+            # Try available keys
+            api_key = None
+            key_idx = None
+            for key_rotation in range(len(GROQ_API_KEYS) + 1):
                 try:
-                    open_char = "[" if json_array else "{"
-                    close_char = "]" if json_array else "}"
-
-                    start_idx = cleaned.find(open_char)
-                    if start_idx == -1:
-                        raise ValueError("No JSON block found in response")
-
-                    depth = 0
-                    end_idx = -1
-                    for i in range(start_idx, len(cleaned)):
-                        if cleaned[i] == open_char:
-                            depth += 1
-                        elif cleaned[i] == close_char:
-                            depth -= 1
-                            if depth == 0:
-                                end_idx = i
-                                break
-
-                    if end_idx == -1:
-                        raise ValueError("Mismatched braces/brackets in JSON response")
-
-                    json_str = cleaned[start_idx : end_idx + 1]
-                    parsed_json = json.loads(json_str)
-                except Exception as e:
-                    raise ValueError(f"JSON parse error: {e}") from e
-
-            break
-
-        except Exception as e:
-            err_str = str(e).lower()
-            if "rate limit" in err_str or "429" in err_str:
-                mark_rate_limited(key_idx)
-                if key_idx == -1:
-                    print("[LLMRouter] Emergency key also rate limited. Aborting.")
-                    break
-                continue
-
-            print(
-                f"[LLMRouter] {agent_name} attempt {attempt} failed "
-                f"(model={current_model}): {e}"
-            )
-
-            # Escalate to Tier 2 after consecutive Tier 1 failures
-            if attempt == MAX_RETRIES_PER_TIER and current_model == TIER1_MODEL:
-                print(
-                    f"[LLMRouter] Escalating {agent_name} from "
-                    f"{TIER1_MODEL} → {TIER2_MODEL}"
+                    api_key, key_idx = get_next_key()
+                except RuntimeError as e:
+                    # All keys including emergency are exhausted
+                    raise LLMExhaustionError(
+                        status="WAITING_FOR_LLM_CAPACITY", 
+                        model=current_model, 
+                        reset_time=300.0, 
+                        last_error=str(e)
+                    )
+                
+                llm = ChatGroq(
+                    model=current_model,
+                    api_key=api_key,
+                    max_tokens=budget["completion"],
                 )
-                current_model = TIER2_MODEL
-    else:
-        # Loop finished without breaking -> all retries failed
-        raw = ""
-        completion_tokens = 0
+                if expect_json and not json_array:
+                    llm = llm.bind(response_format={"type": "json_object"})
 
-    _record(agent_name, prompt_tokens, completion_tokens, current_model)
+                try:
+                    res = await asyncio.to_thread(llm.invoke, prompt)
+                    raw = res.content.strip()
+                    usage = getattr(res, "usage_metadata", {}) or {}
+                    total_tokens = usage.get("total_tokens", 0)
+                    if total_tokens:
+                        record_usage(key_idx, total_tokens)
 
-    if raw:
-        if not expect_json:
-            if res_content is None:
+                    completion_tokens = usage.get("output_tokens", 0)
+                    if not completion_tokens:
+                        completion_tokens = count_tokens(raw)
+                    
+                    if expect_json:
+                        cleaned = raw.replace("```json", "").replace("```", "").strip()
+                        open_char = "[" if json_array else "{"
+                        close_char = "]" if json_array else "}"
+                        start_idx = cleaned.find(open_char)
+                        if start_idx == -1:
+                            raise ValueError("No JSON block found in response")
+                        depth = 0
+                        end_idx = -1
+                        for i in range(start_idx, len(cleaned)):
+                            if cleaned[i] == open_char:
+                                depth += 1
+                            elif cleaned[i] == close_char:
+                                depth -= 1
+                                if depth == 0:
+                                    end_idx = i
+                                    break
+                        if end_idx == -1:
+                            raise ValueError("Mismatched braces/brackets in JSON response")
+                        json_str = cleaned[start_idx : end_idx + 1]
+                        parsed_json = json.loads(json_str)
+                    
+                    success = True
+                    break # Success! Break out of key rotation
+                
+                except Exception as e:
+                    err_str = str(e).lower()
+                    last_error_str = err_str
+                    if "rate limit" in err_str or "429" in err_str:
+                        mark_rate_limited(key_idx)
+                        if key_idx == -1:
+                            print("[LLMRouter] Emergency key also rate limited.")
+                        continue # Try next key
+                    else:
+                        print(f"[LLMRouter] {agent_name} attempt {attempt} failed (model={current_model}): {e}")
+                        break # Not a rate limit, break key loop and increment attempt
+            
+            if success:
+                _record(agent_name, prompt_tokens, completion_tokens, current_model)
                 set_cached(prompt, current_model, raw)
-            return raw
+                if expect_json:
+                    return parsed_json
+                return raw
+                
+        # If we exhausted attempts for this model, we move to the next model in models_to_try
+        print(f"[LLMRouter] Exhausted {MAX_RETRIES_PER_TIER} attempts for model {current_model}. Moving to next.")
 
-        if parsed_json is not None:
-            # JSON was already validated and parsed in the retry loop
-            if res_content is None:
-                set_cached(prompt, current_model, raw)
-            return parsed_json
+    # All models exhausted
+    raise LLMExhaustionError(
+        status="WAITING_FOR_LLM_CAPACITY", 
+        model=current_model if 'current_model' in locals() else "unknown", 
+        reset_time=300.0, 
+        last_error=last_error_str
+    )
 
-        # Fallback: raw exists but parsed_json is None (cache hit path)
-        try:
-            cleaned = raw.replace("```json", "").replace("```", "").strip()
-            if json_array:
-                start_idx = cleaned.find("[")
-                end_idx = cleaned.rfind("]")
-            else:
-                start_idx = cleaned.find("{")
-                end_idx = cleaned.rfind("}")
-
-            if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
-                raise ValueError(f"No JSON found in response: {cleaned[:200]}")
-
-            json_str = cleaned[start_idx : end_idx + 1]
-            parsed = json.loads(json_str)
-
-            if res_content is None:
-                set_cached(prompt, current_model, raw)
-
-            return parsed
-
-        except Exception as e:
-            print(f"[LLMRouter] {agent_name} JSON parse failed: {e}")
-
-    # All retries exhausted across both tiers — graceful degradation
-    print(f"[LLMRouter] ABORT: {agent_name} exhausted all retries.")
-    if expect_json:
+def _parse_cache_or_raw(raw: str, expect_json: bool, json_array: bool, agent_name: str, prompt_tokens: int, current_model: str, prompt: str):
+    _record(agent_name, prompt_tokens, 0, current_model)
+    if not expect_json:
+        return raw
+    try:
+        cleaned = raw.replace("```json", "").replace("```", "").strip()
         if json_array:
-            return []
-        return {
-            "error": "Generation failed after exhausting all retries.",
-            "status": "failed",
-        }
-    return ""
+            start_idx = cleaned.find("[")
+            end_idx = cleaned.rfind("]")
+        else:
+            start_idx = cleaned.find("{")
+            end_idx = cleaned.rfind("}")
+
+        if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
+            raise ValueError(f"No JSON found in response: {cleaned[:200]}")
+
+        json_str = cleaned[start_idx : end_idx + 1]
+        return json.loads(json_str)
+    except Exception as e:
+        print(f"[LLMRouter] {agent_name} JSON parse failed: {e}")
+        return {} if not json_array else []

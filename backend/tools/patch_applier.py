@@ -45,7 +45,8 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
         return {"success": False, "stderr": f"File not found: {target_file}"}
 
     try:
-        with open(full_path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+        from tools.safe_path import open_safe
+        with open_safe(repo_local_path, target_file, "r", encoding="utf-8", errors="ignore", newline="") as f:
             content = f.read()
             original_newlines = f.newlines
 
@@ -153,7 +154,7 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
         elif isinstance(original_newlines, str):
             write_newline = original_newlines
 
-        with open(full_path, "w", encoding="utf-8", newline=write_newline) as f:
+        with open_safe(repo_local_path, target_file, "w", encoding="utf-8", newline=write_newline) as f:
             f.write(content)
 
         if os.path.exists(backup_path):

@@ -13,9 +13,7 @@ fragmentation.
 import hashlib
 from typing import Any
 
-# ---------------------------------------------------------------------------
 # Session-scoped cache (dict keyed by repo hash)
-# ---------------------------------------------------------------------------
 _cache: dict[str, dict[str, Any]] = {}
 
 

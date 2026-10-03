@@ -9,6 +9,8 @@ CACHE_FILE = os.path.join(
 )
 MAX_CACHE_SIZE = 500
 
+cache_metrics = {"global": {"hits": 0, "misses": 0}}
+
 
 class LRUCache:
     def __init__(self, capacity: int):
@@ -34,15 +36,15 @@ class LRUCache:
                     data = json.load(f)
                     for k, v in data.items():
                         self.set(k, v)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Warning: Silent exception caught: {e}")
 
     def save(self, file_path: str):
         try:
             with open(file_path, "w") as f:
                 json.dump(self.cache, f)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Silent exception caught: {e}")
 
 
 _cache = LRUCache(MAX_CACHE_SIZE)
@@ -62,7 +64,12 @@ def _make_cache_key(prompt: str, model: str) -> str:
 
 
 def get_cached(prompt: str, model: str) -> str | None:
-    return _cache.get(_make_cache_key(prompt, model))
+    val = _cache.get(_make_cache_key(prompt, model))
+    if val is not None:
+        cache_metrics["global"]["hits"] += 1
+    else:
+        cache_metrics["global"]["misses"] += 1
+    return val
 
 
 def set_cached(prompt: str, model: str, response: str) -> None:
