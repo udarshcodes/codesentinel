@@ -80,18 +80,21 @@ class TestLRUCache(unittest.TestCase):
 
 class TestCacheKeys(unittest.TestCase):
     def test_make_cache_key_deterministic(self):
-        key1 = _make_cache_key("hello", "llama3-8b")
-        key2 = _make_cache_key("hello", "llama3-8b")
+        # Same prompt, same model, same args -> same key
+        key1 = _make_cache_key("hello", "gpt-oss-20b")
+        key2 = _make_cache_key("hello", "gpt-oss-20b")
         self.assertEqual(key1, key2)
 
     def test_different_prompts_different_keys(self):
-        key1 = _make_cache_key("hello", "llama3-8b")
-        key2 = _make_cache_key("world", "llama3-8b")
+        # Different prompt
+        key1 = _make_cache_key("hello", "gpt-oss-20b")
+        key2 = _make_cache_key("world", "gpt-oss-20b")
         self.assertNotEqual(key1, key2)
 
     def test_different_models_different_keys(self):
-        key1 = _make_cache_key("hello", "llama3-8b")
-        key2 = _make_cache_key("hello", "llama3-70b")
+        # Should differentiate by model
+        key1 = _make_cache_key("hello", "gpt-oss-20b")
+        key2 = _make_cache_key("hello", "gpt-oss-120b")
         self.assertNotEqual(key1, key2)
 
 

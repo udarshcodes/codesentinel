@@ -21,7 +21,7 @@ from tools.knowledge_graph import (
 
 
 class TestParsePythonImports(unittest.TestCase):
-    def test_simple_import(self):
+    def test_python_simple_import(self):
         code = "import os\nimport sys\n"
         result = _parse_python_imports("test.py", code)
         self.assertIn("os", result)
@@ -33,7 +33,7 @@ class TestParsePythonImports(unittest.TestCase):
         self.assertIn("os.path", result)
         self.assertIn("collections", result)
 
-    def test_relative_import(self):
+    def test_python_relative_import(self):
         code = "from .utils import helper\n"
         result = _parse_python_imports("test.py", code)
         self.assertIsInstance(result, list)
@@ -55,7 +55,7 @@ class TestParseJsTsImports(unittest.TestCase):
         result = _parse_js_ts_imports(code)
         self.assertIn("express", result)
 
-    def test_relative_import(self):
+    def test_js_relative_import(self):
         code = "import utils from './utils';\n"
         result = _parse_js_ts_imports(code)
         self.assertIn("./utils", result)
@@ -80,7 +80,7 @@ class TestParseGoImports(unittest.TestCase):
 
 
 class TestParseJavaImports(unittest.TestCase):
-    def test_simple_import(self):
+    def test_java_simple_import(self):
         code = "import java.util.List;\nimport java.io.File;\n"
         result = _parse_java_imports(code)
         self.assertIn("java.util.List", result)

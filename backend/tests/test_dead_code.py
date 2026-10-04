@@ -6,7 +6,7 @@ import asyncio
 import os
 import sys
 import tempfile
-import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -14,7 +14,11 @@ from agents.static_analysis import agent_static_analysis
 
 
 class TestDeadCodeDetection(unittest.TestCase):
-    def test_multi_lang_dead_code(self):
+    @unittest.mock.patch("agents.static_analysis.run_sandboxed_subprocess")
+    def test_multi_lang_dead_code(self, mock_run):
+        # Setup mock run to return empty JSON depending on the tool
+        mock_run.return_value = unittest.mock.MagicMock(stdout="{}")
+        
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Go file with unused function
             with open(os.path.join(tmp_dir, "utils.go"), "w") as f:
