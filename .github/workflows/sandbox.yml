@@ -1,0 +1,94 @@
+name: Build and Publish Sandbox Image
+
+on:
+  push:
+    paths:
+      - 'sandbox/**'
+      - '.github/workflows/sandbox.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-sandbox
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+
+      - name: Build Sandbox Image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./sandbox
+          load: true
+          tags: codesentinel/sandbox:ci-test
+
+      - name: Verify Sandbox Capabilities (Toolchain Check)
+        run: |
+          docker run --rm codesentinel/sandbox:ci-test verify-tools.sh
+
+      - name: Run Integration Tests
+        run: |
+          # Setup python environment for running tests
+          pip install -r backend/requirements.txt
+          pip install pytest
+          
+          # Pass the tested image to pytest
+          export SANDBOX_IMAGE=codesentinel/sandbox:ci-test
+          
+          # Assert it is exactly the CI image
+          test "$SANDBOX_IMAGE" = "codesentinel/sandbox:ci-test" || (echo "FATAL: SANDBOX_IMAGE not configured correctly" && exit 1)
+          
+          # Run the sandbox specific tests
+          python -m pytest backend/tests/test_sandbox.py -v
+
+      - name: Tag and Push Exact Artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # Tag and push the exact image tested
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              docker tag codesentinel/sandbox:ci-test "$tag"
+              docker push "$tag"
+            fi
+          done <<< "${{ steps.meta.outputs.tags }}"
+
+      - name: Output Image Digest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          FULL_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$FIRST_TAG")
+          DIGEST="@$(echo $FULL_DIGEST | cut -d'@' -f2)"
+          
+          echo "Sandbox image successfully published."
+          echo ""
+          echo "Image:"
+          echo "ghcr.io/udarshcodes/codesentinel-sandbox"
+          echo ""
+          echo "Digest:"
+          echo "${DIGEST#@}"
+          echo ""
+          echo "Production reference:"
+          echo "ghcr.io/udarshcodes/codesentinel-sandbox${DIGEST}"
