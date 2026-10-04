@@ -3,7 +3,7 @@
 # (see docker-compose.yml + nginx.conf) to route them to the backend.
 # This Dockerfile is NOT intended for standalone use without a reverse proxy.
 
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY . .
 RUN npm run build
 
 # Production stage — serve with lightweight static server
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

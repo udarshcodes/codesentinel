@@ -4,8 +4,7 @@ export default function ThemeToggle() {
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
 
   useEffect(() => {
-    // Only used for observing external class changes if needed, but for ThemeToggle local state is usually enough.
-    // Keeping empty effect if they want to add observer later, or just remove the effect entirely.
+
   }, []);
 
   const toggleTheme = () => {

@@ -12,11 +12,10 @@ export default defineConfig({
       '/api': {
         target: backendUrl,
         changeOrigin: true,
-      },
-      '/admin': {
-        target: backendUrl,
-        changeOrigin: true,
       }
     }
+  },
+  test: {
+    environment: 'jsdom'
   }
 })
