@@ -35,13 +35,20 @@ function App() {
     setErrorMsg(null)
     setIsSubmitting(true)
     setIsPipelineRunning(true)
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/v1/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repoUrlInput })
+        body: JSON.stringify({ repo_url: repoUrlInput }),
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId);
       
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`)
@@ -62,10 +69,15 @@ function App() {
       }
     } catch (error) {
       console.error(error)
-      setErrorMsg('Failed to start analysis. Is the backend running?')
+      if (error.name === 'AbortError') {
+        setErrorMsg('Connection timed out. Could not connect to the backend.')
+      } else {
+        setErrorMsg('Failed to start analysis. Is the backend running?')
+      }
       setIsPipelineRunning(false)
     } finally {
       setIsSubmitting(false)
+      clearTimeout(timeoutId);
     }
   }
 
@@ -77,6 +89,7 @@ function App() {
         setRepoUrlInput={setRepoUrlInput} 
         startAnalysis={startAnalysis} 
         isSubmitting={isSubmitting} 
+        errorMsg={errorMsg}
       />
     )
   }
@@ -142,7 +155,13 @@ function App() {
           </div>
         )}
 
-        {batchTasks.length > 0 ? (
+        {isPipelineRunning && !activeTaskId && batchTasks.length === 0 && !errorMsg ? (
+          <div className="flex flex-col items-center justify-center p-12 bg-card border border-border rounded-xl shadow-sm text-center min-h-[400px]">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-6"></div>
+            <h2 className="text-xl font-bold text-foreground mb-2">Creating analysis task</h2>
+            <p className="text-muted-foreground">Connecting to analysis worker...</p>
+          </div>
+        ) : batchTasks.length > 0 ? (
           batchTasks.map(task => (
             <PipelineDashboard 
               key={task.task_id} 

@@ -6,6 +6,8 @@ from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.prompt_cache import CODE_GENERATOR_SYSTEM
 from tools.context_pruner import extract_function_context
+from tools.safe_repo import safe_path_exists
+from tools.safe_path import open_safe
 
 
 def _smart_truncate(file_content: str, issue: dict, target_file: str) -> str:

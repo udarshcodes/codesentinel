@@ -436,8 +436,8 @@ class JobManager:
     VALID_TRANSITIONS = {
         "QUEUED": {"STARTING", "WAITING_FOR_DISPATCH"},
         "WAITING_FOR_DISPATCH": {"DISPATCHING", "FAILED", "NEEDS_REVIEW"},
-        "DISPATCHING": {"STARTING", "RUNNING", "FAILED", "WAITING_FOR_DISPATCH"},
-        "STARTING": {"RUNNING", "FAILED"},
+        "DISPATCHING": {"STARTING", "RUNNING", "FAILED", "WAITING_FOR_DISPATCH", "COMPLETED"},
+        "STARTING": {"RUNNING", "FAILED", "COMPLETED"},
         "RUNNING": {"WAITING_FOR_APPROVAL", "WAITING_FOR_LLM_CAPACITY", "COMPLETED", "FAILED"},
         "WAITING_FOR_LLM_CAPACITY": {"DISPATCHING", "FAILED", "NEEDS_REVIEW"},
         "WAITING_FOR_APPROVAL": {"NEEDS_REVIEW", "WAITING_FOR_DISPATCH", "FAILED"},
@@ -548,10 +548,17 @@ class JobManager:
         update_cols.append("pipeline_state = ?")
         update_vals.append(p_state_val)
             
+        has_heartbeat = False
         if extra_updates:
             for k, v in extra_updates.items():
                 update_cols.append(f"{k} = ?")
                 update_vals.append(v)
+                if k == "worker_heartbeat_at":
+                    has_heartbeat = True
+                    
+        if not has_heartbeat:
+            update_cols.append("worker_heartbeat_at = ?")
+            update_vals.append(timestamp)
                 
         update_vals.append(task_id)
         if enforce_worker_fencing:
@@ -603,6 +610,7 @@ class JobManager:
             "INSERT INTO jobs (task_id, repo_url, status, created_at, updated_at, pipeline_state, commit_sha, view_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (task_id, repo_url, "WAITING_FOR_DISPATCH", now, now, None, commit_sha, hashed_view),
         )
+        print(f"[Diag] create_job: task_id={task_id}, status=WAITING_FOR_DISPATCH, pipeline_state_is_null=True")
         conn.commit()
         conn.close()
 
@@ -788,16 +796,19 @@ class JobManager:
     @classmethod
     def get_job(cls, task_id: str) -> Optional[dict]:
         conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """SELECT task_id, repo_url, status, created_at, updated_at, pipeline_state, 
-                      approval_decision, commit_sha, view_token,
-                      worker_started_at, worker_heartbeat_at, next_retry, worker_attempt_id
-               FROM jobs WHERE task_id = ?""",
-            (task_id,),
-        )
-        row = cursor.fetchone()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT task_id, repo_url, status, created_at, updated_at, pipeline_state, 
+                          approval_decision, commit_sha, view_token,
+                          worker_started_at, worker_heartbeat_at, next_retry, worker_attempt_id
+                   FROM jobs WHERE task_id = ?""",
+                (task_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+            
         if not row:
             return None
         return {
@@ -961,8 +972,8 @@ class JobManager:
             if current_status == status:
                 cls.validate_state_consistency(cursor, task_id, status, pipeline_state)
                 cursor.execute(
-                    "UPDATE jobs SET pipeline_state = ?, updated_at = ? WHERE task_id = ? AND worker_attempt_id = ?",
-                    (json.dumps(pipeline_state), now, task_id, worker_attempt_id)
+                    "UPDATE jobs SET pipeline_state = ?, updated_at = ?, worker_heartbeat_at = ? WHERE task_id = ? AND worker_attempt_id = ?",
+                    (json.dumps(pipeline_state), now, now, task_id, worker_attempt_id)
                 )
                 if cursor.rowcount == 0:
                     raise ValueError("Stale worker attempt during update")
@@ -1583,13 +1594,16 @@ class JobManager:
 
         events = []
         for r in rows:
+            ts = r[4]
+            if not isinstance(ts, str) and ts is not None:
+                ts = ts.isoformat()
             events.append(
                 {
                     "sequence": r[0],
                     "status": r[1],
                     "event": r[2],
                     "data": json.loads(r[3]),
-                    "timestamp": r[4],
+                    "timestamp": ts,
                 }
             )
         return events
@@ -1751,7 +1765,18 @@ class JobManager:
         conn.commit()
         conn.close()
         
-        if now > expires_at:
+        now_dt = datetime.now(timezone.utc)
+        if isinstance(expires_at, str):
+            try:
+                expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            except ValueError:
+                return False
+        else:
+            expires_dt = expires_at
+            if expires_dt.tzinfo is None:
+                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+                
+        if now_dt > expires_dt:
             return False
             
         return True

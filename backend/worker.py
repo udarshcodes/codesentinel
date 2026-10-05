@@ -5,8 +5,24 @@ import asyncio
 _global_cancel_event = None
 _global_main_task = None
 
-def _trigger_fatal_lease_loss():
+def _trigger_fatal_lease_loss(res=None, path: str = "", stage: str = ""):
     print("FATAL: Worker lease lost (401/403/409). Terminating immediately.")
+    if res:
+        print(f"Diagnostic - Status: {res.status_code}")
+        print(f"Diagnostic - Path: {path}")
+        print(f"Diagnostic - Stage: {stage}")
+        try:
+            from tools.auth import TASK_ID, WORKER_ATTEMPT_ID
+            print(f"Diagnostic - Task: {TASK_ID}")
+            print(f"Diagnostic - Attempt ID: {WORKER_ATTEMPT_ID[:8]}...")
+            body = res.json()
+            # sanitize body just in case
+            if "secret" in str(body).lower() or "token" in str(body).lower():
+                print("Diagnostic - Response: [SANITIZED FOR SECRETS]")
+            else:
+                print(f"Diagnostic - Response: {body}")
+        except Exception:
+            print(f"Diagnostic - Response (text): {res.text[:200]}")
     from tools.auth import abort_lease
     abort_lease()
     if _global_cancel_event:
@@ -100,9 +116,26 @@ async def post_event(status: str, event_name: str, data: dict):
     }
 
     try:
-        res = await authenticated_post(f"/api/v1/job/{TASK_ID}/event", payload)
+        path = f"/api/v1/job/{TASK_ID}/event"
+        res = await authenticated_post(path, payload)
+        
+        if event_name == "pipeline_complete":
+            print(f"DIAGNOSTIC - HTTP Status: {res.status_code}")
+            print(f"DIAGNOSTIC - Path: {path}")
+            print(f"DIAGNOSTIC - Task ID: {TASK_ID}")
+            print(f"DIAGNOSTIC - Worker Attempt ID: {WORKER_ATTEMPT_ID}")
+            try:
+                body = res.json() if res.content else {}
+                if "secret" in str(body).lower() or "token" in str(body).lower():
+                    print("DIAGNOSTIC - Response: [SANITIZED FOR SECRETS]")
+                else:
+                    print(f"DIAGNOSTIC - Response: {body}")
+            except Exception:
+                print(f"DIAGNOSTIC - Response (text): {res.text[:200]}")
+            print(f"DIAGNOSTIC - State Before: {status}")
+
         if res.status_code in (401, 403, 409):
-             _trigger_fatal_lease_loss()
+             _trigger_fatal_lease_loss(res, path, f"post_event({event_name})")
         elif res.status_code != 200:
             print(f"Failed to post event {event_name}: {res.text}")
     except Exception as e:
@@ -116,17 +149,28 @@ async def heartbeat_loop(cancel_event: asyncio.Event, main_task: asyncio.Task):
             await asyncio.sleep(30)
             if cancel_event.is_set():
                 break
-            res = await authenticated_post(f"/api/v1/job/{TASK_ID}/heartbeat", {})
+            path = f"/api/v1/job/{TASK_ID}/heartbeat"
+            res = await authenticated_post(path, {})
             
-            if res.status_code in (401, 403, 409):
-                _trigger_fatal_lease_loss()
-            elif res.status_code != 200:
-                print(f"Warning: Heartbeat failed {res.status_code}")
+            if res.status_code == 401:
+                _trigger_fatal_lease_loss(res, path, "heartbeat - 401 Authentication Failure")
+            elif res.status_code == 403:
+                _trigger_fatal_lease_loss(res, path, "heartbeat - 403 HMAC/Authorization Failure")
+            elif res.status_code == 409:
+                _trigger_fatal_lease_loss(res, path, "heartbeat - 409 Stale Worker")
+            elif res.status_code >= 500:
+                print(f"Warning: Heartbeat failed with backend infrastructure error {res.status_code}")
                 failures += 1
                 if failures >= 3:
-                    print("Too many consecutive heartbeat failures. Terminating execution.")
-                    from tools.auth import abort_lease
-                    abort_lease()
+                    print("FATAL: Too many consecutive heartbeat backend failures (500). Terminating execution.")
+                    cancel_event.set()
+                    main_task.cancel()
+                    break
+            elif res.status_code != 200:
+                print(f"Warning: Heartbeat failed with unexpected status {res.status_code}")
+                failures += 1
+                if failures >= 3:
+                    print("FATAL: Too many consecutive heartbeat failures. Terminating execution.")
                     cancel_event.set()
                     main_task.cancel()
                     break
@@ -135,10 +179,10 @@ async def heartbeat_loop(cancel_event: asyncio.Event, main_task: asyncio.Task):
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"Warning: Heartbeat exception: {e}")
+            print(f"Warning: Heartbeat exception (network/infrastructure): {e}")
             failures += 1
             if failures >= 3:
-                print("Too many consecutive heartbeat exceptions. Terminating execution.")
+                print("FATAL: Too many consecutive heartbeat exceptions. Terminating execution.")
                 cancel_event.set()
                 main_task.cancel()
                 break
@@ -162,15 +206,31 @@ async def run_worker():
                 sys.exit(0)
             elif state_res.status_code == 200:
                 data = state_res.json()
+                status = data.get("status")
+                if status in ["COMPLETED", "FAILED", "NEEDS_REVIEW"]:
+                    print(f"Task is already in terminal state ({status}). Worker will not resume.")
+                    sys.exit(0)
+
                 existing_state = data.get("pipeline_state")
                 approval_decision = data.get("approval_decision")
-                if existing_state:
+                
+                # Pydantic schema may populate a fresh {} state with None values, making it truthy.
+                # Check for actual progress (e.g. last_completed_node or status) to differentiate.
+                has_meaningful_state = existing_state and (
+                    existing_state.get("last_completed_node") or 
+                    existing_state.get("knowledge_graph") or
+                    existing_state.get("status")
+                )
+                
+                if has_meaningful_state:
                     if approval_decision:
                         existing_state["approval_decision"] = approval_decision
                         if approval_decision == "rejected":
                             print("Approval was rejected. Worker will not resume.")
                             sys.exit(0)
                     print(f"Resuming task {TASK_ID} from saved state.")
+                else:
+                    existing_state = None
                 break
             else:
                 print(f"Warning: Failed to fetch state: HTTP {state_res.status_code}")
@@ -209,8 +269,39 @@ async def run_worker():
             state.pop("approval_payload", None)
             state.pop("approval_decision", None)
 
+        if not state.get("task_id"):
+            state["task_id"] = TASK_ID
+        if not state.get("repo_url"):
+            state["repo_url"] = REPO_URL
+        if not state.get("commit_sha"):
+            state["commit_sha"] = COMMIT_SHA
+            
+        # Ensure all standard pipeline state keys exist to prevent KeyErrors
+        # in older jobs or malformed state payloads.
+        state.setdefault("knowledge_graph", {})
+        state.setdefault("dependency_findings", [])
+        state.setdefault("static_findings", [])
+        state.setdefault("investigated_issues", [])
+        state.setdefault("repair_plan", [])
+        state.setdefault("patches", [])
+        state.setdefault("validation_results", [])
+        state.setdefault("security_verified", False)
+        state.setdefault("pr_url", "")
+        state.setdefault("pr_error", "")
+        state.setdefault("retry_count", 0)
+        state.setdefault("awaiting_approval", False)
+        state.setdefault("confidence_score", 0.0)
+        state.setdefault("dependency_graph", {})
+        state.setdefault("last_completed_node", "")
+            
+        if not state.get("repo_url"):
+            err_msg = "CRITICAL: Missing repo_url in resumed state, and REPO_URL fallback was empty."
+            print(err_msg)
+            await post_event("FAILED", "pipeline_error", {"error": err_msg})
+            sys.exit(1)
+
         # Worker Resume: ALWAYS reconstruct workspace and do not trust persisted path
-        print(f"Reconstructing workspace unconditionally for resumed job...")
+        print("Reconstructing workspace unconditionally for resumed job...")
         import tempfile
         import subprocess
         from tools.subprocess_runner import get_safe_env
@@ -220,8 +311,8 @@ async def run_worker():
         os.makedirs(temp_base, exist_ok=True)
         new_path = tempfile.mkdtemp(prefix="codesentinel_", dir=temp_base)
         
-        _repo_url = REPO_URL
-        _commit_sha = COMMIT_SHA
+        _repo_url = state.get("repo_url")
+        _commit_sha = state.get("commit_sha")
         
         if not _repo_url:
             raise ValueError("Cannot reconstruct workspace: missing REPO_URL.")
@@ -231,19 +322,9 @@ async def run_worker():
                 print("Bypassing workspace reconstruction for unit test.")
                 state["repo_local_path"] = new_path
             else:
-                clone_env = get_safe_env(keep_github_token=True)
-                clone_env["GIT_TERMINAL_PROMPT"] = "0"
-                clone_env["GIT_ASKPASS"] = "echo"
-                clone_env["GCM_INTERACTIVE"] = "false"
-                
+                from tools.subprocess_runner import clone_github_repo
                 github_token = os.environ.get("GITHUB_TOKEN", "")
-                if github_token and _repo_url.startswith("https://github.com/"):
-                    clone_env["GIT_CONFIG_COUNT"] = "1"
-                    clone_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-                    clone_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {github_token}"
-                    subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", _repo_url, new_path], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
-                else:
-                    subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", _repo_url, new_path], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
+                clone_github_repo(_repo_url, new_path, github_token)
                     
                 safe_env = get_safe_env(keep_github_token=False)
                 subprocess.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=new_path, check=True, env=safe_env)
@@ -315,20 +396,32 @@ async def run_worker():
     validated_fixes = []
 
     try:
+        print(f"[Diag] astream_before: task_id={TASK_ID}, status={state.get('status', 'N/A')}, last_completed_node={state.get('last_completed_node', '')}, repo_url_present={bool(state.get('repo_url'))}, dep_findings={len(state.get('dependency_findings', []))}, static_findings={len(state.get('static_findings', []))}, patches={len(state.get('patches', []))}, validations={len(state.get('validation_results', []))}")
         astream_iter = langgraph_app.astream(state)
 
         fatal_error = False
 
         while not cancel_event.is_set():
             try:
-                # Wrap anext with wait_for so we can check cancel_event periodically
-                output = await asyncio.wait_for(anext(astream_iter, None), timeout=5.0)
-            except asyncio.TimeoutError:
-                continue
+                # Safely wait for the next graph update without cancelling it prematurely
+                anext_task = asyncio.create_task(anext(astream_iter, None))
+                while not anext_task.done():
+                    if cancel_event.is_set():
+                        anext_task.cancel()
+                        break
+                    await asyncio.sleep(1.0)
+                
+                if cancel_event.is_set():
+                    break
+                    
+                output = anext_task.result()
+                
             except LLMExhaustionError:
                 raise
             except StopAsyncIteration:
                 output = None
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 print(f"LangGraph execution error: {e}")
                 await post_event("FAILED", "pipeline_error", {"error": str(e)})
@@ -479,11 +572,18 @@ async def run_worker():
                     return
 
         if cancel_event.is_set():
-            print("Worker execution cancelled due to stale attempt or heartbeat failure.")
-            return
+            print("FATAL: Worker execution cancelled due to fatal heartbeat failures.")
+            sys.exit(1)
 
         if not fatal_error and state.get("status") not in ["WAITING_FOR_LLM_CAPACITY", "WAITING_FOR_APPROVAL"]:
             print("Pipeline complete.")
+            
+            # Cancel the heartbeat loop immediately before completing
+            # to avoid a race condition where a heartbeat arrives after the DB is COMPLETED,
+            # which would result in a 409 rejection and fatal worker exit.
+            cancel_event.set()
+            heartbeat_task.cancel()
+            
             await post_event(
                 "COMPLETED",
                 "pipeline_complete",
@@ -494,6 +594,10 @@ async def run_worker():
                     "validated_fixes": validated_fixes,
                 },
             )
+
+        if fatal_error:
+            print("Worker terminating due to fatal LangGraph error.")
+            sys.exit(1)
 
     except LLMExhaustionError as e:
         print(f"LLM Capacity Exhausted: {e}")
@@ -542,6 +646,8 @@ async def run_worker():
     except Exception as e:
         print(f"Fatal worker exception: {e}")
         await post_event("FAILED", "pipeline_error", {"error": str(e)})
+        # Make sure to exit 1 so GitHub Actions correctly reports a failure
+        sys.exit(1)
 
     finally:
         if 'heartbeat_task' in locals():

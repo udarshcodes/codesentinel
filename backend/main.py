@@ -93,14 +93,19 @@ app = FastAPI(title="CodeSentinel", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_cors_origins = os.getenv(
-    "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
-).split(",")
+_cors_origins_str = os.getenv("CORS_ORIGINS", "")
+_cors_origins = [o.strip() for o in _cors_origins_str.replace(",", " ").split() if o.strip()]
 
-# If credentials are allowed, origins cannot be a wildcard
-safe_origins = [o.strip() for o in _cors_origins if o.strip() and o.strip() != "*"]
-if not safe_origins:
-    safe_origins = ["http://localhost:5173"]
+safe_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://salmon-ground-0362fac00.7.azurestaticapps.net",
+    "https://codesentinel.udarshgoyal.xyz"
+]
+
+safe_origins.extend([o for o in _cors_origins if o != "*"])
+safe_origins = list(set(safe_origins))
+
 
 app.add_middleware(
     CORSMiddleware,

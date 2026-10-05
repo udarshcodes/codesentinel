@@ -6,6 +6,16 @@ DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "co
 DATABASE_URL = os.getenv("DATABASE_URL")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
+_pg_pool = None
+
+def get_pg_pool():
+    global _pg_pool
+    if _pg_pool is None and DATABASE_URL:
+        import psycopg2.pool
+        # Use ThreadedConnectionPool since the backend uses thread pools for sync execution in FastAPI
+        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
+    return _pg_pool
+
 def _convert_placeholders(query: str) -> str:
     # Safely convert ? to %s ignoring ? inside single or double quotes
     pattern = r"'[^']*'|\"[^\"]*\"|\?"
@@ -20,9 +30,11 @@ class DBConnection:
             raise RuntimeError("FATAL: DATABASE_URL must be configured in production for durable state.")
             
         self.is_postgres = bool(db_url)
+        self.pooled_conn = None
         if self.is_postgres:
-            import psycopg2
-            self.conn = psycopg2.connect(db_url)
+            pool = get_pg_pool()
+            self.conn = pool.getconn()
+            self.pooled_conn = self.conn
         else:
             # Dynamically read DB_PATH to support test isolation (isolated_db),
             # but fallback to the module-level DB_PATH if os.environ is cleared (e.g. patch.dict clear=True).
@@ -39,7 +51,14 @@ class DBConnection:
         self.conn.rollback()
         
     def close(self):
-        self.conn.close()
+        if self.is_postgres and self.pooled_conn:
+            pool = get_pg_pool()
+            pool.putconn(self.pooled_conn)
+            self.pooled_conn = None
+            self.conn = None
+        elif self.conn:
+            self.conn.close()
+            self.conn = None
 
     def execute(self, query, params=None):
         if self.is_postgres and query.strip().upper() == "BEGIN EXCLUSIVE":

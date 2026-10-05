@@ -1,5 +1,14 @@
 import os
 
+def _normalize_absolute_path(base_dir: str, target_path: str) -> str:
+    """If target_path is absolute and explicitly inside base_dir, make it relative."""
+    if os.path.isabs(target_path):
+        base_abs = os.path.abspath(base_dir)
+        target_norm = os.path.normpath(target_path)
+        if target_norm == base_abs or target_norm.startswith(base_abs + os.sep):
+            return os.path.relpath(target_norm, base_abs)
+    return target_path
+
 def resolve_safe_path(base_dir: str, target_path: str) -> str:
     """
     Safely resolves a target path against a base directory.
@@ -10,6 +19,8 @@ def resolve_safe_path(base_dir: str, target_path: str) -> str:
     
     Raises ValueError if the path escapes the base_dir or is malicious.
     """
+    target_path = _normalize_absolute_path(base_dir, target_path)
+    
     # 1. Reject absolute paths early
     if os.path.isabs(target_path):
         raise ValueError("Absolute paths are not allowed.")
@@ -43,6 +54,8 @@ def open_repo_file_at(base_dir: str, target_path: str, mode: str = "r", **kwargs
     Race-resistant file opener using directory file descriptors (openat).
     """
     import stat
+    target_path = _normalize_absolute_path(base_dir, target_path)
+    
     if os.path.isabs(target_path):
         raise ValueError("Absolute paths are not allowed.")
     if os.path.splitdrive(target_path)[0]:

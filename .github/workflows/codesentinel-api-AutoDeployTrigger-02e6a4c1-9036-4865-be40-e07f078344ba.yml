@@ -26,11 +26,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
-          client-id: ${{ secrets.CODESENTINELAPI_AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.CODESENTINELAPI_AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.CODESENTINELAPI_AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Sync Secrets to Azure Container App
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az containerapp secret set -n codesentinel-api -g CodeSentinel-RG --secrets worker-webhook-secret="${{ secrets.WORKER_WEBHOOK_SECRET }}" github-webhook-secret="${{ secrets.GH_WEBHOOK_SECRET }}" database-url="${{ secrets.DATABASE_URL }}"
 
       - name: Build and push container image to registry
         uses: azure/container-apps-deploy-action@v2
@@ -46,4 +51,4 @@ jobs:
 
           ingress: external
           targetPort: 8000
-          environmentVariables: GROQ_API_KEY_1=secretref:groq-api-key-1 GROQ_API_KEY_2=secretref:groq-api-key-2 GROQ_API_KEY_3=secretref:groq-api-key-3 GROQ_API_KEY_4=secretref:groq-api-key-4 GROQ_API_KEY_5=secretref:groq-api-key-5 GROQ_API_KEY_6=secretref:groq-api-key-6 GITHUB_TOKEN=secretref:github-token ADMIN_SECRET=secretref:admin-secret WORKER_WEBHOOK_SECRET=secretref:worker-webhook-secret GITHUB_WEBHOOK_SECRET=secretref:github-webhook-secret PORT=8000 ENVIRONMENT=production CORS_ORIGINS=https://salmon-ground-0362fac00.7.azurestaticapps.net DATABASE_URL=secretref:database-url
+          environmentVariables: GROQ_API_KEY_1=secretref:groq-api-key-1 GROQ_API_KEY_2=secretref:groq-api-key-2 GROQ_API_KEY_3=secretref:groq-api-key-3 GROQ_API_KEY_4=secretref:groq-api-key-4 GROQ_API_KEY_5=secretref:groq-api-key-5 GROQ_API_KEY_6=secretref:groq-api-key-6 GITHUB_TOKEN=secretref:github-token ADMIN_SECRET=secretref:admin-secret WORKER_WEBHOOK_SECRET=secretref:worker-webhook-secret GITHUB_WEBHOOK_SECRET=secretref:github-webhook-secret PORT=8000 ENVIRONMENT=production DATABASE_URL=secretref:database-url

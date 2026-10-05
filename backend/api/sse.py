@@ -88,4 +88,4 @@ async def stream_pipeline(
     if resolved_last_id and resolved_last_id.lstrip('-').isdigit():
         start_seq = int(resolved_last_id)
 
-    return EventSourceResponse(event_generator(task_id, start_seq))
+    return EventSourceResponse(event_generator(task_id, start_seq), ping=15)

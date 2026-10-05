@@ -68,7 +68,7 @@ def get_next_key() -> tuple[str, int]:
 
 def _fire_alert():
     """Non-blocking webhook call. Never raises — alert failure must not break the pipeline."""
-    import os
+
     def _send():
         import httpx
         webhook = os.getenv("ALERT_WEBHOOK_URL", "")

@@ -31,31 +31,13 @@ async def agent_repo_mapper(state: PipelineState):
         github_token = os.getenv("GITHUB_TOKEN", "")
         clone_url = repo_url
         from tools.subprocess_runner import get_safe_env
-        clone_env = get_safe_env(keep_github_token=True)
-        clone_env["GIT_TERMINAL_PROMPT"] = "0"
-        clone_env["GIT_ASKPASS"] = "echo"
-        clone_env["GCM_INTERACTIVE"] = "false"  # Disable Windows Git Credential Manager GUI
-        
         safe_env = get_safe_env(keep_github_token=False)
 
         try:
-            if github_token and repo_url.startswith("https://github.com/"):
-                clone_env["GIT_CONFIG_COUNT"] = "1"
-                clone_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-                clone_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {github_token}"
-                clone_env.pop("GITHUB_TOKEN", None)
-                clone_env.pop("GH_TOKEN", None)
-                subprocess.run(
-                    ["git", "clone", "--no-checkout", clone_url, temp_dir],
-                    check=True, timeout=300, env=clone_env, capture_output=True, text=True
-                )
-            else:
-                subprocess.run(["git", "clone", "--no-checkout", clone_url, temp_dir], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            err_msg = e.stderr or str(e)
-            if github_token:
-                err_msg = err_msg.replace(github_token, "***")
-            raise RuntimeError(f"Clone failed: {err_msg}")
+            from tools.subprocess_runner import clone_github_repo
+            clone_github_repo(clone_url, temp_dir, github_token)
+        except Exception as e:
+            raise RuntimeError(str(e))
 
         commit_sha = state.get("commit_sha", "")
         if commit_sha:
@@ -214,6 +196,9 @@ Return ONLY valid JSON with keys: 'language', 'framework', 'modules', 'api_endpo
                     "test_framework": "",
                 }
         except Exception as e:
+            from tools.llm_router import LLMExhaustionError
+            if isinstance(e, LLMExhaustionError):
+                raise e
             print(f"[RepoMapper] LLM error: {e}")
             knowledge_graph = {
                 "language": "unknown",

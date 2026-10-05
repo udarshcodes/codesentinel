@@ -142,6 +142,8 @@ async def invoke_llm(
                 try:
                     api_key, key_idx = get_next_key()
                 except RuntimeError as e:
+                    if "DATABASE_URL" in str(e):
+                        raise  # Do not swallow configuration errors as LLM exhaustion
                     # All keys including emergency are exhausted
                     raise LLMExhaustionError(
                         status="WAITING_FOR_LLM_CAPACITY", 
@@ -155,7 +157,9 @@ async def invoke_llm(
                     api_key=api_key,
                     max_tokens=budget["completion"],
                 )
-                if expect_json and not json_array:
+                # Retry without strict json mode if it failed validation on the API side
+                use_strict_json = expect_json and not json_array and "json_validate_failed" not in last_error_str
+                if use_strict_json:
                     llm = llm.bind(response_format={"type": "json_object"})
 
                 try:

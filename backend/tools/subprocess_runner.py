@@ -25,6 +25,49 @@ def get_safe_env(keep_github_token: bool = False) -> Dict[str, str]:
     return env
 
 
+def clone_github_repo(repo_url: str, target_dir: str, github_token: str = "") -> None:
+    """
+    Safely clones a GitHub repository, supporting both public and private repositories.
+    If a token is provided, it attempts authenticated cloning first. If that fails (e.g., token 
+    lacks access to a public repo), it safely falls back to unauthenticated cloning.
+    If both fail, it raises the authenticated error to avoid masking permission problems.
+    """
+    clone_env = get_safe_env(keep_github_token=False)
+    clone_env["GIT_TERMINAL_PROMPT"] = "0"
+    clone_env["GIT_ASKPASS"] = "echo"
+    clone_env["GCM_INTERACTIVE"] = "false"
+    
+    cmd = ["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", repo_url, target_dir]
+    
+    try:
+        if github_token and repo_url.startswith("https://github.com/"):
+            auth_clone_env = clone_env.copy()
+            auth_clone_env["GIT_CONFIG_COUNT"] = "1"
+            auth_clone_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
+            auth_clone_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {github_token}"
+            
+            try:
+                subprocess.run(cmd, check=True, timeout=300, env=auth_clone_env, capture_output=True, text=True)
+                return
+            except subprocess.CalledProcessError as e:
+                auth_err = e
+                # Fall back to unauthenticated clone. If it succeeds, the repo was public.
+                # If it fails, raise the original auth_err to show true permission failure.
+                try:
+                    subprocess.run(cmd, check=True, timeout=300, env=clone_env, capture_output=True, text=True)
+                    return
+                except subprocess.CalledProcessError:
+                    raise auth_err
+        else:
+            subprocess.run(cmd, check=True, timeout=300, env=clone_env, capture_output=True, text=True)
+            
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr or e.stdout or str(e)
+        if github_token:
+            err_msg = err_msg.replace(github_token, "***")
+        raise RuntimeError(f"Git clone failed (exit code {e.returncode}): {err_msg}")
+
+
 def run_isolated_subprocess(
     cmd: list[str],
     cwd: str,

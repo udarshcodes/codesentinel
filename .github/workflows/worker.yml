@@ -45,6 +45,13 @@ jobs:
           uv pip install --system -r backend/requirements-worker.txt
           python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
           
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.WORKER_GITHUB_TOKEN }}
+          
       - name: Run CodeSentinel AI Worker
         env:
           GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
@@ -56,7 +63,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.WORKER_GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           WORKER_WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
-          SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:fb278d0bfc65d86802b5783a41b1312beebc4c0d6aabb227f62959d739947c50
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:17d875c448ff1b1d6e8dff53f8ea4d80fd77a8f899a72d2f86aa596ba8839c6d
           TASK_ID: ${{ github.event.inputs.task_id }}
           REPO_URL: ${{ github.event.inputs.repo_url }}
           BACKEND_URL: ${{ github.event.inputs.backend_url }}

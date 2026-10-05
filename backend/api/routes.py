@@ -47,6 +47,8 @@ async def start_analysis(
     request: Request, body: AnalyzeRequest, background_tasks: BackgroundTasks
 ):
     base_url = str(request.base_url).rstrip("/")
+    if request.headers.get("x-forwarded-proto") == "https" and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
     repo_url = body.repo_url.strip()
     if repo_url.startswith("github.com/"):
         repo_url = "https://" + repo_url
@@ -187,12 +189,17 @@ async def trigger_github_worker(
     if "github.com/" in worker_repo:
         worker_repo = worker_repo.split("github.com/")[-1].strip("/")
 
+    env_backend = os.getenv("BACKEND_URL")
+    # If the environment variable is hardcoded to the internal unresolvable name, ignore it
+    if env_backend == "http://codesentinel-api":
+        env_backend = None
+
     if dynamic_backend_url:
-        backend_url = os.getenv("BACKEND_URL", dynamic_backend_url)
+        backend_url = dynamic_backend_url
     else:
-        backend_url = os.getenv(
-            "BACKEND_URL", "http://codesentinel-api"
-        )  # Fallback for local
+        # Fallback for local or production background loop
+        fallback = "https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io" if os.getenv("ENVIRONMENT") == "production" else "http://codesentinel-api"
+        backend_url = env_backend or fallback
 
     if not github_token:
         print("Warning: No GITHUB_TOKEN set. Cannot trigger worker action.")
@@ -209,16 +216,44 @@ async def trigger_github_worker(
     if worker_attempt_id:
         inputs["worker_attempt_id"] = worker_attempt_id
 
-    async with httpx.AsyncClient() as client:
-        res = await client.post(
-            f"https://api.github.com/repos/{worker_repo}/actions/workflows/worker.yml/dispatches",
-            headers=headers,
-            json={"ref": "main", "inputs": inputs},
-            timeout=10.0,
-        )
-        if res.status_code >= 400:
-            print(f"Error triggering worker: {res.status_code} - {res.text}")
-            raise RuntimeError(f"Failed to trigger worker action: {res.text}")
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"https://api.github.com/repos/{worker_repo}/actions/workflows/worker.yml/dispatches",
+                headers=headers,
+                json={"ref": "main", "inputs": inputs},
+                timeout=10.0,
+            )
+            if res.status_code >= 400:
+                print(f"[WorkerDispatch] Failed dispatch. Task: {task_id}, Attempt: {worker_attempt_id}, Repo: {worker_repo}, Status: {res.status_code}")
+                raise RuntimeError(f"Failed to trigger worker action: {res.text}")
+            else:
+                print(f"[WorkerDispatch] Successful dispatch. Task: {task_id}, Attempt: {worker_attempt_id}, Repo: {worker_repo}, Workflow: worker.yml, Status: {res.status_code}")
+    except Exception as e:
+        print(f"[WorkerDispatch] Exception during dispatch for Task {task_id}: {str(e)}")
+        # Fail the job so it doesn't get stuck in DISPATCHING silently
+        from api.job_manager import JobManager
+        from api.db import get_connection
+        from datetime import datetime, timezone
+        conn = get_connection()
+        cursor = conn.cursor()
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            conn.transaction()
+            success, seq = JobManager.transition_job_state(
+                cursor, task_id, "FAILED", 
+                extra_updates={"last_dispatch_error": str(e)}, 
+                timestamp=now, event_name="dispatch_failed"
+            )
+            conn.commit()
+            if success:
+                JobManager._broadcast_event(task_id, "dispatch_failed", {"error": str(e)}, "FAILED", seq, now)
+        except Exception as inner_e:
+            conn.rollback()
+            print(f"[WorkerDispatch] Failed to update job status to FAILED: {inner_e}")
+        finally:
+            conn.close()
+        raise e
 
 
 class PipelineRecoveryState(BaseModel):
@@ -403,6 +438,8 @@ async def worker_get_state(request: Request, task_id: str):
 
     ps = job.get("pipeline_state") or {}
     status = job.get("status", "QUEUED")
+    
+    print(f"[Diag] worker_get_state: task_id={task_id}, status={status}, pipeline_state_empty={not bool(ps)}, pipeline_state_keys={list(ps.keys())}, last_completed_node={ps.get('last_completed_node')}")
     
     return WorkerStateResponse(
         task_id=task_id,
@@ -663,14 +700,16 @@ async def recover_credential(request: Request, task_id: str, body: RecoverCreden
 async def worker_heartbeat(request: Request, task_id: str):
     """Called periodically by the worker to maintain its lease."""
     from api.worker_auth import validate_worker_attempt
+    # Validate worker attempt BEFORE opening a DB connection
     job = await validate_worker_attempt(request, task_id)
 
-    import sqlite3
-    from api.job_manager import DB_PATH
-    conn = get_connection()
-    cursor = conn.cursor()
-    now = datetime.now(timezone.utc).isoformat()
+    from api.job_manager import get_connection
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        now = datetime.now(timezone.utc).isoformat()
+        
         cursor.execute(
             "UPDATE jobs SET worker_heartbeat_at = ?, updated_at = ? WHERE task_id = ? AND worker_attempt_id = ?",
             (now, now, task_id, job.get("worker_attempt_id"))
@@ -681,9 +720,12 @@ async def worker_heartbeat(request: Request, task_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Warning: Heartbeat failed for {task_id}: {e}")
+        print(f"CRITICAL: Heartbeat database failure for {task_id}: {type(e).__name__}")
+        # Log generic error to client, preserving security
+        raise HTTPException(status_code=500, detail="Backend infrastructure error during heartbeat")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     return {"status": "ok"}
 
@@ -789,7 +831,10 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
         
         worker_attempt_id = JobManager.claim_waiting_job(task_id)
         if worker_attempt_id:
-            background_tasks.add_task(trigger_github_worker, task_id, repo_url, commit_sha, worker_attempt_id, str(request.base_url))
+            base_url = str(request.base_url).rstrip("/")
+            if request.headers.get("x-forwarded-proto") == "https" and base_url.startswith("http://"):
+                base_url = base_url.replace("http://", "https://", 1)
+            background_tasks.add_task(trigger_github_worker, task_id, repo_url, commit_sha, worker_attempt_id, base_url)
         return {"status": "accepted", "task_id": task_id, "repo_url": repo_url}
 
     return {"status": "ignored", "reason": f"Event {event_type} ignored"}

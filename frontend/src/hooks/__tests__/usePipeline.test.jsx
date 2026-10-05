@@ -11,7 +11,9 @@ vi.mock('../../services/credentialStore', () => ({
     hasCurrentToken: vi.fn(),
     setCurrentToken: vi.fn(),
     getCurrentToken: vi.fn(),
-    clearCurrentToken: vi.fn()
+    clearCurrentToken: vi.fn(),
+    clearStaleTokens: vi.fn(),
+    clearAllTokens: vi.fn()
   }
 }));
 

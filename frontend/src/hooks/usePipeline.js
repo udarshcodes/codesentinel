@@ -7,6 +7,7 @@ export function usePipeline(taskId) {
   const eventSourceRef = useRef(null);
   const retryCountRef = useRef(0);
   const retryTimeoutRef = useRef(null);
+  const pollingTimerRef = useRef(null);
   const lastProcessedSequence = useRef(null);
   const MAX_RETRIES = 5;
 
@@ -31,45 +32,46 @@ export function usePipeline(taskId) {
           if (stateData.last_sequence !== undefined && stateData.last_sequence >= 0) {
             lastProcessedSequence.current = stateData.last_sequence;
           }
-          if (stateData.pipeline_state) {
-            const tStatus = stateData.status || stateData.pipeline_state.status || 'QUEUED';
-            dispatch({ type: 'HYDRATE_STATE', payload: {
-              status: tStatus,
-              task_id: stateData.task_id,
-              repo_url: stateData.repo_url,
-              agents: stateData.agents || [],
-              approval_decision: stateData.approval_decision,
-              confidence: stateData.confidence_score ?? stateData.pipeline_state?.confidence_score,
-              pr_url: stateData.pipeline_state?.pr_url,
-              pr_error: stateData.pipeline_state?.pr_error,
-              findings: stateData.pipeline_state?.findings || [],
-              dependency_findings: stateData.pipeline_state?.dependency_findings || [],
-              static_findings: stateData.pipeline_state?.static_findings || [],
-              investigated_issues: stateData.pipeline_state?.investigated_issues || [],
-              repair_plan: stateData.pipeline_state?.repair_plan,
-              current_fix: stateData.pipeline_state?.current_fix,
-              patches: stateData.pipeline_state?.patches || [],
-              validation_results: stateData.pipeline_state?.validation_results || [],
-              security_verification: stateData.pipeline_state?.security_verification,
-              retry_count: stateData.pipeline_state?.retry_count || 0,
-              security_retry_state: stateData.pipeline_state?.security_retry_state || 0,
-              last_completed_node: stateData.pipeline_state?.last_completed_node,
-              rag_status: stateData.pipeline_state?.rag_status,
-              llm_waiting_state: stateData.pipeline_state?.llm_waiting_state || false,
-              next_retry: stateData.pipeline_state?.next_retry,
-              pipeline_error: stateData.pipeline_state?.pipeline_error,
-              model: stateData.pipeline_state?.last_llm_model || stateData.last_llm_model,
-              reset_time: null,
-              last_error: stateData.pipeline_state?.last_llm_error || stateData.last_llm_error,
-              awaiting_approval: stateData.pipeline_state?.awaiting_approval || false,
-              approval_payload: stateData.pipeline_state?.approval_payload,
-              approval_cycle_id: stateData.pipeline_state?.approval_cycle_id
-            }});
-            
-            const activeCycle = stateData.pipeline_state?.approval_cycle_id;
-            if (activeCycle || tStatus) {
-                credentialStore.clearStaleTokens(taskId, activeCycle);
-            }
+          const tStatus = stateData.status || stateData.pipeline_state?.status || 'QUEUED';
+          const completedNodes = (stateData.agents || []).map(a => a.agent).filter(Boolean);
+
+          dispatch({ type: 'HYDRATE_STATE', payload: {
+            status: tStatus,
+            task_id: stateData.task_id,
+            repo_url: stateData.repo_url,
+            agents: stateData.agents || [],
+            completed_nodes: completedNodes,
+            approval_decision: stateData.approval_decision,
+            confidence: stateData.confidence_score ?? stateData.pipeline_state?.confidence_score,
+            pr_url: stateData.pipeline_state?.pr_url,
+            pr_error: stateData.pipeline_state?.pr_error,
+            findings: stateData.pipeline_state?.findings || [],
+            dependency_findings: stateData.pipeline_state?.dependency_findings || [],
+            static_findings: stateData.pipeline_state?.static_findings || [],
+            investigated_issues: stateData.pipeline_state?.investigated_issues || [],
+            repair_plan: stateData.pipeline_state?.repair_plan,
+            current_fix: stateData.pipeline_state?.current_fix,
+            patches: stateData.pipeline_state?.patches || [],
+            validation_results: stateData.pipeline_state?.validation_results || [],
+            security_verification: stateData.pipeline_state?.security_verification,
+            retry_count: stateData.pipeline_state?.retry_count || 0,
+            security_retry_state: stateData.pipeline_state?.security_retry_state || 0,
+            last_completed_node: stateData.pipeline_state?.last_completed_node,
+            rag_status: stateData.pipeline_state?.rag_status,
+            llm_waiting_state: stateData.pipeline_state?.llm_waiting_state || false,
+            next_retry: stateData.pipeline_state?.next_retry,
+            pipeline_error: stateData.pipeline_state?.pipeline_error,
+            model: stateData.pipeline_state?.last_llm_model || stateData.last_llm_model,
+            reset_time: null,
+            last_error: stateData.pipeline_state?.last_llm_error || stateData.last_llm_error,
+            awaiting_approval: stateData.pipeline_state?.awaiting_approval || false,
+            approval_payload: stateData.pipeline_state?.approval_payload,
+            approval_cycle_id: stateData.pipeline_state?.approval_cycle_id
+          }});
+          
+          const activeCycle = stateData.pipeline_state?.approval_cycle_id;
+          if (activeCycle || tStatus) {
+              credentialStore.clearStaleTokens(taskId, activeCycle);
           }
           return { ok: true, status: stateRes.status, terminalStatus: stateData.status || (stateData.pipeline_state && stateData.pipeline_state.status) || 'QUEUED' };
         }
@@ -80,14 +82,40 @@ export function usePipeline(taskId) {
       }
     };
 
+    const startPolling = (apiUrl, headers) => {
+      if (pollingTimerRef.current) return;
+
+      pollingTimerRef.current = setInterval(async () => {
+        if (!isMounted) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
+          return;
+        }
+
+        const terminalStates = ['COMPLETED', 'FAILED', 'NEEDS_REVIEW'];
+        if (stateRef.current && terminalStates.includes(stateRef.current.status)) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
+          return;
+        }
+
+        const stateRes = await fetchState(apiUrl, headers);
+        if (stateRes && stateRes.ok && terminalStates.includes(stateRes.terminalStatus)) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
+        }
+      }, 5000);
+    };
+
     const hydrateAndConnect = async () => {
       let terminalStatus = null;
+      let apiUrl = '';
+      let headers = {};
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || '';
+        apiUrl = import.meta.env.VITE_API_URL || '';
         
         // 1. Hydrate persistent state first to avoid empty UI
         const viewToken = credentialStore.getViewToken(taskId);
-        const headers = {};
         if (viewToken) headers['Authorization'] = `Bearer ${viewToken}`;
 
         const stateRes = await fetchState(apiUrl, headers);
@@ -102,12 +130,16 @@ export function usePipeline(taskId) {
                 dispatch({ type: 'SET_STATUS', payload: { status: 'UNAUTHORIZED' } });
                 return;
             }
+            // If it's a general fetch error (e.g. CORS, network error, 500)
+            dispatch({ type: 'SET_STATUS', payload: { status: 'CONNECTION_ERROR', pipeline_error: `Failed to retrieve task state (HTTP ${stateRes.status || 'Network Error'}).` } });
+            return;
         }
 
         if (!isMounted) return;
 
         const terminalStates = ['COMPLETED', 'FAILED', 'NEEDS_REVIEW'];
         if (!terminalStatus || !terminalStates.includes(terminalStatus)) {
+          startPolling(apiUrl, headers);
           // 2. Fetch SSE capability and Connect SSE only if not terminal
           const capRes = await fetch(`${apiUrl}/api/v1/job/${encodeURIComponent(taskId)}/stream-capability`, {
             headers
@@ -127,7 +159,9 @@ export function usePipeline(taskId) {
         }
       } catch (err) {
         console.error('Failed to hydrate state', err);
-        dispatch({ type: 'SET_STATUS', payload: { status: 'CONNECTION_ERROR' } });
+        if (!stateRef.current || stateRef.current.status === 'QUEUED') {
+            dispatch({ type: 'SET_STATUS', payload: { status: 'CONNECTION_ERROR' } });
+        }
       }
     };
 
@@ -324,7 +358,9 @@ export function usePipeline(taskId) {
             }
           }, delay);
         } else {
-          dispatch({ type: 'SET_ERROR', payload: { pipeline_error: 'Connection lost. Please refresh the page.', status: 'CONNECTION_ERROR' } });
+          if (!stateRef.current || !['COMPLETED', 'FAILED', 'NEEDS_REVIEW'].includes(stateRef.current.status)) {
+            dispatch({ type: 'SET_ERROR', payload: { pipeline_error: 'Live updates disconnected. Please refresh the page to see the latest progress.', status: stateRef.current?.status || 'CONNECTION_ERROR' } });
+          }
         }
       };
     };
@@ -338,6 +374,10 @@ export function usePipeline(taskId) {
       }
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
+      }
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
       }
     };
   }, [taskId, dispatch]);
