@@ -347,9 +347,9 @@ async def run_worker():
             
         # Re-apply patches to restore pipeline state
         for patch in state.get("patches", []):
-            if isinstance(patch, dict) and patch.get("applied") and (patch.get("patch") or patch.get("patch_text")) and patch.get("file"):
+            if isinstance(patch, dict) and patch.get("applied") and (patch.get("patch") or patch.get("patch_text") or patch.get("diff")) and patch.get("file"):
                 try:
-                    patch_content = patch.get("patch") or patch.get("patch_text")
+                    patch_content = patch.get("patch") or patch.get("patch_text") or patch.get("diff")
                     res = apply_patch(patch_content, new_path, patch["file"])
                     if not res.get("success"):
                         err_msg = f"CRITICAL: Failed to reapply patch during reconstruction: {res.get('stderr')}"

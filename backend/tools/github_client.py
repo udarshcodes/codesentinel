@@ -75,7 +75,29 @@ def create_trusted_pr_workspace(repo_url: str, token: str, commit_sha: str = "")
             clone_env["GIT_CONFIG_COUNT"] = "1"
             clone_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
             clone_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {token}"
-            subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", repo_url, temp_dir], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
+            try:
+                subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", repo_url, temp_dir], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
+            except subprocess.CalledProcessError as clone_err:
+                # If authentication failed, check if the repo is public before falling back
+                err_text = (clone_err.stderr or "").lower()
+                if "authentication failed" in err_text or "invalid credentials" in err_text or "not found" in err_text:
+                    import requests
+                    parts = repo_url.rstrip("/").split("/")
+                    if len(parts) >= 2:
+                        owner = parts[-2]
+                        repo = parts[-1]
+                        if repo.endswith(".git"):
+                            repo = repo[:-4]
+                        try:
+                            resp = requests.get(f"https://api.github.com/repos/{owner}/{repo}", timeout=10)
+                            if resp.status_code == 200 and not resp.json().get("private", True):
+                                # Public repository, fallback to unauthenticated clone
+                                subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", repo_url, temp_dir], check=True, timeout=300, env=get_safe_env(keep_github_token=False), capture_output=True, text=True)
+                                clone_err = None
+                        except Exception:
+                            pass
+                if clone_err is not None:
+                    raise clone_err
         else:
             subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", repo_url, temp_dir], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
@@ -252,8 +274,7 @@ def commit_and_push(
         err_msg = e.stderr or str(e)
         if token:
             err_msg = err_msg.replace(token, "***")
-        print(f"Failed to push branch: {err_msg}")
-        return False
+        raise RuntimeError(f"Failed to push branch to GitHub: {err_msg}")
     return True
 
 
@@ -284,5 +305,33 @@ def open_pull_request(
         )
         return pr.html_url
     except Exception as e:
-        print(f"Error opening PR: {e}")
-        return ""
+        err_msg = str(e)
+        if token:
+            err_msg = err_msg.replace(token, "***")
+        raise RuntimeError(f"Failed to create pull request: {err_msg}")
+
+def check_token_permissions(repo_url: str, token: str):
+    """Safely verify that the supplied token can access the target repository."""
+    import requests
+    parts = repo_url.rstrip("/").split("/")
+    if len(parts) < 2:
+        return
+    owner = parts[-2]
+    repo = parts[-1]
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+    resp = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers, timeout=10)
+    
+    if resp.status_code == 404 or resp.status_code == 401 or resp.status_code == 403:
+        raise RuntimeError("GitHub token does not have sufficient permission to create a pull request in the target repository.")
+    
+    if resp.status_code == 200:
+        perms = resp.json().get("permissions", {})
+        # If the user is the owner, they must have push access.
+        # If they are not the owner, they will fork, which requires repo/public_repo scope,
+        # but the API response for permissions reflects their access to THIS repo.
+        # So we just ensure it's accessible.
+        pass
+

@@ -67,7 +67,7 @@ We decoupled the heavy lifting into an ephemeral architecture.
 - **Context API & Custom Hooks:** Decouples SSE streaming state and asynchronous HTTP mutations.
 
 ### Tooling
-- **SAST Runners & Analyzers:** 25 specialized scanning modules — 8 standard SAST tools (`Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy`) serve as the deterministic baseline, plus 17 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
+- **SAST Runners & Analyzers:** 18 specialized scanning modules — 8 standard SAST tools (`Semgrep`, `SonarQube` (if available), `Bandit`, `Flake8`, `Pylint`, `ESLint`, `Go Vet`, and `Cargo Clippy`) serve as the deterministic baseline, plus 10 custom scanning modules for memory/resource leak detection, dead code detection, built-in hardcoded secrets detection, and circular dependency analysis.
 - **Dependency & Registry Checks:** Real-time vulnerability queries via OSV.dev and live registry queries across NPM, PyPI, Maven Central, Go Proxy, and Crates.io.
 - **PyGithub:** Safely abstracts cross-fork Pull Request creation and branch management.
 - **Pure Python Patch Engine:** A custom-built Search/Replace engine that bypasses strict `git apply` constraints to guarantee reliable AI code insertion.
@@ -204,7 +204,6 @@ Navigate to `http://localhost:5173` to use the app.
 | `POST` | `/api/webhook/github` (or `/api/v1/webhook/github`) | Automated CI/CD webhook endpoint triggering analysis on GitHub push and PR events with HMAC SHA-256 signature verification (`X-Hub-Signature-256`). |
 | `GET`  | `/health`, `/live`, `/ready`, `/metrics` | Observability endpoints returning system health status, liveness, readiness, and queue/execution job metrics. |
 | `GET`  | `/api/v1/admin/telemetry` | Protected endpoint returning LLM key rotation stats, agent token usage, and key pool status. Requires `admin_session` cookie. |
-| `GET`  | `/admin` | Serves the statically built React Admin Dashboard. |
 
 ---
 
@@ -273,7 +272,7 @@ codesentinel/
 │   │   └── pr_author.py         # Pull Request synthesizer
 │   ├── models/
 │   │   └── pipeline_state.py    # Strictly typed state schema
-│   ├── tests/                   # Automated unit and integration test suite (83 test files, 330+ tests)
+│   ├── tests/                   # Automated unit and integration test suite (90+ test files, 360+ tests)
 │   ├── tools/
 │   │   ├── llm_router.py        # Multi-tier LLM routing with token budgets
 │   │   ├── key_dispatcher.py    # Round-robin API key rotation with daily budgets

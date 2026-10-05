@@ -92,9 +92,13 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 commit_and_push,
                 open_pull_request,
                 create_trusted_pr_workspace,
+                check_token_permissions,
             )
             from tools.safe_path import resolve_safe_path
             import shutil
+
+            # Preflight check
+            check_token_permissions(repo_url, GITHUB_TOKEN)
 
             repo_local_path = state.get("repo_local_path", "")
             if not repo_local_path or not os.path.exists(repo_local_path):
@@ -137,8 +141,9 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                         "confidence_score": _calculate_confidence(state, security_verified),
                         "pr_error": "Worker lease lost! Cannot apply patches.",
                     }
-                if patch.get("applied") and patch.get("patch_text"):
-                    res = apply_patch(patch["patch_text"], trusted_workspace, patch["file"])
+                patch_content = patch.get("patch_text") or patch.get("diff") or patch.get("patch")
+                if patch.get("applied") and patch_content:
+                    res = apply_patch(patch_content, trusted_workspace, patch["file"])
                     if not res.get("success"):
                         pr_error = f"Patch re-application failed on trusted workspace: {res.get('stderr')}"
                         shutil.rmtree(trusted_workspace, ignore_errors=True)
