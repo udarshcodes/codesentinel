@@ -252,7 +252,25 @@ async def run_worker():
     main_task = asyncio.current_task()
     heartbeat_task = asyncio.create_task(heartbeat_loop(cancel_event, main_task))
 
-    await post_event("STARTING", "pipeline_started", {"repo_url": REPO_URL})
+    is_resume = bool(existing_state)
+
+    print(f"Diagnostics - Task: {TASK_ID}")
+    print(f"Diagnostics - Is Resume: {is_resume}")
+    if is_resume:
+        print(f"Diagnostics - Persisted Status: {existing_state.get('status')}")
+        print(f"Diagnostics - Last Node: {existing_state.get('last_completed_node')}")
+        print(f"Diagnostics - LLM Cooldown Active: {bool(existing_state.get('llm_waiting_state'))}")
+        print(f"Diagnostics - Approval Pending: {bool(existing_state.get('awaiting_approval'))}")
+    else:
+        print("Diagnostics - Fresh Task")
+
+    if not is_resume:
+        await post_event("STARTING", "pipeline_started", {"repo_url": REPO_URL})
+    else:
+        # A resumed task is currently in DISPATCHING state in the orchestrator.
+        # Transition back into RUNNING (which is valid from DISPATCHING) before executing agents.
+        # Do not emit STARTING, as STARTING -> WAITING_FOR_APPROVAL is an invalid transition.
+        await post_event("RUNNING", "pipeline_resumed", {"repo_url": REPO_URL})
 
     if existing_state:
         state = existing_state

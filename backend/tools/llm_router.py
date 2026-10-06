@@ -222,6 +222,10 @@ async def invoke_llm(
         print(f"[LLMRouter] Exhausted {MAX_RETRIES_PER_TIER} attempts for model {current_model}. Moving to next.")
 
     # All models exhausted
+    if expect_json and ("expecting value" in last_error_str or "json" in last_error_str or "mismatched" in last_error_str):
+        print(f"[LLMRouter] All models failed to produce valid JSON for {agent_name}. Safe fallback triggered.")
+        return [] if json_array else {}
+
     raise LLMExhaustionError(
         status="WAITING_FOR_LLM_CAPACITY", 
         model=current_model if 'current_model' in locals() else "unknown", 
