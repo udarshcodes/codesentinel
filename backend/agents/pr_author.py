@@ -141,8 +141,16 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                         "confidence_score": _calculate_confidence(state, security_verified),
                         "pr_error": "Worker lease lost! Cannot apply patches.",
                     }
-                patch_content = patch.get("patch_text") or patch.get("diff") or patch.get("patch")
-                if patch.get("applied") and patch_content:
+                patch_content = patch.get("patch_text") or patch.get("patch")
+                if patch.get("applied"):
+                    if not patch_content:
+                        pr_error = "Patch re-application failed: Secure patch_text is missing. Please regenerate the patch."
+                        shutil.rmtree(trusted_workspace, ignore_errors=True)
+                        return {
+                            "pr_url": "",
+                            "confidence_score": _calculate_confidence(state, security_verified),
+                            "pr_error": pr_error,
+                        }
                     res = apply_patch(patch_content, trusted_workspace, patch["file"])
                     if not res.get("success"):
                         pr_error = f"Patch re-application failed on trusted workspace: {res.get('stderr')}"

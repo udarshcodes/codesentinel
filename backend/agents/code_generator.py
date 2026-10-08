@@ -223,6 +223,7 @@ Current file content:
                     "patch_id": plan.get("issue_id"),
                     "file": target_file,
                     "diff": diff,
+                    "patch_text": fixed_content,
                     "applied": patch_applied,
                 }
             )

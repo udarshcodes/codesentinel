@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import threading
 import secrets
+import requests
 
 _trusted_workspaces = {}
 _trusted_lock = threading.Lock()
@@ -246,20 +247,38 @@ def commit_and_push(
 
     try:
         push_env = get_safe_env(keep_github_token=True)
+        askpass_path = None
         if token and push_repo_url.startswith("https://github.com/"):
-            push_env["GIT_CONFIG_COUNT"] = "1"
-            push_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-            push_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {token}"
+            import tempfile
+            import sys
+            ext = ".bat" if sys.platform == "win32" else ".sh"
+            with tempfile.NamedTemporaryFile(mode='w', suffix=ext, delete=False) as f:
+                askpass_path = f.name
+                if sys.platform == "win32":
+                    f.write("@echo off\necho %CODESENTINEL_GIT_TOKEN%\n")
+                else:
+                    f.write("#!/bin/sh\necho $CODESENTINEL_GIT_TOKEN\n")
             
-            subprocess.run(
-                ["git", "-c", "core.hooksPath=/dev/null", "push", "-u", push_repo_url, branch_name],
-                cwd=local_path,
-                check=True,
-                timeout=120,
-                capture_output=True,
-                text=True,
-                env=push_env
-            )
+            if sys.platform != "win32":
+                os.chmod(askpass_path, 0o700)
+                
+            push_env["GIT_ASKPASS"] = askpass_path
+            push_env["GIT_TERMINAL_PROMPT"] = "0"
+            push_env["CODESENTINEL_GIT_TOKEN"] = token
+            
+            try:
+                subprocess.run(
+                    ["git", "-c", "core.hooksPath=/dev/null", "push", "-u", push_repo_url, branch_name],
+                    cwd=local_path,
+                    check=True,
+                    timeout=120,
+                    capture_output=True,
+                    text=True,
+                    env=push_env
+                )
+            finally:
+                if askpass_path and os.path.exists(askpass_path):
+                    os.remove(askpass_path)
         else:
             subprocess.run(
                 ["git", "-c", "core.hooksPath=/dev/null", "push", "-u", push_repo_url, branch_name],
@@ -312,7 +331,6 @@ def open_pull_request(
 
 def check_token_permissions(repo_url: str, token: str):
     """Safely verify that the supplied token can access the target repository."""
-    import requests
     parts = repo_url.rstrip("/").split("/")
     if len(parts) < 2:
         return
@@ -328,10 +346,13 @@ def check_token_permissions(repo_url: str, token: str):
         raise RuntimeError("GitHub token does not have sufficient permission to create a pull request in the target repository.")
     
     if resp.status_code == 200:
-        perms = resp.json().get("permissions", {})
-        # If the user is the owner, they must have push access.
-        # If they are not the owner, they will fork, which requires repo/public_repo scope,
-        # but the API response for permissions reflects their access to THIS repo.
-        # So we just ensure it's accessible.
-        pass
+        repo_data = resp.json()
+        perms = repo_data.get("permissions", {})
+        
+        user_resp = requests.get("https://api.github.com/user", headers=headers, timeout=10)
+        if user_resp.status_code == 200:
+            user_data = user_resp.json()
+            if repo_data.get("owner", {}).get("login") == user_data.get("login"):
+                if not perms.get("push"):
+                    raise RuntimeError("GitHub token does not have write permission to the target repository.")
 

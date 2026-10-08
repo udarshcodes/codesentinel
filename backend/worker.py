@@ -294,23 +294,21 @@ async def run_worker():
         if not state.get("commit_sha"):
             state["commit_sha"] = COMMIT_SHA
             
-        # Ensure all standard pipeline state keys exist to prevent KeyErrors
-        # in older jobs or malformed state payloads.
-        state.setdefault("knowledge_graph", {})
-        state.setdefault("dependency_findings", [])
-        state.setdefault("static_findings", [])
-        state.setdefault("investigated_issues", [])
-        state.setdefault("repair_plan", [])
-        state.setdefault("patches", [])
-        state.setdefault("validation_results", [])
-        state.setdefault("security_verified", False)
-        state.setdefault("pr_url", "")
-        state.setdefault("pr_error", "")
-        state.setdefault("retry_count", 0)
-        state.setdefault("awaiting_approval", False)
-        state.setdefault("confidence_score", 0.0)
-        state.setdefault("dependency_graph", {})
-        state.setdefault("last_completed_node", "")
+        if state.get("knowledge_graph") is None: state["knowledge_graph"] = {}
+        if state.get("dependency_findings") is None: state["dependency_findings"] = []
+        if state.get("static_findings") is None: state["static_findings"] = []
+        if state.get("investigated_issues") is None: state["investigated_issues"] = []
+        if state.get("repair_plan") is None: state["repair_plan"] = []
+        if state.get("patches") is None: state["patches"] = []
+        if state.get("validation_results") is None: state["validation_results"] = []
+        if state.get("security_verified") is None: state["security_verified"] = False
+        if state.get("pr_url") is None: state["pr_url"] = ""
+        if state.get("pr_error") is None: state["pr_error"] = ""
+        if state.get("retry_count") is None: state["retry_count"] = 0
+        if state.get("awaiting_approval") is None: state["awaiting_approval"] = False
+        if state.get("confidence_score") is None: state["confidence_score"] = 0.0
+        if state.get("dependency_graph") is None: state["dependency_graph"] = {}
+        if state.get("last_completed_node") is None: state["last_completed_node"] = ""
             
         if not state.get("repo_url"):
             err_msg = "CRITICAL: Missing repo_url in resumed state, and REPO_URL fallback was empty."
@@ -365,9 +363,16 @@ async def run_worker():
             
         # Re-apply patches to restore pipeline state
         for patch in state.get("patches", []):
-            if isinstance(patch, dict) and patch.get("applied") and (patch.get("patch") or patch.get("patch_text") or patch.get("diff")) and patch.get("file"):
+            if isinstance(patch, dict) and patch.get("applied") and patch.get("file"):
                 try:
-                    patch_content = patch.get("patch") or patch.get("patch_text") or patch.get("diff")
+                    patch_content = patch.get("patch") or patch.get("patch_text")
+                    if not patch_content:
+                        err_msg = "CRITICAL: Persisted patch is missing secure SEARCH and REPLACE content (patch_text). Cannot safely reconstruct workspace."
+                        print(err_msg)
+                        state["status"] = "FAILED"
+                        state["pr_error"] = err_msg
+                        await post_event("FAILED", "pipeline_error", {"error": err_msg})
+                        sys.exit(1)
                     res = apply_patch(patch_content, new_path, patch["file"])
                     if not res.get("success"):
                         err_msg = f"CRITICAL: Failed to reapply patch during reconstruction: {res.get('stderr')}"

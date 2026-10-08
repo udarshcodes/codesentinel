@@ -7,6 +7,7 @@ import hashlib
 import httpx
 import sqlite3
 import uuid
+import asyncio
 from typing import Optional
 from datetime import datetime, timezone
 from state import broadcast_sse
@@ -136,27 +137,16 @@ async def start_analysis(
             task_id = str(uuid.uuid4())
             view_token = secrets.token_urlsafe(32)
 
-            resolved_commit_sha = body.commit_sha
-            if not resolved_commit_sha:
-                try:
-                    # e.g. https://github.com/owner/repo
-                    api_repo_url = r_url.replace("https://github.com/", "https://api.github.com/repos/")
-                    res = await client.get(f"{api_repo_url}/commits/HEAD", headers=headers)
-                    if res.status_code == 200:
-                        resolved_commit_sha = res.json().get("sha")
-                except Exception as e:
-                    print(f"Warning: Could not fetch HEAD commit for {r_url}: {e}")
-
-            JobManager.create_job(task_id, r_url, view_token=view_token, commit_sha=resolved_commit_sha)
+            await asyncio.to_thread(JobManager.create_job, task_id, r_url, view_token, body.commit_sha)
 
             # Atomically claim the job for initial dispatch
-            worker_attempt_id = JobManager.claim_waiting_job(task_id)
+            worker_attempt_id = await asyncio.to_thread(JobManager.claim_waiting_job, task_id)
             if not worker_attempt_id:
                 print(f"Warning: Failed to claim newly created job {task_id}")
                 continue
 
             background_tasks.add_task(
-                trigger_github_worker, task_id, r_url, resolved_commit_sha, worker_attempt_id, base_url
+                trigger_github_worker, task_id, r_url, body.commit_sha, worker_attempt_id, base_url
             )
             
             tasks.append({
@@ -210,14 +200,33 @@ async def trigger_github_worker(
         "Authorization": f"token {github_token}",
     }
 
-    inputs = {"task_id": task_id, "repo_url": repo_url, "backend_url": backend_url}
-    if commit_sha:
-        inputs["commit_sha"] = commit_sha
-    if worker_attempt_id:
-        inputs["worker_attempt_id"] = worker_attempt_id
-
     try:
         async with httpx.AsyncClient() as client:
+            if not commit_sha:
+                try:
+                    api_repo_url = repo_url.replace("https://github.com/", "https://api.github.com/repos/")
+                    res = await client.get(f"{api_repo_url}/commits/HEAD", headers=headers)
+                    if res.status_code == 200:
+                        commit_sha = res.json().get("sha")
+                        if commit_sha:
+                            from api.job_manager import JobManager
+                            from api.db import get_connection
+                            def _update_commit():
+                                conn = get_connection()
+                                cur = conn.cursor()
+                                cur.execute("UPDATE jobs SET commit_sha = ? WHERE task_id = ?", (commit_sha, task_id))
+                                conn.commit()
+                                conn.close()
+                            await asyncio.to_thread(_update_commit)
+                except Exception as e:
+                    print(f"Warning: Could not fetch HEAD commit for {repo_url}: {e}")
+
+            inputs = {"task_id": task_id, "repo_url": repo_url, "backend_url": backend_url}
+            if commit_sha:
+                inputs["commit_sha"] = commit_sha
+            if worker_attempt_id:
+                inputs["worker_attempt_id"] = worker_attempt_id
+
             res = await client.post(
                 f"https://api.github.com/repos/{worker_repo}/actions/workflows/worker.yml/dispatches",
                 headers=headers,
