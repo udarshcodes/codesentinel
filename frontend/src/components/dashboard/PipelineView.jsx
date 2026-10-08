@@ -1,5 +1,5 @@
 import { CheckCircle2, CircleDashed, Loader2, AlertCircle, ShieldAlert } from 'lucide-react'
-import { AGENT_ORDER, reconstructProgress } from '../../utils/pipelineProgress'
+import { AGENT_ORDER, reconstructProgress, getAgentStatus } from '../../utils/pipelineProgress'
 
 const AGENT_LABELS = {
   repo_mapper: 'Repository Mapping',
@@ -23,12 +23,20 @@ export default function PipelineView({ state }) {
     isWaitingLLM
   } = reconstructProgress(state);
 
+  const completedCount = completedAgents.size;
+  const totalCount = AGENT_ORDER.length;
+
   return (
     <div className="bg-card border border-border p-6 sm:p-8 w-full max-w-6xl mx-auto mb-8 rounded-[1.5rem] shadow-sm">
-      <h2 className="text-xl font-semibold text-foreground mb-8 flex items-center gap-3">
-        <Loader2 className={`w-5 h-5 text-primary ${!isError && currentAgent ? 'animate-spin' : ''}`} />
-        Autonomous Agent Mesh
-      </h2>
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-xl font-semibold text-foreground flex items-center gap-3">
+          <Loader2 className={`w-5 h-5 text-primary ${!isError && currentAgent ? 'animate-spin' : ''}`} />
+          Autonomous Agent Mesh
+        </h2>
+        <div className="text-sm text-muted-foreground font-medium">
+          {completedCount} of {totalCount} agents completed
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {AGENT_ORDER.map((agentKey) => {
@@ -41,20 +49,22 @@ export default function PipelineView({ state }) {
           let cardStyle = 'bg-background border-border text-muted-foreground'
           let icon = <CircleDashed className="w-5 h-5 opacity-40" />
           
-          if (isCompleted) {
+          const { displayStatus, statusType } = getAgentStatus(agentKey, state, { isCompleted, isActive, isSkipped, isAgentPaused, isAgentError });
+
+          if (statusType === 'success') {
             cardStyle = 'bg-[#22C55E]/10 border-[#22C55E]/20 text-[#22C55E]'
             icon = <CheckCircle2 className="w-5 h-5" />
-          } else if (isSkipped) {
-            cardStyle = 'bg-background border-border text-muted-foreground opacity-50'
+          } else if (statusType === 'warning') {
+            cardStyle = 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B]'
+            icon = <AlertCircle className="w-5 h-5" />
+          } else if (statusType === 'error') {
+            cardStyle = 'bg-[#EF4444]/10 border-[#EF4444]/30 text-[#EF4444]'
+            icon = <ShieldAlert className="w-5 h-5" />
           } else if (isActive) {
             cardStyle = 'bg-primary/10 border-primary text-primary shadow-[0_0_15px_rgba(139,92,246,0.15)]'
             icon = <Loader2 className="w-5 h-5 animate-spin" />
-          } else if (isAgentPaused) {
-            cardStyle = 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B]'
-            icon = <AlertCircle className="w-5 h-5" />
-          } else if (isAgentError) {
-            cardStyle = 'bg-[#EF4444]/10 border-[#EF4444]/30 text-[#EF4444]'
-            icon = <ShieldAlert className="w-5 h-5" />
+          } else if (isSkipped) {
+            cardStyle = 'bg-background border-border text-muted-foreground opacity-50'
           }
 
           return (
@@ -63,11 +73,11 @@ export default function PipelineView({ state }) {
                 {icon}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className={`text-sm font-medium truncate ${isActive ? 'text-primary' : isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>
+                <h3 className={`text-sm font-medium truncate ${isActive ? 'text-primary' : (isCompleted || statusType !== 'pending') ? 'text-foreground' : 'text-muted-foreground'}`}>
                   {AGENT_LABELS[agentKey]}
                 </h3>
-                <p className="text-xs truncate opacity-70">
-                  {isCompleted ? 'Verified' : isActive ? 'Processing...' : isSkipped ? 'Skipped' : isAgentPaused ? 'Approval required' : isAgentError ? 'Failed' : 'Waiting'}
+                <p className="text-xs truncate opacity-70" title={displayStatus}>
+                  {displayStatus}
                 </p>
               </div>
             </div>
@@ -93,7 +103,7 @@ export default function PipelineView({ state }) {
           <div>
             <h3 className="font-semibold text-lg mb-1">Pipeline Review Required</h3>
             <p className="opacity-90 whitespace-pre-wrap font-mono text-sm">
-              The repair plan was rejected. Human review is required to proceed or abort.
+              {state.pr_error || 'The pipeline requires manual review to proceed or abort.'}
             </p>
           </div>
         </div>
@@ -113,3 +123,4 @@ export default function PipelineView({ state }) {
     </div>
   )
 }
+

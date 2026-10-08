@@ -1,43 +1,60 @@
 import ConfidenceScore from './ConfidenceScore'
-import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle, FileCode, Search, ShieldCheck, Beaker } from 'lucide-react'
 
-export default function PRSummary({ prUrl, confidenceScore, prError, status, pipelineError }) {
-  if (!prUrl && !prError && !confidenceScore && status !== 'FAILED') return null
+export default function PRSummary({ state }) {
+  if (!state) return null;
+  const { status, pr_url, pr_error, pipeline_error, confidence_score } = state;
 
-  let title = "Pipeline Complete"
-  let description = "All autonomous agents have finished successfully."
-  let isError = false
-  let isWarning = false
-  let Icon = CheckCircle2
-
-  if (status === 'FAILED') {
-    title = "Pipeline Failed"
-    description = pipelineError || "The pipeline encountered an error and halted."
-    isError = true
-    Icon = XCircle
-  } else if (prError) {
-    if (prError.includes("validation")) {
-      title = "Validation Failed"
-      description = "The AI remediation completed, but generated patches failed validation tests."
-    } else if (prError.includes("security")) {
-      title = "Security Verification Failed"
-      description = "The AI remediation completed, but generated patches failed security tests."
-    } else {
-      title = "Pull Request Generation Failed"
-      description = "The AI remediation completed, but pushing the branch or opening the PR failed."
-    }
-    isError = true
-    Icon = XCircle
-  } else if (!prUrl) {
-    title = "Needs Review"
-    description = "The pipeline is waiting for human intervention or encountered an unknown state."
-    isWarning = true
-    Icon = AlertTriangle
+  if (!pr_url && !pr_error && !confidence_score && status !== 'FAILED' && status !== 'COMPLETED' && status !== 'NEEDS_REVIEW') {
+    return null;
   }
 
-  const bgColorClass = isError ? 'bg-[#EF4444]/10' : (isWarning ? 'bg-yellow-500/10' : 'bg-primary/10')
-  const iconColorClass = isError ? 'text-[#EF4444]' : (isWarning ? 'text-yellow-500' : 'text-primary')
-  const borderClass = isError ? 'border-[#EF4444]/30' : (isWarning ? 'border-yellow-500/30' : 'border-primary/30')
+  const totalFindings = (state.dependency_findings?.length || 0) + (state.static_findings?.length || 0);
+  const patchesGenerated = state.patches?.length || 0;
+  const patchesApplied = state.patches?.filter(p => p.applied)?.length || 0;
+  const patchesRejected = state.patches?.filter(p => !p.applied)?.length || 0;
+  
+  const modifiedFiles = new Set(
+    (state.patches || []).filter(p => p.applied && p.file).map(p => p.file)
+  ).size;
+
+  const validationResults = state.validation_results || [];
+  const validationRan = validationResults.length > 0;
+  const allTestsPassed = validationRan && validationResults.every(v => v.passed);
+  
+  const securityVerified = state.security_verified === true;
+  const needsReview = (validationRan && !allTestsPassed) || !securityVerified;
+
+  let title = "Analysis Complete";
+  let description = "CodeSentinel has finished the analysis and remediation pipeline.";
+  let isError = false;
+  let isWarning = false;
+  let Icon = CheckCircle2;
+
+  if (status === 'FAILED') {
+    title = "Analysis Failed";
+    description = pipeline_error || "The pipeline encountered a fatal error and halted.";
+    isError = true;
+    Icon = XCircle;
+  } else if (pr_error) {
+    title = "Pull Request Generation Failed";
+    description = "The AI remediation completed, but pushing the branch or opening the PR failed.";
+    isError = true;
+    Icon = XCircle;
+  } else if (status === 'NEEDS_REVIEW' || needsReview) {
+    title = "Completed with Review Required";
+    description = "The pipeline finished, but manual review is required for unverified patches.";
+    isWarning = true;
+    Icon = AlertTriangle;
+  }
+
+  const bgColorClass = isError ? 'bg-[#EF4444]/10' : (isWarning ? 'bg-[#F59E0B]/10' : 'bg-[#22C55E]/10');
+  const iconColorClass = isError ? 'text-[#EF4444]' : (isWarning ? 'text-[#F59E0B]' : 'text-[#22C55E]');
+  const borderClass = isError ? 'border-[#EF4444]/30' : (isWarning ? 'border-[#F59E0B]/30' : 'border-[#22C55E]/30');
+
+  const prStatus = pr_error ? "Failed" : (!pr_url ? "Pending" : (needsReview ? "Draft" : "Ready"));
+  const validationStatus = validationRan ? (allTestsPassed ? "Verified" : "Review Required") : "Skipped";
+  const securityStatus = securityVerified ? "Verified" : "Review Required";
 
   return (
     <div id="pr-summary" className={`bg-card border p-8 mt-8 max-w-6xl w-full mx-auto rounded-[1.5rem] shadow-sm transition-colors duration-500 ${borderClass}`}>
@@ -53,29 +70,73 @@ export default function PRSummary({ prUrl, confidenceScore, prError, status, pip
         </div>
       </div>
 
-      {confidenceScore !== null && confidenceScore !== undefined && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <ConfidenceScore score={confidenceScore} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {confidence_score !== undefined && confidence_score !== null && (
+          <ConfidenceScore score={confidence_score} />
+        )}
+        
+        <div className="bg-background rounded-xl p-6 border border-border flex flex-col justify-center">
+          <h3 className="text-sm font-medium text-foreground mb-4">Pipeline Summary</h3>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div className="text-muted-foreground">Findings detected:</div>
+            <div className="font-medium text-foreground">{totalFindings}</div>
+            
+            <div className="text-muted-foreground">Patches generated:</div>
+            <div className="font-medium text-foreground">{patchesGenerated}</div>
+            
+            <div className="text-muted-foreground">Patches applied:</div>
+            <div className="font-medium text-foreground">{patchesApplied}</div>
+            
+            <div className="text-muted-foreground">Patches rejected:</div>
+            <div className="font-medium text-foreground">{patchesRejected}</div>
+            
+            <div className="text-muted-foreground">Files modified:</div>
+            <div className="font-medium text-foreground">{modifiedFiles}</div>
+          </div>
         </div>
-      )}
+      </div>
+
+      <div className="bg-background rounded-xl p-6 border border-border mb-6">
+        <h3 className="text-sm font-medium text-foreground mb-4">Verification Status</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className={`p-4 rounded-lg border flex items-start gap-3 ${validationStatus === 'Verified' ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-[#22C55E]' : validationStatus === 'Review Required' ? 'bg-[#F59E0B]/5 border-[#F59E0B]/20 text-[#F59E0B]' : 'bg-muted border-border text-muted-foreground'}`}>
+            <Beaker className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold text-sm">Testing & Validation</div>
+              <div className="text-xs opacity-80 mt-1">{validationStatus}</div>
+            </div>
+          </div>
+          <div className={`p-4 rounded-lg border flex items-start gap-3 ${securityStatus === 'Verified' ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-[#22C55E]' : 'bg-[#F59E0B]/5 border-[#F59E0B]/20 text-[#F59E0B]'}`}>
+            <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold text-sm">Security Verification</div>
+              <div className="text-xs opacity-80 mt-1">{securityStatus}</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="bg-background rounded-xl p-6 border border-border">
-        {prUrl ? (
+        {pr_url ? (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <h3 className="text-lg font-semibold text-foreground mb-1">Pull Request Ready</h3>
+              <h3 className={`text-lg font-semibold mb-1 ${needsReview ? 'text-[#F59E0B]' : 'text-foreground'}`}>
+                {needsReview ? 'Draft Pull Request Created' : 'Pull Request Ready'}
+              </h3>
               <p className="text-sm text-muted-foreground">
-                CodeSentinel has successfully pushed the validated patches and opened a Pull Request.
+                {needsReview 
+                  ? 'CodeSentinel has created a Draft Pull Request. Manual review is required before merging due to unverified patches.' 
+                  : 'CodeSentinel has successfully pushed the verified patches and opened a Pull Request.'}
               </p>
             </div>
             <a 
-              href={prUrl} 
+              href={pr_url} 
               target="_blank" 
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-[#A855F7] text-white px-6 py-3 rounded-md font-medium transition-colors shadow-[0_4px_14px_0_rgba(139,92,246,0.25)] whitespace-nowrap"
             >
               <GitPullRequest className="w-5 h-5" />
-              View on GitHub
+              View Pull Request
             </a>
           </div>
         ) : (
@@ -87,23 +148,15 @@ export default function PRSummary({ prUrl, confidenceScore, prError, status, pip
             <p className="text-sm text-muted-foreground mb-4">
               {description}
             </p>
-            {prError && (
+            {pr_error && (
               <div className="bg-[#EF4444]/5 rounded-lg p-4 mb-4 border border-[#EF4444]/20">
-                <p className="font-mono text-sm text-[#EF4444] whitespace-pre-wrap">{prError}</p>
+                <p className="font-mono text-sm text-[#EF4444] whitespace-pre-wrap">{pr_error}</p>
               </div>
             )}
-            {pipelineError && !prError && (
+            {pipeline_error && !pr_error && (
               <div className={`${bgColorClass} rounded-lg p-4 mb-4 border ${borderClass}`}>
-                <p className={`font-mono text-sm ${iconColorClass} whitespace-pre-wrap`}>{pipelineError}</p>
+                <p className={`font-mono text-sm ${iconColorClass} whitespace-pre-wrap`}>{pipeline_error}</p>
               </div>
-            )}
-            {!isWarning && (
-              <button 
-                onClick={() => window.open('https://github.com/udarshcodes/codesentinel', '_blank')}
-                className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground px-4 py-2 rounded-md text-sm font-medium transition-colors"
-              >
-                View Repository Settings
-              </button>
             )}
           </div>
         )}
@@ -111,3 +164,4 @@ export default function PRSummary({ prUrl, confidenceScore, prError, status, pip
     </div>
   )
 }
+

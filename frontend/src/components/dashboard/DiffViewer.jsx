@@ -1,11 +1,95 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import ReactDiffViewer from 'react-diff-viewer-continued'
-import { Code2, ChevronDown, ChevronRight, FileJson } from 'lucide-react'
+import { Code2, ChevronDown, ChevronRight, FileJson, CheckCircle2, AlertCircle, XCircle } from 'lucide-react'
 
 export default function DiffViewer({ state }) {
-  let patches = state.patches || []
+  const patches = state.patches || []
 
-  if (patches.length === 0) return null
+  const fileGroups = useMemo(() => {
+    const groups = {}
+    patches.forEach(patch => {
+      const file = patch.file || 'unknown'
+      if (!groups[file]) {
+        groups[file] = {
+          file,
+          patches: [],
+          generated: 0,
+          applied: 0,
+          rejected: 0
+        }
+      }
+      groups[file].patches.push(patch)
+      groups[file].generated++
+      if (patch.applied) {
+        groups[file].applied++
+      } else {
+        groups[file].rejected++
+      }
+    })
+    return Object.values(groups)
+  }, [patches])
+
+  if (fileGroups.length === 0) return null
+
+  return (
+    <div id="patches-section" className="w-full max-w-6xl mx-auto mb-8">
+      <div className="flex items-center gap-3 mb-6 px-2">
+        <Code2 className="w-5 h-5 text-primary" />
+        <h2 className="text-xl font-semibold text-foreground">AI Remediation Patches</h2>
+      </div>
+
+      <div className="space-y-4">
+        {fileGroups.map((group, idx) => (
+          <FilePatchGroup key={idx} group={group} state={state} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FilePatchGroup({ group, state }) {
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  return (
+    <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-secondary/10 hover:bg-secondary/20 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors focus:outline-none"
+      >
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+          <FileJson className="w-5 h-5 text-primary" />
+          <span className="text-sm font-semibold text-foreground font-mono">{group.file}</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs sm:text-sm whitespace-nowrap">
+          <span className="text-muted-foreground"><strong className="text-foreground">{group.generated}</strong> generated</span>
+          <div className="w-1 h-1 rounded-full bg-border"></div>
+          <span className="text-[#22C55E]"><strong className="text-[#22C55E]">{group.applied}</strong> applied</span>
+          <div className="w-1 h-1 rounded-full bg-border"></div>
+          <span className="text-[#EF4444]"><strong className="text-[#EF4444]">{group.rejected}</strong> rejected</span>
+        </div>
+      </button>
+      
+      {isOpen && (
+        <div className="p-4 sm:p-6 bg-background space-y-4">
+          {group.patches.map((patch, idx) => (
+            <PatchItem key={idx} patch={patch} state={state} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PatchItem({ patch, state }) {
+  const [isOpen, setIsOpen] = React.useState(true)
+  const [isSplitView, setIsSplitView] = React.useState(() => window.innerWidth >= 768)
+
+  React.useEffect(() => {
+    const handleResize = () => setIsSplitView(window.innerWidth >= 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const newStyles = {
     variables: {
@@ -83,68 +167,79 @@ export default function DiffViewer({ state }) {
     return { oldString: oldVal.join('\n'), newString: newVal.join('\n') }
   }
 
-  return (
-    <div className="w-full max-w-6xl mx-auto mb-8">
-      <div className="flex items-center gap-3 mb-6 px-2">
-        <Code2 className="w-5 h-5 text-primary" />
-        <h2 className="text-xl font-semibold text-foreground">AI Generated Patches</h2>
-      </div>
-
-      <div className="space-y-4">
-        {patches.map((patch, idx) => (
-          <PatchItem 
-            key={idx} 
-            patch={patch} 
-            parseDiff={parseDiff} 
-            newStyles={newStyles} 
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function PatchItem({ patch, parseDiff, newStyles }) {
-  const [isOpen, setIsOpen] = React.useState(true)
   const { oldString, newString } = parseDiff(patch.diff)
-  const [isSplitView, setIsSplitView] = React.useState(() => window.innerWidth >= 768)
+  
+  let patchStatus = 'Generated'
+  let patchStatusColor = 'text-muted-foreground'
+  let patchStatusBg = 'bg-muted'
+  let PatchIcon = Code2
 
-  React.useEffect(() => {
-    const handleResize = () => setIsSplitView(window.innerWidth >= 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  if (patch.applied) {
+    const validation = state.validation_results?.find(v => v.patch === patch.patch_text || (patch.issue_id && v.issue_id === patch.issue_id))
+    if (validation) {
+      if (validation.passed) {
+        if (state.security_verification && !state.security_verified) {
+          patchStatus = 'Security Review Required'
+          patchStatusColor = 'text-[#F59E0B]'
+          patchStatusBg = 'bg-[#F59E0B]/10'
+          PatchIcon = AlertCircle
+        } else {
+          patchStatus = 'Validated'
+          patchStatusColor = 'text-[#22C55E]'
+          patchStatusBg = 'bg-[#22C55E]/10'
+          PatchIcon = CheckCircle2
+        }
+      } else {
+        patchStatus = 'Validation Failed'
+        patchStatusColor = 'text-[#EF4444]'
+        patchStatusBg = 'bg-[#EF4444]/10'
+        PatchIcon = XCircle
+      }
+    } else {
+      patchStatus = 'Applied'
+      patchStatusColor = 'text-primary'
+      patchStatusBg = 'bg-primary/10'
+    }
+  } else if (patch.applied === false) {
+    patchStatus = 'Rejected'
+    patchStatusColor = 'text-[#EF4444]'
+    patchStatusBg = 'bg-[#EF4444]/10'
+    PatchIcon = XCircle
+  }
 
   return (
     <div className="bg-[#080808] border border-[#242428] rounded-xl overflow-hidden shadow-sm">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-[#0D0D0F] hover:bg-[#121214] px-4 py-3 border-b border-[#242428] flex items-center justify-between transition-colors focus:outline-none"
+        className="w-full bg-[#0D0D0F] hover:bg-[#121214] px-4 py-3 border-b border-[#242428] flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors focus:outline-none"
       >
         <div className="flex items-center gap-3">
-          {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-          <FileJson className="w-4 h-4 text-primary" />
-          <span className="text-sm font-mono text-foreground">{patch.file || 'Patch'}</span>
+          {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+          <span className="text-sm font-mono text-foreground line-clamp-1 text-left">{patch.issue_description || 'Target block'}</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded uppercase tracking-wider font-semibold">
-            Generated
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${patchStatusBg} ${patchStatusColor}`}>
+            <PatchIcon className="w-3.5 h-3.5" />
+            {patchStatus}
           </span>
         </div>
       </button>
       
       {isOpen && (
-        <div className="text-left overflow-hidden bg-[#080808]">
-          {React.createElement(ReactDiffViewer.default || ReactDiffViewer, {
-            oldValue: oldString,
-            newValue: newString,
-            splitView: isSplitView,
-            useDarkTheme: true,
-            styles: newStyles,
-            hideLineNumbers: false
-          })}
+        <div className="text-left overflow-x-auto bg-[#080808] w-full max-w-full">
+          <div className="min-w-fit">
+            {React.createElement(ReactDiffViewer.default || ReactDiffViewer, {
+              oldValue: oldString,
+              newValue: newString,
+              splitView: isSplitView,
+              useDarkTheme: true,
+              styles: newStyles,
+              hideLineNumbers: false
+            })}
+          </div>
         </div>
       )}
     </div>
   )
 }
+
