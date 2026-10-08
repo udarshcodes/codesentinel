@@ -5,13 +5,19 @@ import App from '../App';
 expect.extend(matchers);
 
 // Mock matchMedia
-window.matchMedia = window.matchMedia || function() {
-  return {
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(query => ({
     matches: false,
-    addListener: function() {},
-    removeListener: function() {}
-  };
-};
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
 
 // Mock the PipelineDashboard component so we can verify if it's rendered
 vi.mock('../components/dashboard/PipelineDashboard', () => ({
@@ -116,7 +122,7 @@ describe('App Startup State', () => {
 
     await waitFor(() => {
       // Error is displayed
-      expect(screen.getByText('Failed to start analysis. Is the backend running?')).toBeInTheDocument();
+      expect(screen.getByText('Server returned 500')).toBeInTheDocument();
       // We should be back at the landing page because isPipelineRunning is false
       expect(screen.getByTestId('landing-page')).toBeInTheDocument();
       // The loading panel is gone

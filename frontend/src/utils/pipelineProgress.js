@@ -78,3 +78,38 @@ export function reconstructProgress(state) {
     isWaitingLLM
   };
 }
+
+export function getAgentStatus(agentKey, state, flags) {
+  const { isCompleted, isActive, isSkipped, isAgentPaused, isAgentError } = flags;
+
+  if (isAgentError) return { displayStatus: 'Failed', statusType: 'error' };
+  if (isAgentPaused) return { displayStatus: 'Approval required', statusType: 'warning' };
+  if (isSkipped) return { displayStatus: 'Skipped', statusType: 'skipped' };
+  
+  if (isActive) {
+    if (state.current_stage) {
+      if (state.current_stage === 'AI_ANALYSIS') return { displayStatus: 'Analyzing findings...', statusType: 'active' };
+      if (state.current_stage === 'GENERATING_PATCH') return { displayStatus: 'Generating remediation patches...', statusType: 'active' };
+      if (state.current_stage === 'VALIDATING_PATCH') return { displayStatus: 'Validating patch...', statusType: 'active' };
+      if (state.current_stage === 'CREATING_PULL_REQUEST') return { displayStatus: 'Creating pull request...', statusType: 'active' };
+    }
+    return { displayStatus: 'Processing...', statusType: 'active' };
+  }
+
+  if (isCompleted) {
+    if (agentKey === 'validator') {
+      const allPassed = state.validation_results?.length > 0 && state.validation_results.every(v => v.passed);
+      if (state.validation_results?.length > 0 && !allPassed) {
+        return { displayStatus: 'Review Required', statusType: 'warning' };
+      }
+    }
+    if (agentKey === 'security_verifier') {
+      if (state.security_verification && !state.security_verified) {
+        return { displayStatus: 'Review Required', statusType: 'warning' };
+      }
+    }
+    return { displayStatus: 'Verified', statusType: 'success' };
+  }
+
+  return { displayStatus: 'Waiting', statusType: 'pending' };
+}

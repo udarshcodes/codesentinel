@@ -5,6 +5,7 @@ import LLMWaitingState from './LLMWaitingState'
 import PipelineView from './PipelineView'
 import FindingsPanel from './FindingsPanel'
 import DiffViewer from './DiffViewer'
+import PipelineNav from './PipelineNav'
 import { usePipeline } from '../../hooks/usePipeline'
 import { useApproval } from '../../hooks/useApproval'
 import { PipelineProvider } from '../../context/PipelineContext'
@@ -57,8 +58,10 @@ function DashboardInner({ taskId, onComplete }) {
 
   return (
     <>
-      <ApprovalModal 
-        isOpen={approval.awaitingApproval} 
+      <PipelineNav />
+      <div id="pipeline-overview">
+        <ApprovalModal 
+          isOpen={approval.awaitingApproval} 
         agentData={approval.currentFix} 
         onApprove={handleApprove} 
         onReject={handleReject} 
@@ -93,6 +96,7 @@ function DashboardInner({ taskId, onComplete }) {
       {pipelineState.status !== 'idle' && pipelineState.status !== 'UNAUTHORIZED' && pipelineState.status !== 'NOT_FOUND' && pipelineState.status !== 'CONNECTION_ERROR' && (
         <PipelineView state={pipelineState} />
       )}
+      </div>
 
       {(pipelineState.findings?.length > 0 || pipelineState.static_findings?.length > 0 || pipelineState.dependency_findings?.length > 0 || pipelineState.patches?.length > 0 || pipelineState.validation_results?.length > 0) && (
         <>
@@ -103,22 +107,28 @@ function DashboardInner({ taskId, onComplete }) {
 
       {(isComplete || pipelineState.status === 'FAILED') && (
         <>
-          <PRSummary 
-            prUrl={pipelineState.pr_url} 
-            confidenceScore={pipelineState.confidence}
-            prError={pipelineState.pr_error}
-            status={pipelineState.status}
-            pipelineError={pipelineState.pipeline_error}
-          />
-          <button
-            onClick={() => document.getElementById('pr-summary')?.scrollIntoView({ behavior: 'smooth' })}
-            className={`fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium ${isPRVisible ? 'opacity-0 translate-y-10 pointer-events-none' : 'opacity-100 translate-y-0'}`}
-          >
-            <svg className="w-5 h-5 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-            Scroll to PR Generation
-          </button>
+          <PRSummary state={pipelineState} />
+          {isPRVisible ? (
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-secondary text-secondary-foreground px-6 py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+              </svg>
+              Back to Top
+            </button>
+          ) : (
+            <button
+              onClick={() => document.getElementById('pr-summary')?.scrollIntoView({ behavior: 'smooth' })}
+              className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium"
+            >
+              <svg className="w-5 h-5 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+              Scroll to PR Generation
+            </button>
+          )}
         </>
       )}
 

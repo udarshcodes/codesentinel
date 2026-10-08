@@ -51,7 +51,17 @@ function App() {
       clearTimeout(timeoutId);
       
       if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`)
+        if (res.status === 429) {
+          throw new Error("Too many analysis requests. Please wait before starting another analysis.");
+        }
+        
+        let errMsg = `Server returned ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.detail) errMsg = errData.detail;
+        } catch (e) {
+        }
+        throw new Error(errMsg);
       }
       
       const data = await res.json()
@@ -72,7 +82,7 @@ function App() {
       if (error.name === 'AbortError') {
         setErrorMsg('Connection timed out. Could not connect to the backend.')
       } else {
-        setErrorMsg('Failed to start analysis. Is the backend running?')
+        setErrorMsg(error.message || 'Failed to start analysis. Is the backend running?')
       }
       setIsPipelineRunning(false)
     } finally {
