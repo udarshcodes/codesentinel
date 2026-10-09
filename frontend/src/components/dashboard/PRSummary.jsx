@@ -1,5 +1,5 @@
 import ConfidenceScore from './ConfidenceScore'
-import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle, FileCode, Search, ShieldCheck, Beaker } from 'lucide-react'
+import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle, ShieldCheck, Beaker } from 'lucide-react'
 
 export default function PRSummary({ state }) {
   if (!state) return null;
@@ -52,7 +52,6 @@ export default function PRSummary({ state }) {
   const iconColorClass = isError ? 'text-[#EF4444]' : (isWarning ? 'text-[#F59E0B]' : 'text-[#22C55E]');
   const borderClass = isError ? 'border-[#EF4444]/30' : (isWarning ? 'border-[#F59E0B]/30' : 'border-[#22C55E]/30');
 
-  const prStatus = pr_error ? "Failed" : (!pr_url ? "Pending" : (needsReview ? "Draft" : "Ready"));
   const validationStatus = validationRan ? (allTestsPassed ? "Verified" : "Review Required") : "Skipped";
   const securityStatus = securityVerified ? "Verified" : "Review Required";
 

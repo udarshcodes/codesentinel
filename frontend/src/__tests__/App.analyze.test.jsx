@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 expect.extend(matchers);
 import App from '../App';
-import { credentialStore } from '../services/credentialStore';
 
 vi.mock('../components/dashboard/PipelineDashboard', () => ({
   default: () => <div data-testid="pipeline-dashboard">Dashboard</div>
@@ -29,7 +28,7 @@ vi.mock('../components/landing/LandingPage', () => ({
 }));
 
 describe('App - Analyze Request Error Handling', () => {
-  const originalFetch = global.fetch;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,7 +49,7 @@ describe('App - Analyze Request Error Handling', () => {
 
   afterEach(() => {
     cleanup();
-    global.fetch = originalFetch;
+    globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
@@ -64,7 +63,7 @@ describe('App - Analyze Request Error Handling', () => {
   };
 
   it('7. Frontend handles 429', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 429,
       json: async () => ({ detail: "Rate limit exceeded" })
@@ -80,7 +79,7 @@ describe('App - Analyze Request Error Handling', () => {
   });
 
   it('8. Frontend handles 500', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
       json: async () => ({ detail: "Internal Server Error" })
@@ -97,7 +96,7 @@ describe('App - Analyze Request Error Handling', () => {
   it('9. Frontend handles network timeout (AbortError)', async () => {
     const abortError = new Error('AbortError');
     abortError.name = 'AbortError';
-    global.fetch = vi.fn().mockRejectedValue(abortError);
+    globalThis.fetch = vi.fn().mockRejectedValue(abortError);
 
     await setupAndSubmit();
 
@@ -108,7 +107,7 @@ describe('App - Analyze Request Error Handling', () => {
   });
 
   it('10. Frontend never remains permanently in isPipelineRunning state after request failure', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network failure'));
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network failure'));
 
     await setupAndSubmit();
 
@@ -120,7 +119,7 @@ describe('App - Analyze Request Error Handling', () => {
   });
 
   it('12. New task immediately reaches PipelineDashboard', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({

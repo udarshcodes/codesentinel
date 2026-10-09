@@ -59,7 +59,8 @@ function App() {
         try {
           const errData = await res.json();
           if (errData.detail) errMsg = errData.detail;
-        } catch (e) {
+        } catch {
+          // ignore parsing error
         }
         throw new Error(errMsg);
       }

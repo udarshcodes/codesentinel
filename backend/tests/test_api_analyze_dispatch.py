@@ -51,6 +51,6 @@ class TestApiAnalyzeDispatch(unittest.TestCase):
             res3 = self.client.post("/api/v1/analyze", json={"repo_url": "https://github.com/octocat/Hello-World"}, headers={"X-Forwarded-For": "192.168.1.100"})
             
             self.assertEqual(res3.status_code, 429)
-            self.assertIn("detail", res3.json())
+            self.assertIn("error", res3.json())
         finally:
             limiter.enabled = False

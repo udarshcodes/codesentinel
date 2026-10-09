@@ -3,9 +3,8 @@ import ReactDiffViewer from 'react-diff-viewer-continued'
 import { Code2, ChevronDown, ChevronRight, FileJson, CheckCircle2, AlertCircle, XCircle } from 'lucide-react'
 
 export default function DiffViewer({ state }) {
-  const patches = state.patches || []
-
   const fileGroups = useMemo(() => {
+    const patches = state.patches || []
     const groups = {}
     patches.forEach(patch => {
       const file = patch.file || 'unknown'
@@ -27,7 +26,7 @@ export default function DiffViewer({ state }) {
       }
     })
     return Object.values(groups)
-  }, [patches])
+  }, [state.patches])
 
   if (fileGroups.length === 0) return null
 
