@@ -23,18 +23,43 @@ export default function PipelineView({ state }) {
     isWaitingLLM
   } = reconstructProgress(state);
 
-  const completedCount = completedAgents.size;
-  const totalCount = AGENT_ORDER.length;
+  let executedCount = 0;
+  let verifiedCount = 0;
+  let reviewCount = 0;
+  let failedCount = 0;
+
+  AGENT_ORDER.forEach((agentKey) => {
+    const isCompleted = completedAgents.has(agentKey)
+    const isSkipped = skippedAgents.has(agentKey)
+    const isActive = currentAgent === agentKey && !isError && !isPaused
+    const isAgentPaused = currentAgent === agentKey && isPaused
+    const isAgentError = currentAgent === agentKey && isError
+    const { statusType } = getAgentStatus(agentKey, state, { isCompleted, isActive, isSkipped, isAgentPaused, isAgentError });
+    
+    if (isCompleted || isAgentError) {
+      executedCount++;
+    }
+    if (statusType === 'success') {
+      verifiedCount++;
+    } else if (statusType === 'warning') {
+      reviewCount++;
+    } else if (statusType === 'error') {
+      failedCount++;
+    }
+  });
 
   return (
     <div className="bg-card border border-border p-6 sm:p-8 w-full max-w-6xl mx-auto mb-8 rounded-[1.5rem] shadow-sm">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
         <h2 className="text-xl font-semibold text-foreground flex items-center gap-3">
           <Loader2 className={`w-5 h-5 text-primary ${!isError && currentAgent ? 'animate-spin' : ''}`} />
           Autonomous Agent Mesh
         </h2>
-        <div className="text-sm text-muted-foreground font-medium">
-          {completedCount} of {totalCount} agents completed
+        <div className="flex flex-wrap gap-3 text-xs">
+          <span className="px-2 py-1 bg-muted text-muted-foreground rounded-md font-medium">{executedCount} Executed</span>
+          {verifiedCount > 0 && <span className="px-2 py-1 bg-[#22C55E]/10 text-[#22C55E] rounded-md font-medium">{verifiedCount} Verified</span>}
+          {reviewCount > 0 && <span className="px-2 py-1 bg-[#F59E0B]/10 text-[#F59E0B] rounded-md font-medium">{reviewCount} Review Req</span>}
+          {failedCount > 0 && <span className="px-2 py-1 bg-[#EF4444]/10 text-[#EF4444] rounded-md font-medium">{failedCount} Failed</span>}
         </div>
       </div>
       

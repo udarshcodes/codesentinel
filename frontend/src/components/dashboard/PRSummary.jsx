@@ -1,18 +1,22 @@
+import React, { useState } from 'react'
 import ConfidenceScore from './ConfidenceScore'
-import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle, ShieldCheck, Beaker } from 'lucide-react'
+import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle, ShieldCheck, Beaker, RefreshCw } from 'lucide-react'
 
 export default function PRSummary({ state }) {
   if (!state) return null;
-  const { status, pr_url, pr_error, pipeline_error, confidence_score } = state;
+  const { status, pr_url, pr_error, pipeline_error, confidence_score, task_id } = state;
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState('');
 
   if (!pr_url && !pr_error && !confidence_score && status !== 'FAILED' && status !== 'COMPLETED' && status !== 'NEEDS_REVIEW') {
     return null;
   }
 
   const totalFindings = (state.dependency_findings?.length || 0) + (state.static_findings?.length || 0);
+  const remediationCandidates = state.investigated_issues?.length || 0;
   const patchesGenerated = state.patches?.length || 0;
   const patchesApplied = state.patches?.filter(p => p.applied)?.length || 0;
-  const patchesRejected = state.patches?.filter(p => !p.applied)?.length || 0;
+  const patchesRejected = state.patches?.filter(p => p.applied === false)?.length || 0;
   
   const modifiedFiles = new Set(
     (state.patches || []).filter(p => p.applied && p.file).map(p => p.file)
@@ -55,6 +59,31 @@ export default function PRSummary({ state }) {
   const validationStatus = validationRan ? (allTestsPassed ? "Verified" : "Review Required") : "Skipped";
   const securityStatus = securityVerified ? "Verified" : "Review Required";
 
+  const handleRetryPR = async () => {
+    setIsRetrying(true);
+    setRetryError('');
+    try {
+      // The API base URL logic
+      let apiUrl = window.location.origin;
+      if (apiUrl.includes('localhost:') || apiUrl.includes('127.0.0.1:')) {
+        apiUrl = 'http://localhost:8000';
+      }
+      const res = await fetch(`${apiUrl}/api/v1/job/${task_id}/retry-pr`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sessionStorage.getItem('view_token')}`
+        }
+      });
+      if (!res.ok) {
+        throw new Error('Failed to retry PR creation');
+      }
+      // state will be updated by SSE automatically
+    } catch (err) {
+      setRetryError(err.message);
+      setIsRetrying(false);
+    }
+  };
+
   return (
     <div id="pr-summary" className={`bg-card border p-8 mt-8 max-w-6xl w-full mx-auto rounded-[1.5rem] shadow-sm transition-colors duration-500 ${borderClass}`}>
       <div className="flex items-center gap-4 mb-8">
@@ -77,19 +106,22 @@ export default function PRSummary({ state }) {
         <div className="bg-background rounded-xl p-6 border border-border flex flex-col justify-center">
           <h3 className="text-sm font-medium text-foreground mb-4">Pipeline Summary</h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <div className="text-muted-foreground">Findings detected:</div>
+            <div className="text-muted-foreground">Total Findings Detected:</div>
             <div className="font-medium text-foreground">{totalFindings}</div>
+
+            <div className="text-muted-foreground">Remediation Candidates:</div>
+            <div className="font-medium text-foreground">{remediationCandidates}</div>
             
-            <div className="text-muted-foreground">Patches generated:</div>
+            <div className="text-muted-foreground">Patches Generated:</div>
             <div className="font-medium text-foreground">{patchesGenerated}</div>
             
-            <div className="text-muted-foreground">Patches applied:</div>
+            <div className="text-muted-foreground">Patches Applied:</div>
             <div className="font-medium text-foreground">{patchesApplied}</div>
             
-            <div className="text-muted-foreground">Patches rejected:</div>
+            <div className="text-muted-foreground">Patches Rejected:</div>
             <div className="font-medium text-foreground">{patchesRejected}</div>
             
-            <div className="text-muted-foreground">Files modified:</div>
+            <div className="text-muted-foreground">Files Modified:</div>
             <div className="font-medium text-foreground">{modifiedFiles}</div>
           </div>
         </div>
@@ -155,6 +187,20 @@ export default function PRSummary({ state }) {
             {pipeline_error && !pr_error && (
               <div className={`${bgColorClass} rounded-lg p-4 mb-4 border ${borderClass}`}>
                 <p className={`font-mono text-sm ${iconColorClass} whitespace-pre-wrap`}>{pipeline_error}</p>
+              </div>
+            )}
+            
+            {pr_error && (
+              <div className="mt-4 flex flex-col gap-2">
+                <button
+                  onClick={handleRetryPR}
+                  disabled={isRetrying}
+                  className="inline-flex items-center justify-center gap-2 bg-background hover:bg-muted border border-border text-foreground px-4 py-2.5 rounded-md font-medium transition-colors w-fit disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
+                  {isRetrying ? 'Retrying...' : 'Retry Pull Request Creation'}
+                </button>
+                {retryError && <p className="text-sm text-[#EF4444] mt-1">{retryError}</p>}
               </div>
             )}
           </div>

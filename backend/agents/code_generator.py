@@ -218,15 +218,17 @@ Current file content:
             else:
                 diff = fixed_content
 
-            new_patches.append(
-                {
-                    "patch_id": plan.get("issue_id"),
-                    "file": target_file,
-                    "diff": diff,
-                    "patch_text": fixed_content,
-                    "applied": patch_applied,
-                }
-            )
+            patch_obj = {
+                "patch_id": plan.get("issue_id"),
+                "file": target_file,
+                "diff": diff,
+                "patch_text": fixed_content,
+                "applied": patch_applied,
+            }
+            if not patch_applied:
+                patch_obj["error"] = patch_result["stderr"]
+
+            new_patches.append(patch_obj)
         except Exception as e:
             print(f"Error generating code: {e}")
             import traceback

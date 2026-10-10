@@ -7,9 +7,9 @@ export default function ConfidenceScore({ score }) {
   return (
     <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex items-center justify-between">
       <div>
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-2">Fix Confidence</h3>
-        <p className="text-xs text-muted-foreground opacity-80">
-          {isHigh ? 'High probability of correct remediation.' : 'Review carefully before merging.'}
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-2">Aggregate Fix Confidence</h3>
+        <p className="text-xs text-muted-foreground opacity-80 max-w-[200px] sm:max-w-[250px]">
+          Score derived from test suite passage, semantic codebase context alignment, and historical repository fix success rates.
         </p>
       </div>
       

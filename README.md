@@ -201,6 +201,7 @@ Navigate to `http://localhost:5173` to use the app.
 | `GET`  | `/api/stream` | SSE endpoint streaming real-time `PipelineState` payloads. Requires `task_id` and `capability` query parameters. |
 | `POST` | `/api/job/{task_id}/event` (or `/api/v1/job/{task_id}/event`) | Internal webhook used by the background worker to stream granular state updates to the orchestrator. |
 | `POST` | `/api/approve/{task_id}` (or `/api/v1/approve/{task_id}`) | Unblocks the LangGraph pipeline with a human `approved` or `rejected` decision. Requires task-scoped `approval_token`. |
+| `POST` | `/api/job/{task_id}/retry-pr` (or `/api/v1/job/{task_id}/retry-pr`) | Retries pull request generation if a previous attempt failed, safely rolling back the pipeline state. |
 | `POST` | `/api/webhook/github` (or `/api/v1/webhook/github`) | Automated CI/CD webhook endpoint triggering analysis on GitHub push and PR events with HMAC SHA-256 signature verification (`X-Hub-Signature-256`). |
 | `GET`  | `/health`, `/live`, `/ready`, `/metrics` | Observability endpoints returning system health status, liveness, readiness, and queue/execution job metrics. |
 | `GET`  | `/api/v1/admin/telemetry` | Protected endpoint returning LLM key rotation stats, agent token usage, and key pool status. Requires `admin_session` cookie. |

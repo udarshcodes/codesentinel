@@ -30,11 +30,34 @@ export default function DiffViewer({ state }) {
 
   if (fileGroups.length === 0) return null
 
+  const { totalGenerated, totalApplied, totalRejected } = useMemo(() => {
+    let g = 0, a = 0, r = 0;
+    fileGroups.forEach(fg => {
+      g += fg.generated;
+      a += fg.applied;
+      r += fg.rejected;
+    });
+    return { totalGenerated: g, totalApplied: a, totalRejected: r };
+  }, [fileGroups]);
+
+  const acceptanceRate = totalGenerated > 0 ? ((totalApplied / totalGenerated) * 100).toFixed(1) : 0;
+
   return (
     <div id="patches-section" className="w-full max-w-6xl mx-auto mb-8">
-      <div className="flex items-center gap-3 mb-6 px-2">
-        <Code2 className="w-5 h-5 text-primary" />
-        <h2 className="text-xl font-semibold text-foreground">AI Remediation Patches</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-2">
+        <div className="flex items-center gap-3">
+          <Code2 className="w-5 h-5 text-primary" />
+          <h2 className="text-xl font-semibold text-foreground">AI Remediation Patches</h2>
+        </div>
+        {totalGenerated > 0 && (
+          <div className="text-sm font-medium text-muted-foreground bg-card border border-border px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <span>Acceptance Rate: <strong className="text-foreground">{acceptanceRate}%</strong></span>
+            <span className="opacity-50">|</span>
+            <span className="text-[#22C55E]">{totalApplied} applied</span>
+            <span className="opacity-50">|</span>
+            <span className="text-[#EF4444]">{totalRejected} rejected</span>
+          </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -120,7 +143,20 @@ function PatchItem({ patch, state }) {
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     },
     content: {
-      width: '100%'
+      width: '100%',
+    },
+    diffContainer: {
+      tableLayout: 'fixed',
+      width: '100%',
+      minWidth: '800px', // Prevent panels from getting too narrow
+    },
+    wordDiff: {
+      display: 'inline-block',
+      padding: '0',
+    },
+    marker: {
+      width: '25px',
+      minWidth: '25px',
     }
   }
 
@@ -206,6 +242,20 @@ function PatchItem({ patch, state }) {
     PatchIcon = XCircle
   }
 
+  let rejectionReason = null;
+  if (!patch.applied) {
+    if (patch.error) {
+       rejectionReason = patch.error;
+    } else {
+       rejectionReason = 'Failed to apply patch due to an unspecified application error.';
+    }
+  } else {
+     const validation = state.validation_results?.find(v => v.patch === patch.patch_text || (patch.issue_id && v.issue_id === patch.issue_id));
+     if (validation && !validation.passed) {
+        rejectionReason = validation.logs || 'Validation failed for this patch.';
+     }
+  }
+
   return (
     <div className="bg-[#080808] border border-[#242428] rounded-xl overflow-hidden shadow-sm">
       <button 
@@ -226,7 +276,15 @@ function PatchItem({ patch, state }) {
       
       {isOpen && (
         <div className="text-left overflow-x-auto bg-[#080808] w-full max-w-full">
-          <div className="min-w-fit">
+          {rejectionReason && (
+            <div className="p-4 bg-[#EF4444]/10 border-b border-[#242428] text-sm">
+              <div className="flex items-center gap-2 text-[#EF4444] font-semibold mb-1">
+                <AlertCircle className="w-4 h-4" /> Rejection Reason
+              </div>
+              <p className="font-mono text-muted-foreground whitespace-pre-wrap text-xs break-all">{rejectionReason}</p>
+            </div>
+          )}
+          <div className="min-w-fit overflow-x-auto">
             {React.createElement(ReactDiffViewer.default || ReactDiffViewer, {
               oldValue: oldString,
               newValue: newString,

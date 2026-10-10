@@ -848,6 +848,61 @@ async def github_webhook(request: Request, background_tasks: BackgroundTasks):
 
     return {"status": "ignored", "reason": f"Event {event_type} ignored"}
 
+@router.post("/v1/job/{task_id}/retry-pr")
+@router.post("/job/{task_id}/retry-pr")
+@limiter.limit("5/minute")
+async def retry_pr_creation(request: Request, task_id: str, background_tasks: BackgroundTasks):
+    job = JobManager.get_job(task_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    _validate_view_token(request, job)
+
+    if job["status"] not in ["FAILED", "COMPLETED", "NEEDS_REVIEW"]:
+        raise HTTPException(400, "Job must be in a terminal state to retry PR creation")
+
+    import json
+    from api.db import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        conn.transaction()
+        cursor.execute(getattr(cursor, 'for_update', lambda q: q)("SELECT pipeline_state FROM jobs WHERE task_id = ?"), (task_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Job not found")
+            
+        p_state = json.loads(row[0] or "{}")
+        p_state["pr_error"] = None
+        p_state["pr_url"] = None
+        p_state["pr_state"] = None
+        p_state["last_completed_node"] = "security_verifier"
+        
+        cursor.execute(
+            "UPDATE jobs SET pipeline_state = ?, status = 'QUEUED' WHERE task_id = ?",
+            (json.dumps(p_state), task_id)
+        )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, f"Database error: {str(e)}")
+    finally:
+        conn.close()
+
+    worker_attempt_id = await asyncio.to_thread(JobManager.claim_waiting_job, task_id)
+    if not worker_attempt_id:
+        raise HTTPException(500, "Failed to claim job for retry")
+
+    base_url = str(request.base_url).rstrip("/")
+    if request.headers.get("x-forwarded-proto") == "https" and base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
+
+    background_tasks.add_task(
+        trigger_github_worker, task_id, job["repo_url"], job.get("commit_sha"), worker_attempt_id, base_url
+    )
+
+    return {"status": "accepted"}
+
 # Admin Telemetry API
 from tools.key_dispatcher import get_usage_report
 

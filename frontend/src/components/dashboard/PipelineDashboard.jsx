@@ -34,10 +34,11 @@ function DashboardInner({ taskId, onComplete }) {
       const observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
-            setIsPRVisible(entry.isIntersecting)
+            // Use intersectionRatio and boundingClientRect to determine if the element is actually in view
+            setIsPRVisible(entry.isIntersecting || entry.boundingClientRect.top < 0)
           })
         },
-        { threshold: 0.1 }
+        { threshold: 0, rootMargin: "-10% 0px -10% 0px" }
       )
       observer.observe(prElement)
       return () => observer.disconnect()
@@ -111,22 +112,30 @@ function DashboardInner({ taskId, onComplete }) {
           {isPRVisible ? (
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-secondary text-secondary-foreground px-6 py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium"
+              className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-secondary text-secondary-foreground p-3 sm:px-6 sm:py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium opacity-80 hover:opacity-100 focus:outline-none"
+              title="Back to Top"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
               </svg>
-              Back to Top
+              <span className="hidden sm:inline">Back to Top</span>
             </button>
           ) : (
             <button
-              onClick={() => document.getElementById('pr-summary')?.scrollIntoView({ behavior: 'smooth' })}
-              className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-primary text-primary-foreground px-6 py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium"
+              onClick={() => {
+                 const prElement = document.getElementById('pr-summary');
+                 if (prElement) {
+                   const y = prElement.getBoundingClientRect().top + window.scrollY - 100;
+                   window.scrollTo({ top: y, behavior: 'smooth' });
+                 }
+              }}
+              className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-primary text-primary-foreground p-3 sm:px-6 sm:py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium focus:outline-none"
+              title="Scroll to PR Generation"
             >
-              <svg className="w-5 h-5 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 animate-bounce sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
               </svg>
-              Scroll to PR Generation
+              <span className="hidden sm:inline">Scroll to PR</span>
             </button>
           )}
         </>

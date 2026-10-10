@@ -102,10 +102,30 @@ export function getAgentStatus(agentKey, state, flags) {
       if (state.validation_results?.length > 0 && !allPassed) {
         return { displayStatus: 'Review Required', statusType: 'warning' };
       }
+      if (state.validation_results?.length === 0) {
+        return { displayStatus: 'Not Run', statusType: 'skipped' };
+      }
     }
     if (agentKey === 'security_verifier') {
-      if (state.security_verification && !state.security_verified) {
+      if (state.security_verification === false || (state.security_verification !== null && !state.security_verified)) {
         return { displayStatus: 'Review Required', statusType: 'warning' };
+      }
+      if (state.security_verification === null || state.security_verification === undefined) {
+          return { displayStatus: 'Not Run', statusType: 'skipped' };
+      }
+    }
+    if (agentKey === 'pr_author') {
+      if (state.pr_url) {
+        if (state.status === 'NEEDS_REVIEW') {
+          return { displayStatus: 'Draft Created', statusType: 'warning' };
+        }
+        return { displayStatus: 'Created', statusType: 'success' };
+      } else if (state.pr_error) {
+        const errLower = state.pr_error.toLowerCase();
+        if (errLower.includes('no bugs') || errLower.includes('not required') || errLower.includes('no patches') || errLower.includes('repair plan was rejected') || errLower.includes('no valid code changes')) {
+          return { displayStatus: 'Not Required', statusType: 'skipped' };
+        }
+        return { displayStatus: 'Creation Failed', statusType: 'error' };
       }
     }
     return { displayStatus: 'Verified', statusType: 'success' };
