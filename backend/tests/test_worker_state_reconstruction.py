@@ -264,3 +264,31 @@ async def test_ssrf_validation_intact(mock_dependencies):
     state = args[0]
     # Ensure the safe repo_url from the DB wasn't overwritten by the potentially malicious injected one
     assert state["repo_url"] == "https://github.com/safe/repo"
+
+
+@pytest.mark.asyncio
+async def test_startup_sandbox_failure_is_reported_before_exit(mock_dependencies):
+    _, _, _, events = mock_dependencies
+    with patch("tools.sandbox_runner.check_sandbox_capabilities", side_effect=RuntimeError("Docker unavailable")):
+        with pytest.raises(RuntimeError, match="Docker unavailable"):
+            await worker.run_worker()
+    events.assert_awaited_once_with("FAILED", "pipeline_error", {"error": "Sandbox startup failed: Docker unavailable"})
+
+
+@pytest.mark.asyncio
+async def test_worker_persists_replacement_patch_snapshots_without_duplicates(mock_dependencies):
+    app, _, posts, _ = mock_dependencies
+    first = {"patch_id": 1, "file": "app.py", "applied": True}
+    second = {"patch_id": 2, "file": "app.py", "applied": True}
+    async def graph_updates(*args, **kwargs):
+        yield {"code_generator": {"patches": [first]}}
+        yield {"code_generator": {"patches": [first, second]}}
+        yield {"validator": {"validation_results": [{"passed": False}]}}
+        yield {"validator": {"validation_results": [{"passed": False}, {"passed": True}]}}
+    app.astream.return_value = graph_updates()
+    with patch("tools.sandbox_runner.check_sandbox_capabilities"):
+        await worker.run_worker()
+    saved = [call.args[1]["pipeline_state"] for call in posts.call_args_list if call.args[0].endswith('/state')]
+    assert saved
+    assert len(saved[-1]["patches"]) == 2
+    assert len(saved[-1]["validation_results"]) == 2

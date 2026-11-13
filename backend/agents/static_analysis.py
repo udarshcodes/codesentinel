@@ -84,6 +84,10 @@ async def agent_static_analysis(state: PipelineState):
                 if file_path.startswith("./") or file_path.startswith(".\\"):
                     file_path = file_path[2:]
 
+                # Assertions are the pytest contract, not production validation.
+                is_test = any(part in ("tests", "test") for part in file_path.replace("\\", "/").split("/")) or os.path.basename(file_path).startswith("test_") or os.path.basename(file_path).endswith("_test.py")
+                if hit.get("test_id") == "B101" and is_test:
+                    continue
                 findings.append(
                     {
                         "file": file_path,
@@ -1002,7 +1006,7 @@ async def agent_static_analysis(state: PipelineState):
                 defined_funcs: dict[str, int] = {}
                 for node in ast.walk(tree):
                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        if not node.name.startswith("_"):
+                        if not node.name.startswith(("_", "test_")) and not node.decorator_list:
                             defined_funcs[node.name] = node.lineno
 
                 for func_name, lineno in defined_funcs.items():
@@ -1463,6 +1467,9 @@ async def agent_static_analysis(state: PipelineState):
                     for lineno, line in enumerate(content.splitlines(), 1):
                         for pattern, description in _SECRET_PATTERNS:
                             if pattern.search(line):
+                                literal = re.search(r"[=:]\s*['\"]([^'\"]+)['\"]", line)
+                                if description == "Hardcoded secret/token" and literal and literal.group(1).lower() in {"lm-studio", "not-needed", "not-a-real-key", "your-api-key", "your_api_key"}:
+                                    continue
                                 findings.append(
                                     {
                                         "file": rel_path,

@@ -11,8 +11,11 @@ class PipelineState(TypedDict, total=False):
     scanners_failed: NotRequired[bool]
     scanner_notes: NotRequired[list]
     investigated_issues: list
+    dismissed_findings: NotRequired[list]
+    rag_confidence_score: NotRequired[float]
     repair_plan: list
     patches: list
+    material_files: NotRequired[list]
     validation_results: list
     security_verified: bool
     pr_url: NotRequired[str]

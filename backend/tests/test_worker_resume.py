@@ -64,13 +64,13 @@ async def test_repair_planner_malformed_json_handling():
 async def test_repair_planner_high_risk_approval():
     """8. Repair Planner high risk fix correctly produces approval state"""
     state = {
-        "investigated_issues": [{"issue": "Auth bypass"}],
+        "investigated_issues": [{"id": 1, "issue": "Auth bypass"}],
         "task_id": "test_task"
     }
     
     # Return a high-risk fix
     high_risk_plan = [
-        {"issue_summary": "jwt auth failure", "proposed_action": "update crypto schema", "risk_level": "high-risk"}
+        {"issue_id": 1, "issue_summary": "jwt auth failure", "proposed_action": "update crypto schema", "risk_level": "high-risk"}
     ]
     with patch("agents.repair_planner.invoke_llm", return_value=high_risk_plan), patch("agents.repair_planner.GROQ_API_KEYS", ["dummy"]):
         res = await agent_repair_planner(state)

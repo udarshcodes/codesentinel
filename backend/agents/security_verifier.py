@@ -14,6 +14,7 @@ async def agent_security_verifier(state: PipelineState):
         return {
             "security_verified": False,
             "security_retry_count": existing_retries,
+            "security_retry_context": [{"issue": "Security verification was not run because validation failed."}],
         }
 
     patches = state.get("patches", [])

@@ -21,6 +21,7 @@ async def agent_bug_investigator(state: PipelineState):
 
     all_findings = static_findings + dependency_findings
     investigated_issues = []
+    dismissed_findings = []
     
     rag_task = context_cache.get(repo_url, "rag_task")
     if rag_task:
@@ -38,7 +39,7 @@ async def agent_bug_investigator(state: PipelineState):
         print(f"[BugInvestigator] Repository RAG UNAVAILABLE or failed: {rag_status.get('error', 'Not indexed')}")
 
     if not GROQ_API_KEYS:
-        return {"investigated_issues": investigated_issues}
+        return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings}
 
     if not all_findings:
         print("No static findings, falling back to deep LLM code review...")
@@ -106,7 +107,7 @@ If no bugs, return: {{"found": false}}"""
             except Exception as e:
                 print(f"Error in deep review: {e}")
 
-        return {"investigated_issues": investigated_issues}
+        return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings}
 
     for idx, finding in enumerate(all_findings):
         issue_desc = finding.get("issue", str(finding))
@@ -175,7 +176,7 @@ Repository Context: {json.dumps(localized_graph)}
 {codebase_context}
 {similar_fixes_context}
 
-Determine the root cause, severity ("low", "medium", "high"), impact, and affected files.
+First determine whether the finding is actionable. Known public placeholders and normal test assertions are not secrets or application defects. Return {{"decision": "dismiss", "reason": "specific evidence"}} for a false positive. Otherwise determine the root cause, severity ("low", "medium", "high", "critical"), impact, and affected files.
 Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "...", "severity": "...", "impact": "...", "affected_files": ["..."]}}"""
 
         try:
@@ -187,9 +188,17 @@ Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "..."
                 expect_json=True,
             )
             if isinstance(issue_data, dict) and not issue_data.get("error"):
+                if issue_data.get("decision") == "dismiss" and issue_data.get("reason", "").strip():
+                    dismissed_findings.append({"finding": finding, "reason": issue_data["reason"]})
+                    continue
                 issue_data["original_finding"] = finding
+                issue_data["id"] = idx
+                levels = {"info": 0, "low": 1, "warning": 2, "medium": 2, "error": 3, "high": 3, "critical": 4}
+                original_severity = str(finding.get("severity", "low")).lower()
+                if levels.get(original_severity, 0) > levels.get(str(issue_data.get("severity", "low")).lower(), 0):
+                    issue_data["severity"] = {2: "medium", 3: "high", 4: "critical"}.get(levels[original_severity], original_severity)
                 investigated_issues.append(issue_data)
         except Exception as e:
             print(f"Error investigating issue {idx}: {e}")
 
-    return {"investigated_issues": investigated_issues}
+    return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings}

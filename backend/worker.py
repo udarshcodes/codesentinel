@@ -191,7 +191,15 @@ async def run_worker():
     validate_env()
 
     from tools.sandbox_runner import check_sandbox_capabilities
-    check_sandbox_capabilities()
+    try:
+        check_sandbox_capabilities()
+    except Exception as error:
+        # Startup failures happen before the graph/heartbeat exception handlers.
+        try:
+            await post_event("FAILED", "pipeline_error", {"error": f"Sandbox startup failed: {error}"})
+        except Exception:
+            print("Failed to report sandbox startup failure to the backend.")
+        raise
 
     print(f"Starting worker for task {TASK_ID} on {REPO_URL}")
 
@@ -490,13 +498,8 @@ async def run_worker():
                 elif node_name == "pr_author":
                     current_stage = "CREATING_PULL_REQUEST"
 
-                for k, v in safe_update.items():
-                    if isinstance(v, list) and isinstance(state.get(k), list):
-                        state[k].extend(v)
-                    elif isinstance(v, dict) and isinstance(state.get(k), dict):
-                        state[k].update(v)
-                    else:
-                        state[k] = v
+                # StateGraph nodes return complete replacement values, not list deltas.
+                state.update(safe_update)
                 state["last_completed_node"] = node_name
                 
                 # Persist state back to SQLite

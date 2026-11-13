@@ -37,7 +37,7 @@ class TestPatchRepresentation(unittest.TestCase):
         }
 
         with patch("agents.code_generator.GROQ_API_KEYS", ["test"]), patch("agents.code_generator.open_safe") as mock_open:
-            mock_open.return_value.__enter__.return_value.read.return_value = "def foo():\n    return 42\n"
+            mock_open.return_value.__enter__.return_value.read.side_effect = ["def foo():\n    pass\n", "def foo():\n    return 42\n"]
             import asyncio
             result = asyncio.run(agent_code_generator(state))
 

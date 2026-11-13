@@ -42,6 +42,10 @@ class OrchestratorAgent:
             )
             return "security_verifier"
 
+        if latest.get("infrastructure_error"):
+            print("[Orchestrator] Validation infrastructure is unavailable; do not ask the LLM to repair application code.")
+            return "pr_author"
+
         if latest.get("unresolvable") or retry_count >= 3:
             print(
                 f"[Orchestrator] Validation FAILED after {retry_count} retries — "

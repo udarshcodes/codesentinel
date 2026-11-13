@@ -29,13 +29,16 @@ class TestConfidenceCalc(unittest.TestCase):
             "patches": [{"applied": True}, {"applied": False}],
             "security_verified": True,
         }
-        # tests: 0.5 * 40 = 20
-        # static: 1.0 * 30 = 30
-        # patches: 0.5 * 20 = 10
-        # chroma: 0.0 * 10 = 0
-        # total = 60.0
+        # Failed validation earns no test/security points; half the attempted repairs earn 10.
         score = calculate_pipeline_confidence(state, chroma_score=0.0)
-        self.assertEqual(score, 60.0)
+        self.assertEqual(score, 10.0)
+
+    def test_absent_and_failed_test_evidence_is_not_inferred_from_syntax_counts(self):
+        self.assertEqual(calculate_pipeline_confidence({}), 0)
+        failed = {"validation_results": [{"passed": False, "files_passed": 100, "files_validated": 100}]}
+        self.assertEqual(calculate_pipeline_confidence(failed), 0)
+        syntax_only = {"validation_results": [{"passed": True, "tests_executed": False}]}
+        self.assertEqual(calculate_pipeline_confidence(syntax_only), 0)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,7 @@ async def agent_repair_planner(state: PipelineState):
 Given these investigated issues:
 {json.dumps(investigated_issues)}
 
-Create an ordered repair plan. Order matters (e.g. fix auth bypass before fixing API routes).
+Propose only actionable repairs with a concrete behavior or security benefit. Do not change tests to silence scanners, replace pytest asserts, or add comment-only fixes. Report cosmetic findings for manual review. Create an ordered repair plan. Order matters (e.g. fix auth bypass before fixing API routes).
 Classify each fix as "low-risk" or "high-risk". High-risk categories: authentication changes, database schema changes, cryptographic changes.
 
 Return ONLY valid JSON array:
@@ -66,6 +66,18 @@ Return ONLY valid JSON array:
                 raise
             print(f"Error planning repairs: {e}")
             repair_plan = []
+
+    # Never let model-generated identifiers select unrelated or nonexistent issues.
+    issues_by_id = {str(issue.get("id")): issue for issue in state.get("investigated_issues", []) if "id" in issue}
+    repair_plan = [fix for fix in repair_plan if isinstance(fix, dict) and str(fix.get("issue_id")) in issues_by_id]
+    for fix in repair_plan:
+        fix["issue_id"] = issues_by_id[str(fix["issue_id"])]["id"]
+    planned = {str(fix["issue_id"]) for fix in repair_plan}
+    for issue in state.get("investigated_issues", []):
+        if issue.get("original_finding", {}).get("rule") == "B113" and str(issue.get("id")) not in planned:
+            repair_plan.insert(0, {"issue_id": issue["id"], "issue_summary": "HTTP request has no finite timeout",
+                                   "proposed_action": "Add a finite request timeout while preserving other request arguments.",
+                                   "risk_level": "low-risk", "reasoning": "Bounded request waiting; no credential or schema change."})
 
     HIGH_RISK_KEYWORDS = [
         "jwt",

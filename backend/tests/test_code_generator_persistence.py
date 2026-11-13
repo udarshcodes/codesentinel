@@ -206,9 +206,9 @@ def test_three_fix_code_generator_persistence():
                 async def __anext__(self):
                     if not self.yielded:
                         self.yielded = True
-                        return {"code_generator": {"patches": [self.p]}}
+                        return {"code_generator": {"patches": self.p}}
                     raise StopAsyncIteration
-            return AsyncIter(self.patch_val)
+            return AsyncIter(list(args[0].get("patches", [])) + [self.patch_val])
             
     res_a = client.post(f"/api/v1/job/{task_id}/issue-approval-token", headers={"Authorization": "Bearer view123"})
     tok_a = res_a.json()["approval_token"]
@@ -268,13 +268,14 @@ def test_three_fix_code_generator_persistence():
     
     class MockGraphGenFinal:
         def astream(self, *args, **kwargs):
+            prior = list(args[0].get("patches", []))
             class AsyncIter:
                 def __init__(self): self.yielded = False
                 def __aiter__(self): return self
                 async def __anext__(self):
                     if not self.yielded:
                         self.yielded = True
-                        return {"code_generator": {"patches": ["PATCH_C"]}}
+                        return {"code_generator": {"patches": prior + ["PATCH_C"]}}
                     raise StopAsyncIteration
             return AsyncIter()
             

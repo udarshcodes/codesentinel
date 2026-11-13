@@ -1,61 +1,19 @@
-"""
-Unified confidence score calculator for CodeSentinel pipeline.
-Used by validator.py and pr_author.py to maintain consistent confidence scores across pipeline steps.
-"""
+"""Evidence-based pipeline scoring; never a probability of correctness."""
 
 
-def calculate_pipeline_confidence(
-    state: dict,
-    tests_passed: int = None,
-    tests_total: int = None,
-    security_clean: bool = None,
-    chroma_score: float = 0.0,
-) -> float:
-    """
-    Calculate confidence score (0.0 to 100.0) based on:
-    - 40% automated tests passed
-    - 30% clean security scan
-    - 20% patches applied successfully
-    - 10% historical vector store confidence
-    """
-    validation_results = state.get("validation_results", [])
-    if tests_passed is None or tests_total is None:
-        if validation_results:
-            latest = validation_results[-1]
-            if latest.get("passed"):
-                tests_ratio = 1.0
-            else:
-                fp = latest.get("files_passed", 0)
-                ft = latest.get("files_validated", 1)
-                tests_ratio = fp / max(ft, 1)
-        else:
-            tests_ratio = 1.0
-    else:
-        tests_ratio = tests_passed / max(tests_total, 1) if tests_total > 0 else 1.0
-
-    if security_clean is None:
-        security_clean = state.get(
-            "security_verified", True if not state.get("static_findings") else False
-        )
-    static_clean = 1.0 if security_clean else 0.0
-
-    patches = state.get("patches", [])
-    if patches:
-        applied_count = sum(1 for p in patches if p.get("applied", True))
-        patches_ratio = applied_count / len(patches)
-    elif state.get("investigated_issues", []):
-        patches_ratio = 0.0
-    else:
-        patches_ratio = 1.0
-
-    chroma_ratio = min(
-        chroma_score / 100.0 if chroma_score > 1.0 else chroma_score, 1.0
-    )
-
-    score = (
-        (tests_ratio * 40.0)
-        + (static_clean * 30.0)
-        + (patches_ratio * 20.0)
-        + (chroma_ratio * 10.0)
-    )
-    return round(min(score, 100.0), 1)
+def calculate_pipeline_confidence(state, tests_passed=None, tests_total=None,
+                                  security_clean=None, chroma_score=0.0):
+    validation = (state.get("validation_results") or [{}])[-1]
+    # Syntax/file counts are not passed unit tests. Failed/absent suites earn no test points.
+    tests_ratio = 1.0 if validation.get("passed") is True else 0.0
+    if validation.get("tests_executed") is False:
+        tests_ratio = 0.0
+    security_clean = state.get("security_verified", False) if security_clean is None else security_clean
+    static_clean = 1.0 if security_clean and validation.get("passed") is True and not state.get("scanners_failed") else 0.0
+    latest = {}
+    for index, patch in enumerate(state.get("patches", [])):
+        latest[str(patch.get("patch_id", index))] = patch
+    patches_ratio = sum(p.get("applied") is True for p in latest.values()) / len(latest) if latest else 0.0
+    # Only an independently measured retrieval score may supply the RAG component.
+    chroma_ratio = max(0.0, min(chroma_score / 100 if chroma_score > 1 else chroma_score, 1.0))
+    return round(tests_ratio * 40 + static_clean * 30 + patches_ratio * 20 + chroma_ratio * 10, 1)

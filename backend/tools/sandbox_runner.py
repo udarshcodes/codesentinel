@@ -6,13 +6,33 @@ import uuid
 from typing import Dict, Any
 from tools.subprocess_runner import run_isolated_subprocess
 
+_project_dependencies = {}
+
+
+def register_project_dependencies(repo, packages):
+    repo, packages = os.path.realpath(repo), os.path.realpath(packages)
+    try:
+        inside_repo = os.path.commonpath([repo, packages]) == repo
+    except ValueError:
+        inside_repo = False
+    if inside_repo or not os.path.isdir(packages):
+        raise ValueError("Dependencies must live outside the untrusted repository.")
+    _project_dependencies[repo] = packages
+
+
 def is_docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
     try:
-        res = subprocess.run(["docker", "info"], capture_output=True, timeout=5)
+        res = subprocess.run(["docker", "info"], capture_output=True, timeout=15)
+        if res.returncode != 0:
+            print("Docker availability probe failed (daemon unavailable or access denied).")
         return res.returncode == 0
-    except Exception:
+    except subprocess.TimeoutExpired:
+        print("Docker availability probe timed out after 15 seconds.")
+        return False
+    except OSError as error:
+        print(f"Docker availability probe failed: {type(error).__name__}")
         return False
 
 def check_sandbox_capabilities():
@@ -177,6 +197,14 @@ def run_sandboxed_subprocess(
         "-w", "/sandbox/repo"
     ]
     
+    for project, packages in _project_dependencies.items():
+        try:
+            matches = os.path.commonpath([project, os.path.realpath(actual_cwd)]) == project
+        except ValueError:
+            matches = False
+        if matches:
+            docker_cmd.extend(["-v", f"{packages}:/opt/codesentinel/project-deps:ro", "-e", "PYTHONPATH=/opt/codesentinel/project-deps"])
+            break
     if network_disabled:
         docker_cmd.extend(["--network", "none"])
         

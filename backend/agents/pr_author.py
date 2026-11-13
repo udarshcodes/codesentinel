@@ -41,7 +41,7 @@ async def agent_pr_author(state: PipelineState):
 
     # Determine state: was validation or security failed?
     latest = state.get("validation_results", [])[-1] if state.get("validation_results") else {}
-    validation_failed = latest.get("passed") is not True or latest.get("build_failed", False) or latest.get("suite_failed", False)
+    validation_failed = latest.get("passed") is not True or latest.get("tests_executed") is False or latest.get("build_failed", False) or latest.get("suite_failed", False)
     failed_ids = latest.get("failed_issue_ids", [])
     if failed_ids and len(failed_ids) >= len(patches):
         validation_failed = True
@@ -55,6 +55,7 @@ async def agent_pr_author(state: PipelineState):
 
     pr_url = ""
     pr_error = ""
+    material_files = None
 
     if GITHUB_TOKEN and "github.com" in repo_url:
         try:
@@ -157,6 +158,7 @@ async def agent_pr_author(state: PipelineState):
                 return {"pr_url": "", "pr_error": "No valid code changes were generated.",
                         "confidence_score": _calculate_confidence(state, security_verified)}
 
+            material_files = sorted(all_modified)
             diff_result = run_isolated_subprocess(["git", "diff", "HEAD", "--stat"], cwd=trusted_workspace)
             title, desc = describe_material_changes(all_modified, diff_result.get("stdout", ""), needs_review)
             if state.get("scanner_notes"):
@@ -225,6 +227,8 @@ async def agent_pr_author(state: PipelineState):
     confidence_score = _calculate_confidence(state, security_verified)
 
     result = {"pr_url": pr_url, "confidence_score": confidence_score}
+    if material_files is not None:
+        result["material_files"] = material_files
     if pr_error:
         result["pr_error"] = pr_error
     return result
@@ -234,7 +238,7 @@ def _calculate_confidence(state, security_verified):
     """
     Calculate unified dynamic confidence score (0-100).
     """
-    existing_chroma = state.get("confidence_score", 0.0)
+    existing_chroma = state.get("rag_confidence_score", 0.0)
     return calculate_pipeline_confidence(
         state, security_clean=security_verified, chroma_score=existing_chroma
     )

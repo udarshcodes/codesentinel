@@ -1,6 +1,7 @@
 import os
 import json
 import difflib
+import ast
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
@@ -81,7 +82,7 @@ async def agent_code_generator(state: PipelineState):
 
         # Check if already patched successfully in previous attempts
         existing_patch = next(
-            (p for p in patches if p.get("patch_id") == issue_id), None
+            (p for p in reversed(patches) if p.get("patch_id") == issue_id), None
         )
         if retry_count > 0 and existing_patch and existing_patch.get("applied"):
             # It was applied. Did it fail validation or security?
@@ -89,7 +90,6 @@ async def agent_code_generator(state: PipelineState):
                 issue_id, {}
             ).get("last_failure_reason"):
                 print(f"[CodeGenerator] Skipping already patched issue {issue_id}")
-                new_patches.append(existing_patch)
                 continue
 
         issue = next((i for i in investigated_issues if i.get("id") == issue_id), {})
@@ -149,12 +149,16 @@ Current file content:
 ```"""
 
         try:
-            fixed_content = await invoke_llm(
-                prompt,
-                agent_name="code_generator",
-                task_class="DEEP",
-                expect_json=False,
-            )
+            from tools.remediations import request_timeout_patch
+            finding = issue.get("original_finding", {})
+            fixed_content = request_timeout_patch(file_content, finding.get("line")) if finding.get("rule") == "B113" else None
+            if not fixed_content:
+                fixed_content = await invoke_llm(
+                    prompt,
+                    agent_name="code_generator",
+                    task_class="DEEP",
+                    expect_json=False,
+                )
 
             if not fixed_content:
                 print(f"[CodeGenerator] Empty response for {target_file}, skipping.")
@@ -184,6 +188,13 @@ Current file content:
                     with open_safe(repo_local_path, target_file, "r", errors="ignore") as f:
                         new_content = f.read()
                     diff = _generate_diff(file_content, new_content, target_file)
+                    if target_file.endswith(".py") and ast.dump(ast.parse(file_content)) == ast.dump(ast.parse(new_content)):
+                        # An automated code repair must change behavior, not add a comment
+                        # claiming a fix. Keep such proposals out of the replay journal.
+                        with open_safe(repo_local_path, target_file, "w", encoding="utf-8") as original:
+                            original.write(file_content)
+                        patch_applied = False
+                        patch_result = {"success": False, "stderr": "Rejected comment/format-only Python repair: no AST change."}
                     if not diff.strip():
                         diff = fixed_content
 
@@ -235,17 +246,11 @@ Current file content:
 
             traceback.print_exc()
 
-    # Remove previous failed patches for the same issues so we don't accumulate duplicates on retries
-    current_issue_ids = [str(plan.get("issue_id")) for plan in repair_plan]
-    existing_patches = [
-        p for p in patches if str(p.get("patch_id")) not in current_issue_ids
-    ]
-
     result = {
-        "patches": existing_patches + new_patches,
+        "patches": list(patches) + new_patches,
         "touched_symbols": touched_symbols,
     }
-    if repair_plan and not new_patches:
+    if repair_plan and not new_patches and not any(p.get("applied") for p in patches):
         result["pr_error"] = state.get(
             "pr_error",
             "Failed to generate code patches: API Rate Limit Exceeded or LLM failure.",

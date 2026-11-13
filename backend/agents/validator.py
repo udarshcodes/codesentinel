@@ -1,6 +1,7 @@
 import os
 import json
 import shlex
+import re
 from models.pipeline_state import PipelineState
 from tools.confidence_calc import calculate_pipeline_confidence
 from tools.sandbox_runner import run_sandboxed_subprocess
@@ -58,6 +59,14 @@ async def agent_validator(state: PipelineState):
         if state.get("repair_plan"):
             retry_count += 1
         return {"validation_results": validation_results, "retry_count": retry_count}
+
+    from tools.project_dependencies import prepare_python_dependencies
+    dependencies = prepare_python_dependencies(repo_local_path)
+    if dependencies["status"] == "failed":
+        result = {"passed": False, "infrastructure_error": True, "suite_failed": True,
+                  "build_failed": False, "files_passed": 0, "files_validated": 0,
+                  "failed_issue_ids": [], "logs": "Dependency preparation failed: " + dependencies["error"]}
+        return {"validation_results": list(validation_results) + [result], "security_verified": False}
 
     all_passed = True
     logs_list = []
@@ -327,6 +336,7 @@ async def agent_validator(state: PipelineState):
 
     test_logs = ""
     suite_failed = False
+    tests_run = 0
     if not build_passed:
         test_logs = "Tests skipped due to build failure. Validation failed."
     else:
@@ -344,7 +354,7 @@ async def agent_validator(state: PipelineState):
                 # All tests should run purely through the isolated runner.
                 res = run_sandboxed_subprocess(cmd, cwd=repo_local_path, timeout=60)
                 
-                test_logs += f"\n[{test_framework} Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                test_logs += f"\n[{test_framework} Results]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                 
                 if res["status"] != "SUCCESS":
                     suite_failed = True
@@ -359,7 +369,7 @@ async def agent_validator(state: PipelineState):
             # Intelligent fallback: Execute tests for all relevant ecosystems found
             if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")) or os.path.exists(os.path.join(repo_local_path, "requirements.txt")):
                 res = run_sandboxed_subprocess(["python", "-m", "pytest", "--tb=short", "-q"], cwd=repo_local_path, timeout=60)
-                test_logs += f"\n[Python Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                test_logs += f"\n[Python Test Results]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                 if res["status"] != "SUCCESS" and "no tests ran" not in test_logs.lower() and "zero tests" not in test_logs.lower():
                     suite_failed = True
                     all_passed = False
@@ -373,7 +383,7 @@ async def agent_validator(state: PipelineState):
                             pkg = json.load(f)
                         if "scripts" in pkg and "test" in pkg["scripts"] and 'echo "Error: no test specified"' not in pkg["scripts"]["test"]:
                             res = run_sandboxed_subprocess(["npm", "test"], cwd=os.path.dirname(p), timeout=60)
-                            test_logs += f"\n[Node.js Test Results in {candidate}]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                            test_logs += f"\n[Node.js Test Results in {candidate}]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                             if res["status"] != "SUCCESS":
                                 suite_failed = True
                                 all_passed = False
@@ -385,7 +395,7 @@ async def agent_validator(state: PipelineState):
 
             if os.path.exists(os.path.join(repo_local_path, "go.mod")):
                 res = run_sandboxed_subprocess(["go", "test", "./..."], cwd=repo_local_path, timeout=60)
-                test_logs += f"\n[Go Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                test_logs += f"\n[Go Test Results]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                 if res["status"] != "SUCCESS" and "no test files" not in test_logs.lower():
                     suite_failed = True
                     all_passed = False
@@ -394,14 +404,14 @@ async def agent_validator(state: PipelineState):
             if os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
                 cmd = ["./gradlew", "test"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "test"]
                 res = run_sandboxed_subprocess(cmd, cwd=repo_local_path, timeout=60)
-                test_logs += f"\n[Gradle Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                test_logs += f"\n[Gradle Test Results]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                 if res["status"] != "SUCCESS":
                     suite_failed = True
                     all_passed = False
                 tests_run += 1
             elif os.path.exists(os.path.join(repo_local_path, "pom.xml")):
                 res = run_sandboxed_subprocess(["mvn", "test"], cwd=repo_local_path, timeout=60)
-                test_logs += f"\n[Maven Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                test_logs += f"\n[Maven Test Results]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                 if res["status"] != "SUCCESS":
                     suite_failed = True
                     all_passed = False
@@ -409,7 +419,7 @@ async def agent_validator(state: PipelineState):
 
             if os.path.exists(os.path.join(repo_local_path, "Cargo.toml")):
                 res = run_sandboxed_subprocess(["cargo", "test"], cwd=repo_local_path, timeout=60)
-                test_logs += f"\n[Rust Test Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
+                test_logs += f"\n[Rust Test Results]\n{(res.get('stdout', '') + '\n' + res.get('stderr', ''))[-6000:]}\n"
                 if res["status"] != "SUCCESS":
                     suite_failed = True
                     all_passed = False
@@ -461,6 +471,7 @@ async def agent_validator(state: PipelineState):
             "failed_issue_ids": failed_issue_ids,
             "build_failed": not build_passed,
             "suite_failed": suite_failed,
+            "tests_executed": tests_run > 0 and not suite_failed and not re.search(r"\b(?:ran\s+)?0\s+tests?\b|no tests ran|zero tests|no tests found", test_logs.lower()),
             "issue_description": issue_desc,
         }
     )

@@ -51,6 +51,7 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
             original_newlines = f.newlines
 
         content = content.replace("\r\n", "\n")
+        original_content = content
 
         # Create backup before patching
         backup_path = full_path + ".bak"
@@ -131,7 +132,7 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
                 "stderr": f"Search block not found in {target_file}:\n{search_str[:100]}...",
             }
 
-        if modifications == 0:
+        if modifications == 0 or content == original_content:
             if os.path.exists(backup_path):
                 os.remove(backup_path)
             return {"success": False, "stderr": "No replacements were made."}
