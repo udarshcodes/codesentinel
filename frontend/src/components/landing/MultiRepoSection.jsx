@@ -21,7 +21,7 @@ export default function MultiRepoSection() {
           </h2>
           <div className="w-12 h-1 bg-[#8B5CF6] mb-8"></div>
           <p className="text-lg text-[#A1A1AA] leading-relaxed max-w-lg mb-8">
-            Security doesn&apos;t happen in a single repository. CodeSentinel supports organization wide batch analysis, letting you remediate vulnerabilities across your entire microservice architecture simultaneously.
+            Security doesn&apos;t happen in a single repository. CodeSentinel supports organization wide batch analysis, for up to 10 non-archived repositories per request.
           </p>
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-md p-4 max-w-md font-mono text-sm">
             <span className="text-[#71717A]">$</span> <span className="text-[#FAFAFA]">codesentinel analyze</span> <span className="text-[#8B5CF6]">github.com/udarshcodes/*</span>

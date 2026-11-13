@@ -54,6 +54,7 @@ export function usePipeline(taskId) {
             patches: stateData.pipeline_state?.patches || [],
             validation_results: stateData.pipeline_state?.validation_results || [],
             security_verification: stateData.pipeline_state?.security_verification,
+            security_verified: stateData.pipeline_state?.security_verified === true,
             retry_count: stateData.pipeline_state?.retry_count || 0,
             security_retry_state: stateData.pipeline_state?.security_retry_state || 0,
             last_completed_node: stateData.pipeline_state?.last_completed_node,
@@ -188,7 +189,7 @@ export function usePipeline(taskId) {
             event: parsed.event,
             status: parsed.status, // authoritative lifecycle status
             timestamp: parsed.timestamp,
-            data: parsed.data || {}
+            data: parsed.data || parsed
           };
           
           if (normalizedEvent.sequence !== undefined) {
@@ -218,6 +219,10 @@ export function usePipeline(taskId) {
                 type: 'AGENT_COMPLETE', 
                 payload: { ...evt.data, status: evt.status }
             });
+            const headers = {};
+            const viewToken = credentialStore.getViewToken(taskId);
+            if (viewToken) headers.Authorization = `Bearer ${viewToken}`;
+            fetchState(import.meta.env.VITE_API_URL || '', headers);
         });
       });
 
@@ -316,12 +321,16 @@ export function usePipeline(taskId) {
             fetchState(apiUrl, headers);
             return;
           }
-          dispatch({ type: 'SET_STATUS', payload: { status: evt.status } });
           dispatch({ type: 'SET_PR', payload: {
               confidence: evt.data.confidence_score,
               pr_url: evt.data.pr_url,
               pr_error: evt.data.pr_error
           } });
+          dispatch({ type: 'SET_STATUS', payload: { status: evt.status } });
+          const headers = {};
+          const viewToken = credentialStore.getViewToken(taskId);
+          if (viewToken) headers.Authorization = `Bearer ${viewToken}`;
+          fetchState(import.meta.env.VITE_API_URL || '', headers);
           es.close();
         });
       });

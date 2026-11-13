@@ -1,6 +1,6 @@
 import { ArrowRight, Loader2 } from 'lucide-react'
 
-export default function RepositoryAnalyzer({ repoUrlInput, setRepoUrlInput, startAnalysis, isSubmitting }) {
+export default function RepositoryAnalyzer({ repoUrlInput, setRepoUrlInput, startAnalysis, isSubmitting, errorMsg }) {
   return (
     <section id="repo-analyzer" className="w-full py-16 bg-[#050505] border-b border-[#242428] flex justify-center">
       <div className="max-w-[1400px] mx-auto px-6 w-full flex flex-col items-center">
@@ -32,6 +32,7 @@ export default function RepositoryAnalyzer({ repoUrlInput, setRepoUrlInput, star
           </button>
 
         </div>
+        {errorMsg && <p role="alert" className="mt-4 text-red-400 text-sm">{errorMsg}</p>}
         <p className="mt-4 text-[#71717A] text-xs font-mono">Accepts public GitHub repository URLs.</p>
       </div>
     </section>

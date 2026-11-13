@@ -44,6 +44,31 @@ describe('usePipeline SSE Race Conditions', () => {
     return call ? call[1] : null;
   };
 
+  it('reads the flat backend SSE payload and hydrates persisted findings', async () => {
+    const dispatch = vi.fn();
+    const wrapper = ({ children }) => (
+      <PipelineContext.Provider value={{ state: { status: 'RUNNING' }, dispatch }}>
+        {children}
+      </PipelineContext.Provider>
+    );
+    const { unmount } = renderHook(() => usePipeline('task-flat'), { wrapper });
+    await act(async () => { await new Promise(r => setTimeout(r, 10)); });
+    global.fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+      task_id: 'task-flat', status: 'RUNNING',
+      pipeline_state: { static_findings: [{ file: 'app.py', issue: 'Unsafe query' }] }
+    }) });
+    await act(async () => {
+      getEventListener('agent_complete')({ data: JSON.stringify({
+        sequence: 1, status: 'RUNNING', agent: 'static_analysis', metadata: { vulnerability_count: 1 }
+      }) });
+    });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'AGENT_COMPLETE', payload: expect.objectContaining({ agent: 'static_analysis' }) });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'HYDRATE_STATE', payload: expect.objectContaining({
+      static_findings: [{ file: 'app.py', issue: 'Unsafe query' }]
+    }) });
+    unmount();
+  });
+
   it('Exact Stale SSE Race: ignores approval_resolved event if cycle changed', async () => {
     const dispatch = vi.fn();
     let state = {

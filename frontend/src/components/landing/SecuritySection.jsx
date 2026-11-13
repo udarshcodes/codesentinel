@@ -11,7 +11,7 @@ export default function SecuritySection() {
           </h2>
           <div className="w-12 h-1 bg-[#8B5CF6] mb-8"></div>
           <p className="text-lg text-[#A1A1AA] leading-relaxed max-w-lg mb-8">
-            Large Language Models hallucinate. CodeSentinel does not guess. Every generated patch is built, tested, and rescanned before it ever reaches a Pull Request.
+            CodeSentinel attempts build, test, and static analysis checks on generated changes. Coverage depends on available tools and project configuration; incomplete verification requires human review.
           </p>
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4 text-[#A1A1AA] font-mono text-sm">

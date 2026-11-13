@@ -87,7 +87,7 @@ export default function Hero() {
           className="text-muted-foreground/60 text-xs font-light mt-4 md:mt-6 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-forwards"
           style={{ animationDelay: '850ms' }}
         >
-          26 ANALYSIS MODULES • 8 SUPPORTED LANGUAGES • RAG FIX MEMORY • GITHUB PRs
+          SAST & HEURISTIC CHECKS • 8 SUPPORTED LANGUAGES • RAG FIX MEMORY • GITHUB PRs
         </p>
       </div>
     </section>

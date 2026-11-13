@@ -28,8 +28,6 @@ export default function DiffViewer({ state }) {
     return Object.values(groups)
   }, [state.patches])
 
-  if (fileGroups.length === 0) return null
-
   const { totalGenerated, totalApplied, totalRejected } = useMemo(() => {
     let g = 0, a = 0, r = 0;
     fileGroups.forEach(fg => {
@@ -39,6 +37,8 @@ export default function DiffViewer({ state }) {
     });
     return { totalGenerated: g, totalApplied: a, totalRejected: r };
   }, [fileGroups]);
+
+  if (fileGroups.length === 0) return null
 
   const acceptanceRate = totalGenerated > 0 ? ((totalApplied / totalGenerated) * 100).toFixed(1) : 0;
 

@@ -17,6 +17,7 @@ const initialState = {
   patches: [],
   validation_results: [],
   security_verification: null,
+  security_verified: false,
   confidence: null,
   approval_state: null,
   approval_decision: null,

@@ -30,7 +30,7 @@ export default function GithubIntegration() {
               <Check className="w-4 h-4 text-[#22C55E]" /> Validated code patch
             </div>
             <div className="flex items-center gap-3 text-[#A1A1AA] font-mono text-sm">
-              <Check className="w-4 h-4 text-[#22C55E]" /> Green CI/CD checks
+              <Check className="w-4 h-4 text-[#22C55E]" /> Build and test results
             </div>
             <div className="flex items-center gap-3 text-[#A1A1AA] font-mono text-sm">
               <Check className="w-4 h-4 text-[#22C55E]" /> High confidence score

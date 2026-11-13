@@ -1,12 +1,13 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import ConfidenceScore from './ConfidenceScore'
+import { credentialStore } from '../../services/credentialStore'
 import { CheckCircle2, XCircle, GitPullRequest, AlertTriangle, ShieldCheck, Beaker, RefreshCw } from 'lucide-react'
 
 export default function PRSummary({ state }) {
-  if (!state) return null;
-  const { status, pr_url, pr_error, pipeline_error, confidence_score, task_id } = state;
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryError, setRetryError] = useState('');
+  if (!state) return null;
+  const { status, pr_url, pr_error, pipeline_error, confidence_score = state.confidence, task_id } = state;
 
   if (!pr_url && !pr_error && !confidence_score && status !== 'FAILED' && status !== 'COMPLETED' && status !== 'NEEDS_REVIEW') {
     return null;
@@ -64,14 +65,11 @@ export default function PRSummary({ state }) {
     setRetryError('');
     try {
       // The API base URL logic
-      let apiUrl = window.location.origin;
-      if (apiUrl.includes('localhost:') || apiUrl.includes('127.0.0.1:')) {
-        apiUrl = 'http://localhost:8000';
-      }
+      const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/v1/job/${task_id}/retry-pr`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${sessionStorage.getItem('view_token')}`
+          'Authorization': `Bearer ${credentialStore.getViewToken(task_id)}`
         }
       });
       if (!res.ok) {

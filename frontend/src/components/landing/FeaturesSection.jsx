@@ -37,13 +37,13 @@ export default function FeaturesSection() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-xl p-8">
-            <h4 className="text-[#FAFAFA] font-bold mb-3">21 Analysis Modules</h4>
+            <h4 className="text-[#FAFAFA] font-bold mb-3">Security & Quality Checks</h4>
             <p className="text-[#71717A] text-sm leading-relaxed">Integrated support for industry standard SAST and dependency scanners, orchestrated into a single normalized pipeline.</p>
           </div>
           
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-xl p-8">
             <h4 className="text-[#FAFAFA] font-bold mb-3">RAG Fix Memory</h4>
-            <p className="text-[#71717A] text-sm leading-relaxed">Retrieval Augmented Generation learns from your previously merged PRs to suggest patches that match your team&apos;s exact style.</p>
+            <p className="text-[#71717A] text-sm leading-relaxed">Retrieval Augmented Generation uses available repository context and stored validated fixes. Memory availability depends on worker storage.</p>
           </div>
           
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-xl p-8">
@@ -57,7 +57,7 @@ export default function FeaturesSection() {
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-xl p-8 lg:col-span-2 flex flex-col md:flex-row gap-8 items-center justify-between">
             <div>
               <h4 className="text-[#FAFAFA] font-bold mb-3">Confidence Scoring & Rescanning</h4>
-              <p className="text-[#71717A] text-sm leading-relaxed max-w-md">Every generated patch is subjected to a targeted security rescan and build validation. Fixes are scored deterministically based on test passing rates and vulnerability elimination before a PR is ever opened.</p>
+              <p className="text-[#71717A] text-sm leading-relaxed max-w-md">The pipeline attempts build, test, and security checks. Failed or incomplete verification can produce a draft pull request requiring review.</p>
             </div>
             <div className="shrink-0 text-5xl font-bold text-[#FAFAFA]">
               98<span className="text-[#8B5CF6]">.4%</span>
