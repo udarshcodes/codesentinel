@@ -43,8 +43,8 @@ jobs:
           appSourcePath: ${{ github.workspace }}/backend
           dockerfilePath: Dockerfile
           registryUrl: ghcr.io
-          registryUsername: ${{ secrets.CODESENTINELAPI_REGISTRY_USERNAME }}
-          registryPassword: ${{ secrets.CODESENTINELAPI_REGISTRY_PASSWORD }}
+          registryUsername: ${{ github.actor }}
+          registryPassword: ${{ secrets.GITHUB_TOKEN }}
           containerAppName: codesentinel-api
           resourceGroup: CodeSentinel-RG
           imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.sha }}

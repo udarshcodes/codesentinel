@@ -8,6 +8,7 @@ class PipelineState(TypedDict, total=False):
     knowledge_graph: dict
     dependency_findings: list
     static_findings: list
+    scanners_failed: NotRequired[bool]
     investigated_issues: list
     repair_plan: list
     patches: list

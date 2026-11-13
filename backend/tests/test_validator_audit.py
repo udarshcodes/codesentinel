@@ -24,3 +24,16 @@ async def test_missing_patched_file_does_not_pass_validation(tmp_path):
     result = await agent_validator({"repo_local_path": str(tmp_path),
                                     "patches": [{"file": "missing.py", "applied": True}]})
     assert result["validation_results"][-1]["passed"] is False
+
+
+@pytest.mark.asyncio
+async def test_python_syntax_validation_uses_container_interpreter(tmp_path):
+    from tools.sandbox_runner import is_docker_available
+    if not is_docker_available():
+        pytest.skip("Docker is required for real interpreter validation")
+    (tmp_path / "app.py").write_text("value = 42\n")
+    result = await agent_validator({"repo_local_path": str(tmp_path),
+                                    "patches": [{"file": "app.py", "applied": True}]})
+    validation = result["validation_results"][-1]
+    assert "[PASSED] app.py - syntax OK" in validation["logs"]
+    assert validation["passed"] is True

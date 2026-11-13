@@ -55,6 +55,9 @@ def postgres_db(request):
         
     orig_db_url = os.environ.get("DATABASE_URL")
     orig_env = os.environ.get("ENVIRONMENT")
+    import api.db as database
+    original_pool = database._pg_pool
+    database._pg_pool = None
     
     os.environ["DATABASE_URL"] = db_url
     os.environ["ENVIRONMENT"] = "production"
@@ -62,6 +65,9 @@ def postgres_db(request):
     try:
         yield db_url
     finally:
+        if database._pg_pool is not None:
+            database._pg_pool.closeall()
+        database._pg_pool = original_pool
         if orig_db_url is not None:
             os.environ["DATABASE_URL"] = orig_db_url
         elif "DATABASE_URL" in os.environ:

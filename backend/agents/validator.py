@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import shlex
 from models.pipeline_state import PipelineState
@@ -80,7 +79,7 @@ async def agent_validator(state: PipelineState):
 
         # Python files: check syntax with py_compile
         if target_file.endswith(".py"):
-            res = run_sandboxed_subprocess([sys.executable, "-m", "py_compile", target_file], cwd=repo_local_path, timeout=30)
+            res = run_sandboxed_subprocess(["python", "-m", "py_compile", target_file], cwd=repo_local_path, timeout=30)
             if res["status"] == "SUCCESS":
                 logs_list.append(f"[PASSED] {target_file} - syntax OK")
             else:
@@ -115,9 +114,9 @@ async def agent_validator(state: PipelineState):
             else:
                 tsconfig_path = os.path.join(repo_local_path, "tsconfig.json")
                 if os.path.exists(tsconfig_path):
-                    tsc_cmd = [tsc_bin, "--noEmit", "--skipLibCheck", "--project", "tsconfig.json"]
+                    tsc_cmd = ["./node_modules/.bin/tsc", "--noEmit", "--skipLibCheck", "--project", "tsconfig.json"]
                 else:
-                    tsc_cmd = [tsc_bin, "--noEmit", "--allowJs", "--checkJs", "--skipLibCheck", target_file]
+                    tsc_cmd = ["./node_modules/.bin/tsc", "--noEmit", "--allowJs", "--checkJs", "--skipLibCheck", target_file]
 
                 res = run_sandboxed_subprocess(tsc_cmd, cwd=repo_local_path, timeout=60)
                 if res["status"] == "SUCCESS":
@@ -236,7 +235,7 @@ async def agent_validator(state: PipelineState):
 
     if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
         res = run_sandboxed_subprocess(
-            [sys.executable, "-m", "build"],
+            ["python", "-m", "build"],
             cwd=repo_local_path,
             timeout=60
         )

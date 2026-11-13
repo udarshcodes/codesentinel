@@ -26,6 +26,8 @@ async def batch_query_osv(packages: list[dict]) -> dict:
             )
             if r.status_code == 200:
                 results = r.json().get("results", [])
+                if len(results) != len(packages):
+                    return None
                 # The length of results from querybatch matches the length of queries
                 return {
                     packages[i]["name"]: results[i].get("vulns", [])
@@ -35,7 +37,7 @@ async def batch_query_osv(packages: list[dict]) -> dict:
         print(f"[OSVClient] Error making batch request: {e}")
         return None
 
-    return {}
+    return None
 
 
 async def fetch_vuln_details(vuln_ids: list[str]) -> dict:

@@ -78,12 +78,14 @@ async def test_static_analysis_sandboxed_integration():
         state["repo_local_path"] = repo_dir
 
         with patch("agents.static_analysis.run_sandboxed_subprocess") as mock_run:
-            mock_run.return_value = {
-                "status": "SUCCESS",
-                "stdout": "[]",
-                "stderr": "",
-                "returncode": 0
-            }
+            def scanner_report(cmd, **kwargs):
+                return {
+                    "status": "SUCCESS",
+                    "stdout": '{"results": []}' if cmd[0] in ("semgrep", "bandit") else "[]",
+                    "stderr": "",
+                    "returncode": 0
+                }
+            mock_run.side_effect = scanner_report
             
             result = await agent_static_analysis(state)
             

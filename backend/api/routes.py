@@ -54,6 +54,10 @@ async def start_analysis(
     if repo_url.startswith("github.com/"):
         repo_url = "https://" + repo_url
         body.repo_url = repo_url
+    if repo_url.endswith("/*") and not re.fullmatch(
+        r"https://github\.com/[a-zA-Z0-9_.-]+/\*", repo_url
+    ):
+        raise HTTPException(400, "Invalid GitHub organization/user wildcard URL.")
     if not repo_url.endswith("/*"):
         if not re.match(
             r"^https://github\.com/[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(?:\.git)?$", repo_url
@@ -184,12 +188,11 @@ async def trigger_github_worker(
     if env_backend == "http://codesentinel-api":
         env_backend = None
 
-    if dynamic_backend_url:
-        backend_url = dynamic_backend_url
-    else:
-        # Fallback for local or production background loop
-        fallback = "https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io" if os.getenv("ENVIRONMENT") == "production" else "http://codesentinel-api"
-        backend_url = env_backend or fallback
+    # Production callback destinations must not come from an untrusted Host or
+    # forwarded header. Prefer operator configuration; use the known deployment
+    # fallback in production and request discovery only for local development.
+    fallback = "https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io" if os.getenv("ENVIRONMENT") == "production" else (dynamic_backend_url or "http://codesentinel-api")
+    backend_url = env_backend or fallback
 
     if not github_token:
         print("Warning: No GITHUB_TOKEN set. Cannot trigger worker action.")

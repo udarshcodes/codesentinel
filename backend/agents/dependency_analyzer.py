@@ -402,23 +402,9 @@ async def agent_dependency_analyzer(state: PipelineState):
         if not cves:
             continue
             
-        # Verify if the dependency is actually used in the codebase
-        dep_name = dep["name"]
-        try:
-            # We use ripgrep if available, or fallback to python search if not.
-            # But the prompt says "grep the codebase for actual usage".
-            # We'll use subprocess with grep or ripgrep.
-            cmd = ["git", "grep", "-I", "-l", dep_name]
-            result = run_sandboxed_subprocess(cmd, repo_path=repo_local_path, )
-            if not result.get("stdout", "").strip():
-                # Try fallback just in case git grep fails (e.g., not a git repo or no commits)
-                # If not used, skip reporting this CVE to avoid false positives
-                print(f"[DependencyAnalyzer] Vulnerable dependency {dep_name} is NOT used in the codebase. Skipping CVE report.")
-                continue
-        except Exception as e:
-            print(f"[DependencyAnalyzer] Error verifying usage of {dep_name}: {e}")
-
-
+        # A vulnerable manifest dependency is reportable even without a matching
+        # source import. Imports may use another name or load indirectly, and a
+        # failed git grep (e.g. sandbox ownership) is not evidence of non-use.
         highest_severity = "LOW"
         cve_ids = []
         for vuln in cves:

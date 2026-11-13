@@ -11,6 +11,14 @@ from tools.sandbox_runner import run_sandboxed_subprocess
 from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists
 
 
+def _scanner_execution_failed(result):
+    # A scanner's nonzero exit may mean findings, but failure without a report
+    # must never be interpreted as an empty, clean scan.
+    return result.get("status") in ("ERROR", "TIMEOUT", "UNAVAILABLE") or (
+        result.get("status") == "FAILED" and not result.get("stdout", "").strip()
+    )
+
+
 async def agent_static_analysis(state: PipelineState):
     repo_local_path = state.get("repo_local_path", "")
     findings = []
@@ -26,7 +34,7 @@ async def agent_static_analysis(state: PipelineState):
             repo_path=repo_local_path,
             timeout=120,
         )
-        if result.get("status") in ("ERROR", "TIMEOUT"):
+        if _scanner_execution_failed(result):
             scanners_failed = True
             print(f"Semgrep execution failed: {result.get('stderr')}")
         elif result.get("stdout"):
@@ -56,7 +64,7 @@ async def agent_static_analysis(state: PipelineState):
             repo_path=repo_local_path,
             timeout=120,
         )
-        if result.get("status") in ("ERROR", "TIMEOUT"):
+        if _scanner_execution_failed(result):
             scanners_failed = True
             print(f"Bandit execution failed: {result.get('stderr')}")
         elif result.get("stdout"):
@@ -96,7 +104,7 @@ async def agent_static_analysis(state: PipelineState):
             repo_path=repo_local_path,
             timeout=120,
         )
-        if result.get("status") in ("ERROR", "TIMEOUT"):
+        if _scanner_execution_failed(result):
             scanners_failed = True
             print(f"ESLint execution failed: {result.get('stderr')}")
         elif result.get("stdout"):
@@ -151,7 +159,7 @@ async def agent_static_analysis(state: PipelineState):
             repo_path=repo_local_path,
             timeout=120,
         )
-        if result.get("status") in ("ERROR", "TIMEOUT"):
+        if _scanner_execution_failed(result):
             scanners_failed = True
             print(f"Pylint execution failed: {result.get('stderr')}")
         elif result.get("stdout"):
@@ -186,7 +194,7 @@ async def agent_static_analysis(state: PipelineState):
             repo_path=repo_local_path,
             timeout=120,
         )
-        if result.get("status") in ("ERROR", "TIMEOUT"):
+        if _scanner_execution_failed(result):
             scanners_failed = True
             print(f"Flake8 execution failed: {result.get('stderr')}")
         elif result.get("stdout"):
@@ -214,7 +222,7 @@ async def agent_static_analysis(state: PipelineState):
             repo_path=repo_local_path,
             timeout=300,
         )
-        if result.get("status") in ("ERROR", "TIMEOUT"):
+        if _scanner_execution_failed(result):
             scanners_failed = True
             print(f"SonarQube execution failed: {result.get('stderr')}")
         else:
@@ -270,7 +278,7 @@ async def agent_static_analysis(state: PipelineState):
                 repo_path=repo_local_path,
                 timeout=120,
             )
-            if result.get("status") in ("ERROR", "TIMEOUT"):
+            if _scanner_execution_failed(result):
                 scanners_failed = True
                 print(f"Go vet execution failed: {result.get('stderr')}")
             elif result.get("stderr"):
@@ -312,7 +320,7 @@ async def agent_static_analysis(state: PipelineState):
                 repo_path=repo_local_path,
                 timeout=180,
             )
-            if result.get("status") in ("ERROR", "TIMEOUT"):
+            if _scanner_execution_failed(result):
                 scanners_failed = True
                 print(f"Cargo clippy execution failed: {result.get('stderr')}")
             elif result.get("stdout"):
@@ -1472,7 +1480,6 @@ async def agent_static_analysis(state: PipelineState):
 
     # Deduplicate findings by file and line
     deduped_findings = []
-    scanners_failed = False
     seen = set()
     for f in findings:
         key = f"{f['file']}:{f['line']}:{f['tool']}"
@@ -1480,10 +1487,7 @@ async def agent_static_analysis(state: PipelineState):
             seen.add(key)
             deduped_findings.append(f)
 
-    if scanners_failed:
-        raise RuntimeError("Static analysis tools failed or were unavailable (Failing closed).")
-
-    return {"static_findings": deduped_findings, "scanners_failed": False}
+    return {"static_findings": deduped_findings, "scanners_failed": scanners_failed}
 
 
 def _is_inside_with(tree, target_lineno: int) -> bool:

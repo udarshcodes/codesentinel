@@ -2,7 +2,9 @@ import os
 import pytest
 from api.db import get_connection, DBConnection, DBCursor
 
-def test_db_connection_switching():
+def test_db_connection_switching(monkeypatch):
+    # Do not leave a pool backed by mocked connections for real integration tests.
+    monkeypatch.setattr("api.db._pg_pool", None)
     # Store originals
     orig_db_url = os.environ.get("DATABASE_URL")
     
