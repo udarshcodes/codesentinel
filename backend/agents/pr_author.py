@@ -1,9 +1,7 @@
 import os
-import json
 from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
-from tools.prompt_cache import PR_AUTHOR_SYSTEM
 from tools.confidence_calc import calculate_pipeline_confidence
 from tools.subprocess_runner import run_isolated_subprocess
 
@@ -11,7 +9,6 @@ from tools.subprocess_runner import run_isolated_subprocess
 async def agent_pr_author(state: PipelineState):
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
     repo_url = state.get("repo_url", "")
-    repair_plan = state.get("repair_plan", [])
     security_verified = state.get("security_verified", False)
 
     if state.get("approval_decision") in ("rejected", "EXPIRED"):
@@ -19,13 +16,6 @@ async def agent_pr_author(state: PipelineState):
             "pr_url": "",
             "confidence_score": _calculate_confidence(state, security_verified),
             "pr_error": f"Repair plan was {state.get('approval_decision')}.",
-        }
-
-    if not GROQ_API_KEYS:
-        return {
-            "pr_url": "",
-            "confidence_score": 0.0,
-            "pr_error": "No GROQ_API_KEY set.",
         }
 
     patches = state.get("patches", [])
@@ -42,45 +32,26 @@ async def agent_pr_author(state: PipelineState):
             "pr_error": error_msg,
         }
 
+    if not any(patch.get("applied") and patch.get("file") for patch in patches):
+        return {
+            "pr_url": "",
+            "pr_error": "No valid code changes were generated: all patch attempts were rejected.",
+            "confidence_score": _calculate_confidence(state, security_verified),
+        }
+
     # Determine state: was validation or security failed?
     latest = state.get("validation_results", [])[-1] if state.get("validation_results") else {}
-    validation_failed = latest.get("build_failed", False) or latest.get("suite_failed", False)
+    validation_failed = latest.get("passed") is not True or latest.get("build_failed", False) or latest.get("suite_failed", False)
     failed_ids = latest.get("failed_issue_ids", [])
     if failed_ids and len(failed_ids) >= len(patches):
         validation_failed = True
 
-    if validation_failed or not security_verified:
+    if validation_failed or not security_verified or state.get("scanners_failed"):
         # State machine dictates we NEVER create a successful PR here.
         # It goes to NEEDS_REVIEW / DRAFT
         needs_review = True
     else:
         needs_review = False
-
-    # Tier 1 — PR title/description is simple text generation, not reasoning.
-    prompt = f"""{PR_AUTHOR_SYSTEM}
-
-Write a professional GitHub Pull Request title and description for these applied fixes:
-{json.dumps(repair_plan)}
-Return JSON: {{"title": "...", "description": "..."}}"""
-
-    try:
-        pr_data = await invoke_llm(
-            prompt,
-            agent_name="pr_author",
-            task_class="LIGHT",
-            expect_json=True,
-        )
-        if pr_data.get("error"):
-            pr_data = {
-                "title": "Automated Security Fixes",
-                "description": "Fixed vulnerabilities.",
-            }
-    except Exception as e:
-        print(f"Error calling LLM for PR details: {e}")
-        pr_data = {
-            "title": "Automated Security Fixes",
-            "description": "Fixed vulnerabilities.",
-        }
 
     pr_url = ""
     pr_error = ""
@@ -181,8 +152,15 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                     "pr_error": pr_error,
                 }
 
-            # 5. Commit and push from trusted workspace
-            title = pr_data.get("title", "Automated Security Fixes")
+            if not all_modified:
+                shutil.rmtree(trusted_workspace, ignore_errors=True)
+                return {"pr_url": "", "pr_error": "No valid code changes were generated.",
+                        "confidence_score": _calculate_confidence(state, security_verified)}
+
+            diff_result = run_isolated_subprocess(["git", "diff", "HEAD", "--stat"], cwd=trusted_workspace)
+            title, desc = describe_material_changes(all_modified, diff_result.get("stdout", ""), needs_review)
+            if state.get("scanner_notes"):
+                desc += "\n\n### Scan coverage\n" + "\n".join(f"- {note}" for note in state["scanner_notes"])
 
             if needs_review:
                 title = f"[NEEDS REVIEW] {title}"
@@ -216,30 +194,11 @@ Return JSON: {{"title": "...", "description": "..."}}"""
                 }
 
             # 4. Open PR
-            desc = pr_data.get("description", "Fixed vulnerabilities.")
-            if isinstance(desc, list):
-                desc = "- " + "\n- ".join(desc) if desc else "Fixed vulnerabilities."
-            elif not isinstance(desc, str):
-                desc = str(desc)
-
-            if needs_review:
-                desc = (
-                    "### ⚠️ [NEEDS REVIEW] Automated Validation or Security Checks Failed\n"
-                    "The unit tests, syntax verification, or security checks did not pass after maximum retries. "
-                    "This PR is submitted as a DRAFT for manual developer review and remediation.\n\n"
-                    + desc
-                )
-
             if state.get("security_retry_context"):
                 unresolved = state.get("security_retry_context", [])
                 desc += "\n\n### ⚠️ Unresolved Security Risks\nThe following security issues could not be automatically verified/repaired after retries:\n"
                 for u in unresolved:
                     desc += f"- **{u.get('severity', 'Risk')}**: {u.get('issue', str(u))}\n"
-
-            desc += "\n\n### 📦 Modified Files\n"
-            for patch in patches:
-                if patch.get("applied") and patch.get("file"):
-                    desc += f"- `{patch['file']}`\n"
 
             pr_url = open_pull_request(
                 repo_name=github_data["repo_name"],
@@ -279,3 +238,15 @@ def _calculate_confidence(state, security_verified):
     return calculate_pipeline_confidence(
         state, security_clean=security_verified, chroma_score=existing_chroma
     )
+
+
+def describe_material_changes(files, diff_stat, needs_review):
+    """Describe Git-observed changes rather than the model's intended plan."""
+    paths = sorted(set(files))
+    title = f"Automated changes to {paths[0]}" if len(paths) == 1 else f"Automated changes to {len(paths)} files"
+    description = "This PR contains code changes. Review the diff to assess each proposed repair."
+    if needs_review:
+        description += "\n\nDraft: validation or security verification did not establish that these changes are safe to merge. Unresolved findings may remain."
+    description += "\n\n### Modified files\n" + "\n".join(f"- `{path}`" for path in paths)
+    description += "\n\n### Git diff summary\n```text\n" + diff_stat.strip() + "\n```"
+    return title, description

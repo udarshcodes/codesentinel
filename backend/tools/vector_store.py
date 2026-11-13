@@ -11,6 +11,17 @@ client = None
 fixes_collection = None
 
 
+def close_vector_store():
+    """Release SQLite handles before deleting a workspace or shutting down."""
+    global client, fixes_collection
+    if client is not None:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
+    client = None
+    fixes_collection = None
+
+
 def _get_collections():
     global client, fixes_collection
     if client is None:

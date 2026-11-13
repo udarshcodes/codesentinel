@@ -62,19 +62,26 @@ async def agent_validator(state: PipelineState):
     all_passed = True
     logs_list = []
     failed_issue_ids = []
+    passed_files = set()
 
-    for patch in patches:
+    # Earlier rejected attempts must not invalidate a later successful repair.
+    latest_attempts = {}
+    for index, patch in enumerate(patches):
+        latest_attempts[patch.get("patch_id", (patch.get("file"), index))] = patch
+    for patch in latest_attempts.values():
         logs_len_before = len(logs_list)
         target_file = patch.get("file", "")
 
         if not safe_path_exists(repo_local_path, target_file):
             logs_list.append(f"[FAILED] {target_file} - file not found")
             all_passed = False
+            failed_issue_ids.append(patch.get("patch_id"))
             continue
 
         if not patch.get("applied", True):
             logs_list.append(f"[FAILED] {target_file} - patch failed to apply, file is unmodified")
             all_passed = False
+            failed_issue_ids.append(patch.get("patch_id"))
             continue
 
         # Python files: check syntax with py_compile
@@ -192,8 +199,13 @@ async def agent_validator(state: PipelineState):
         else:
             logs_list.append(f"[SKIPPED] {target_file} - no validator for this file type")
 
-        if any("[FAILED]" in log or "[ERROR]" in log or "[TIMEOUT]" in log for log in logs_list[logs_len_before:]):
+        file_logs = logs_list[logs_len_before:]
+        if any(any(f"[{status}]" in log for status in ("FAILED", "ERROR", "TIMEOUT", "UNAVAILABLE", "SKIPPED")) for log in file_logs):
             failed_issue_ids.append(patch.get("patch_id"))
+            passed_files.discard(target_file)
+            all_passed = False
+        elif any("[PASSED]" in log for log in file_logs):
+            passed_files.add(target_file)
 
     # Build verification stage
     build_passed = True
@@ -233,7 +245,21 @@ async def agent_validator(state: PipelineState):
             build_passed = False
             all_passed = False
 
-    if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
+    # A dependency-only pyproject describes an app, not necessarily a package.
+    python_package = safe_path_exists(repo_local_path, "setup.py")
+    if safe_path_exists(repo_local_path, "pyproject.toml"):
+        try:
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+            project_config = tomllib.loads(safe_read_text(repo_local_path, "pyproject.toml"))
+            python_package = python_package or "build-system" in project_config
+        except Exception as error:
+            logs_list.append(f"[ERROR] Invalid pyproject.toml: {error}")
+            build_passed = False
+            all_passed = False
+    if python_package:
         res = run_sandboxed_subprocess(
             ["python", "-m", "build"],
             cwd=repo_local_path,
@@ -321,9 +347,8 @@ async def agent_validator(state: PipelineState):
                 test_logs += f"\n[{test_framework} Results]\n{res['stdout'][:500] if res['stdout'] else res['stderr'][:500]}\n"
                 
                 if res["status"] != "SUCCESS":
-                    if "not found" not in test_logs.lower():
-                        suite_failed = True
-                        all_passed = False
+                    suite_failed = True
+                    all_passed = False
                 tests_run += 1
             else:
                 test_logs += f"\nTest command '{test_framework}' was rejected by the command registry for security reasons.\n"
@@ -413,8 +438,8 @@ async def agent_validator(state: PipelineState):
                 unresolvable_fixes.append(patches[-1].get("patch_id", 0))
 
     new_validation_results = list(validation_results)
-    files_validated = len(patches)
-    files_passed = sum(1 for log_line in logs_list if "[PASSED]" in log_line)
+    files_validated = len({p.get("file") for p in latest_attempts.values()})
+    files_passed = len(passed_files)
 
     last_patch_id = patches[-1].get("patch_id", 0) if patches else 0
 

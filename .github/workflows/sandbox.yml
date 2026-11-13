@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'sandbox/**'
+      - 'backend/tests/test_sandbox.py'
       - '.github/workflows/sandbox.yml'
   workflow_dispatch:
 

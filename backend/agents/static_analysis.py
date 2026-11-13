@@ -23,6 +23,7 @@ async def agent_static_analysis(state: PipelineState):
     repo_local_path = state.get("repo_local_path", "")
     findings = []
     scanners_failed = False
+    scanner_notes = ["Semgrep uses the bundled baseline rules; this is not exhaustive security coverage."]
 
     if not repo_local_path or not os.path.exists(repo_local_path):
         return {"static_findings": findings, "scanners_failed": scanners_failed}
@@ -30,7 +31,7 @@ async def agent_static_analysis(state: PipelineState):
     # 1. Semgrep
     try:
         result = run_sandboxed_subprocess(
-            ["semgrep", "--config=auto", "--json", "."],
+            ["semgrep", "--config=/opt/codesentinel/rules", "--metrics=off", "--disable-version-check", "--json", "."],
             repo_path=repo_local_path,
             timeout=120,
         )
@@ -39,6 +40,8 @@ async def agent_static_analysis(state: PipelineState):
             print(f"Semgrep execution failed: {result.get('stderr')}")
         elif result.get("stdout"):
             data = json.loads(result["stdout"])
+            if data.get("errors"):
+                scanners_failed = True
             for hit in data.get("results", []):
                 findings.append(
                     {
@@ -96,60 +99,67 @@ async def agent_static_analysis(state: PipelineState):
         scanners_failed = True
         print(f"Bandit execution skipped or failed: {e}")
 
-    # 3. ESLint
-    try:
-        # ESLint might return non-zero exit code if it finds errors, but it still prints json to stdout
-        result = run_sandboxed_subprocess(
-            ["eslint", ".", "--format", "json"],
-            repo_path=repo_local_path,
-            timeout=120,
-        )
-        if _scanner_execution_failed(result):
-            scanners_failed = True
-            print(f"ESLint execution failed: {result.get('stderr')}")
-        elif result.get("stdout"):
-            try:
-                start_idx = result["stdout"].find("[")
-                json_str = (
-                    result["stdout"][start_idx:] if start_idx != -1 else result["stdout"]
-                )
-                data = json.loads(json_str)
-                for file_result in data:
-                    file_path = file_result.get("filePath", "")
-                    if os.path.isabs(file_path):
-                        try:
-                            file_path = os.path.relpath(
-                                file_path, repo_local_path
-                            ).replace("\\", "/")
-                        except ValueError:
-                            pass
-                    if file_path.startswith("./") or file_path.startswith(".\\"):
-                        file_path = file_path[2:]
+    # ESLint is inapplicable to repositories with no JavaScript sources.
+    has_javascript = any(
+        file.endswith((".js", ".jsx", ".mjs", ".cjs"))
+        for _, _, files, _ in safe_walk(repo_local_path) for file in files
+    )
+    if has_javascript:
+        # 3. ESLint
+        try:
+            # ESLint might return non-zero exit code if it finds errors, but it still prints json to stdout
+            result = run_sandboxed_subprocess(
+                ["eslint", ".", "--format", "json"],
+                repo_path=repo_local_path,
+                timeout=120,
+            )
+            if _scanner_execution_failed(result):
+                scanners_failed = True
+                print(f"ESLint execution failed: {result.get('stderr')}")
+            elif result.get("stdout"):
+                try:
+                    start_idx = result["stdout"].find("[")
+                    json_str = (
+                        result["stdout"][start_idx:] if start_idx != -1 else result["stdout"]
+                    )
+                    data = json.loads(json_str)
+                    for file_result in data:
+                        file_path = file_result.get("filePath", "")
+                        if os.path.isabs(file_path):
+                            try:
+                                file_path = os.path.relpath(
+                                    file_path, repo_local_path
+                                ).replace("\\", "/")
+                            except ValueError:
+                                pass
+                        if file_path.startswith("./") or file_path.startswith(".\\"):
+                            file_path = file_path[2:]
 
-                    for msg in file_result.get("messages", []):
-                        findings.append(
-                            {
-                                "file": file_path,
-                                "issue": msg.get("message", "ESLint issue"),
-                                "tool": "eslint",
-                                "severity": (
-                                    "HIGH" if msg.get("severity") == 2 else "MEDIUM"
-                                ),
-                                "line": msg.get("line", 1),
-                                "category": "quality",
-                            }
-                        )
-            except Exception:
-                pass
-    except Exception as e:
-        scanners_failed = True
-        print(f"ESLint execution skipped or failed: {e}")
+                        for msg in file_result.get("messages", []):
+                            findings.append(
+                                {
+                                    "file": file_path,
+                                    "issue": msg.get("message", "ESLint issue"),
+                                    "tool": "eslint",
+                                    "severity": (
+                                        "HIGH" if msg.get("severity") == 2 else "MEDIUM"
+                                    ),
+                                    "line": msg.get("line", 1),
+                                    "category": "quality",
+                                }
+                            )
+                except Exception:
+                    scanners_failed = True
+        except Exception as e:
+            scanners_failed = True
+            print(f"ESLint execution skipped or failed: {e}")
 
     # 4. Pylint
     try:
         result = run_sandboxed_subprocess(
             [
                 "pylint",
+                "--recursive=y",
                 "--disable=all",
                 "--enable=W0611,W0612,R0801,R0401,R0915",
                 "-f",
@@ -182,7 +192,7 @@ async def agent_static_analysis(state: PipelineState):
                         }
                     )
             except json.JSONDecodeError:
-                pass
+                scanners_failed = True
     except Exception as e:
         scanners_failed = True
         print(f"Pylint execution skipped or failed: {e}")
@@ -215,51 +225,56 @@ async def agent_static_analysis(state: PipelineState):
         scanners_failed = True
         print(f"Flake8 execution skipped or failed: {e}")
 
-    # 6. SonarQube
-    try:
-        result = run_sandboxed_subprocess(
-            ["sonar-scanner"],
-            repo_path=repo_local_path,
-            timeout=300,
-        )
-        if _scanner_execution_failed(result):
+    # SonarQube needs an operator-provided server and cannot run in the default offline sandbox.
+    if os.getenv("ENABLE_SONAR_SCAN") == "1":
+        # 6. SonarQube
+        try:
+            result = run_sandboxed_subprocess(
+                ["sonar-scanner"],
+                repo_path=repo_local_path,
+                timeout=300,
+            )
+            if result.get("status") != "SUCCESS":
+                scanners_failed = True
+                print(f"SonarQube execution failed: {result.get('stderr')}")
+            else:
+                # Attempt to parse the SonarQube issues report if available
+                issues_report_rel = os.path.join(".scannerwork", "scanner-report", "issues-report.json")
+                if result.get("returncode") == 0 and safe_path_exists(repo_local_path, issues_report_rel):
+                    try:
+                        sonar_data = json.loads(safe_read_text(repo_local_path, issues_report_rel))
+                        for issue in (
+                            sonar_data
+                            if isinstance(sonar_data, list)
+                            else sonar_data.get("issues", [])
+                        ):
+                            findings.append(
+                                {
+                                    "file": (
+                                        issue.get("component", "").split(":")[-1]
+                                        if ":" in issue.get("component", "")
+                                        else issue.get("component", "")
+                                    ),
+                                    "issue": issue.get("message", "SonarQube issue"),
+                                    "rule": issue.get("rule", ""),
+                                    "tool": "sonarqube",
+                                    "severity": issue.get("severity", "MEDIUM"),
+                                    "line": issue.get("line", 1),
+                                    "category": "quality",
+                                }
+                            )
+                    except Exception as parse_err:
+                        print(f"[StaticAnalysis] SonarQube report parse error: {parse_err}")
+                elif result.get("returncode") == 0:
+                    print(
+                        "[StaticAnalysis] SonarQube analysis completed but no local report found."
+                    )
+        except Exception as e:
             scanners_failed = True
-            print(f"SonarQube execution failed: {result.get('stderr')}")
-        else:
-            # Attempt to parse the SonarQube issues report if available
-            issues_report_rel = os.path.join(".scannerwork", "scanner-report", "issues-report.json")
-            if result.get("returncode") == 0 and safe_path_exists(repo_local_path, issues_report_rel):
-                try:
-                    sonar_data = json.loads(safe_read_text(repo_local_path, issues_report_rel))
-                    for issue in (
-                        sonar_data
-                        if isinstance(sonar_data, list)
-                        else sonar_data.get("issues", [])
-                    ):
-                        findings.append(
-                            {
-                                "file": (
-                                    issue.get("component", "").split(":")[-1]
-                                    if ":" in issue.get("component", "")
-                                    else issue.get("component", "")
-                                ),
-                                "issue": issue.get("message", "SonarQube issue"),
-                                "rule": issue.get("rule", ""),
-                                "tool": "sonarqube",
-                                "severity": issue.get("severity", "MEDIUM"),
-                                "line": issue.get("line", 1),
-                                "category": "quality",
-                            }
-                        )
-                except Exception as parse_err:
-                    print(f"[StaticAnalysis] SonarQube report parse error: {parse_err}")
-            elif result.get("returncode") == 0:
-                print(
-                    "[StaticAnalysis] SonarQube analysis completed but no local report found."
-                )
-    except Exception as e:
-        scanners_failed = True
-        print(f"SonarQube execution skipped or failed: {e}")
+            print(f"SonarQube execution skipped or failed: {e}")
+
+    else:
+        scanner_notes.append("SonarQube was not run: no server is configured for the offline sandbox.")
 
     # 6b. Go Vet
     gomod_paths = []
@@ -1487,7 +1502,7 @@ async def agent_static_analysis(state: PipelineState):
             seen.add(key)
             deduped_findings.append(f)
 
-    return {"static_findings": deduped_findings, "scanners_failed": scanners_failed}
+    return {"static_findings": deduped_findings, "scanners_failed": scanners_failed, "scanner_notes": scanner_notes}
 
 
 def _is_inside_with(tree, target_lineno: int) -> bool:

@@ -22,6 +22,13 @@ PROJECT_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 def use_temp_db():
     yield
     try:
+        from tools.vector_store import close_vector_store
+        close_vector_store()
+        # Tests also create direct clients, outside vector_store's singleton.
+        from chromadb.api.client import SharedSystemClient
+        for system in list(SharedSystemClient._identifier_to_system.values()):
+            system.stop()
+        SharedSystemClient.clear_system_cache()
         temp_dir.cleanup()
         chroma_temp_dir.cleanup()
     except Exception:
@@ -36,7 +43,10 @@ def isolate_chroma(monkeypatch):
         monkeypatch.setattr(tools.vector_store, "fixes_collection", None)
         monkeypatch.setattr(tools.vector_store, "CHROMA_PERSIST_PATH", chroma_temp_dir.name)
     except ImportError:
-        pass
+        yield
+        return
+    yield
+    tools.vector_store.close_vector_store()
 
 def pytest_runtest_teardown(item, nextitem):
     # Ensure test isolation by restoring the working directory using an absolute path.

@@ -62,6 +62,8 @@ async def lifespan(app):
     task = asyncio.create_task(resume_waiting_jobs_loop())
     yield
     task.cancel()
+    from tools.vector_store import close_vector_store
+    close_vector_store()
 
 
 async def resume_waiting_jobs_loop():

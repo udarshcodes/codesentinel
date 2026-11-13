@@ -9,6 +9,7 @@ class PipelineState(TypedDict, total=False):
     dependency_findings: list
     static_findings: list
     scanners_failed: NotRequired[bool]
+    scanner_notes: NotRequired[list]
     investigated_issues: list
     repair_plan: list
     patches: list

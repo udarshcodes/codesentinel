@@ -218,7 +218,8 @@ print(os.getuid())
     
     uid = res["stdout"].strip()
     assert uid != "0", "Container is running as root (UID 0)"
-    assert uid == "1000", f"Expected UID 1000, got {uid}"
+    expected_uid = str(os.getuid()) if hasattr(os, "getuid") else "1000"
+    assert uid == expected_uid, f"Expected UID {expected_uid}, got {uid}"
 
 def test_h_capabilities_and_privileges(safe_repo_path):
     """Test H: Dangerous capabilities are dropped and NoNewPrivs is set."""
@@ -311,7 +312,9 @@ time.sleep(5)
     
     assert inspect_results["HostConfig"]["NetworkMode"] == "none", "NetworkMode is not none"
     assert inspect_results["HostConfig"]["ReadonlyRootfs"] is True, "ReadonlyRootfs is not true"
-    assert inspect_results["Config"]["User"] == "1000:1000", "User is not 1000:1000"
+    expected_user = f"{os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") and hasattr(os, "getgid") else "1000:1000"
+    assert inspect_results["Config"]["User"] == expected_user
+    assert expected_user.split(":")[0] != "0", "Sandbox must not execute as root"
     assert inspect_results["HostConfig"]["PidsLimit"] == 100, "PidsLimit is not 100"
     assert inspect_results["HostConfig"]["Memory"] == 2048 * 1024 * 1024, "Memory limit not correctly configured"
     

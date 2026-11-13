@@ -172,6 +172,7 @@ def run_sandboxed_subprocess(
         "-e", "CARGO_HOME=/tmp/cargo",
         "-e", "MAVEN_OPTS=-Duser.home=/tmp",
         "-e", "GRADLE_USER_HOME=/tmp/gradle",
+        "-e", "SONAR_USER_HOME=/tmp/sonar",
         "-v", f"{os.path.abspath(actual_cwd)}:/sandbox/repo",
         "-w", "/sandbox/repo"
     ]

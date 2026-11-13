@@ -77,7 +77,7 @@ async def test_static_analysis_sandboxed_integration():
         state = PipelineState()
         state["repo_local_path"] = repo_dir
 
-        with patch("agents.static_analysis.run_sandboxed_subprocess") as mock_run:
+        with patch.dict(os.environ, {"ENABLE_SONAR_SCAN": "1"}), patch("agents.static_analysis.run_sandboxed_subprocess") as mock_run:
             def scanner_report(cmd, **kwargs):
                 return {
                     "status": "SUCCESS",
@@ -111,3 +111,21 @@ async def test_static_analysis_sandboxed_integration():
             assert not result["scanners_failed"]
     finally:
         shutil.rmtree(repo_dir)
+
+
+@pytest.mark.asyncio
+async def test_offline_scan_reports_optional_sonar_omission(tmp_path):
+    (tmp_path / "app.py").write_text("value = 1\n")
+    (tmp_path / "go.mod").write_text("module example\n")
+    (tmp_path / "Cargo.toml").write_text('[package]\nname="example"\n')
+    def report(cmd, **kwargs):
+        return {"status": "SUCCESS", "stdout": '{"results": []}' if cmd[0] in ("semgrep", "bandit") else "[]" if cmd[0] == "pylint" else "", "stderr": "", "returncode": 0}
+    with patch.dict(os.environ, {"ENABLE_SONAR_SCAN": "0"}), patch("agents.static_analysis.run_sandboxed_subprocess", side_effect=report) as scanner:
+        result = await agent_static_analysis({"repo_local_path": str(tmp_path)})
+    assert not result["scanners_failed"]
+    assert any("SonarQube was not run" in note for note in result["scanner_notes"])
+    assert not any(call.args[0][0] in ("sonar-scanner", "eslint") for call in scanner.call_args_list)
+
+    commands = [call.args[0] for call in scanner.call_args_list]
+    assert any("go vet" in " ".join(command) for command in commands)
+    assert any("cargo clippy" in " ".join(command) for command in commands)
