@@ -135,11 +135,11 @@ function App() {
 
       <header className="mb-10 animate-fade-in-down flex items-center gap-6">
         <img src="/logo.jpg" alt="CodeSentinel Logo" className="w-16 h-16 rounded-full shadow-lg object-cover shrink-0 border border-border" />
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0 flex-1">
           <h1 className="text-3xl font-bold text-foreground tracking-tight">
             Analysis Workspace
           </h1>
-          <p className="text-sm text-muted-foreground font-mono">
+          <p className="text-sm text-muted-foreground font-mono break-all">
             {repoUrlInput || 'Multiple Repositories'}
           </p>
         </div>

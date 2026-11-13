@@ -54,6 +54,8 @@ export function usePipeline(taskId) {
             patches: stateData.pipeline_state?.patches || [],
             validation_results: stateData.pipeline_state?.validation_results || [],
             security_verification: stateData.pipeline_state?.security_verification,
+            scanner_notes: stateData.pipeline_state?.scanner_notes || [],
+            scanners_failed: stateData.pipeline_state?.scanners_failed === true,
             security_verified: stateData.pipeline_state?.security_verified === true,
             retry_count: stateData.pipeline_state?.retry_count || 0,
             security_retry_state: stateData.pipeline_state?.security_retry_state || 0,

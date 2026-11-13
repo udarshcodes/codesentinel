@@ -210,9 +210,9 @@ function PatchItem({ patch, state }) {
   let PatchIcon = Code2
 
   if (patch.applied) {
-    const validation = state.validation_results?.find(v => v.patch === patch.patch_text || (patch.issue_id && v.issue_id === patch.issue_id))
+    const validation = state.validation_results?.at(-1)
     if (validation) {
-      if (validation.passed) {
+      if (validation.passed && state.security_verified === true) {
         if (state.security_verification && !state.security_verified) {
           patchStatus = 'Security Review Required'
           patchStatusColor = 'text-[#F59E0B]'
@@ -250,7 +250,7 @@ function PatchItem({ patch, state }) {
        rejectionReason = 'Failed to apply patch due to an unspecified application error.';
     }
   } else {
-     const validation = state.validation_results?.find(v => v.patch === patch.patch_text || (patch.issue_id && v.issue_id === patch.issue_id));
+     const validation = state.validation_results?.at(-1);
      if (validation && !validation.passed) {
         rejectionReason = validation.logs || 'Validation failed for this patch.';
      }

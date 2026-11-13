@@ -112,7 +112,7 @@ function DashboardInner({ taskId, onComplete }) {
           {isPRVisible ? (
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-secondary text-secondary-foreground p-3 sm:px-6 sm:py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium opacity-80 hover:opacity-100 focus:outline-none"
+              className="sticky bottom-4 ml-auto w-fit mt-6 bg-secondary text-secondary-foreground p-3 sm:px-6 sm:py-3 rounded-full shadow-2xl hover:opacity-90 transition-all duration-300 z-50 flex items-center gap-2 font-medium opacity-80 hover:opacity-100 focus:outline-none"
               title="Back to Top"
             >
               <svg className="w-5 h-5 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -25,10 +25,10 @@ export default function PRSummary({ state }) {
 
   const validationResults = state.validation_results || [];
   const validationRan = validationResults.length > 0;
-  const allTestsPassed = validationRan && validationResults.every(v => v.passed);
+  const allTestsPassed = validationRan && validationResults.at(-1).passed === true;
   
   const securityVerified = state.security_verified === true;
-  const needsReview = (validationRan && !allTestsPassed) || !securityVerified;
+  const needsReview = !allTestsPassed || !securityVerified || state.scanners_failed === true;
 
   let title = "Analysis Complete";
   let description = "CodeSentinel has finished the analysis and remediation pipeline.";
@@ -110,13 +110,13 @@ export default function PRSummary({ state }) {
             <div className="text-muted-foreground">Remediation Candidates:</div>
             <div className="font-medium text-foreground">{remediationCandidates}</div>
             
-            <div className="text-muted-foreground">Patches Generated:</div>
+            <div className="text-muted-foreground">Patch Attempts:</div>
             <div className="font-medium text-foreground">{patchesGenerated}</div>
             
-            <div className="text-muted-foreground">Patches Applied:</div>
+            <div className="text-muted-foreground">Applied Attempts:</div>
             <div className="font-medium text-foreground">{patchesApplied}</div>
             
-            <div className="text-muted-foreground">Patches Rejected:</div>
+            <div className="text-muted-foreground">Rejected Attempts:</div>
             <div className="font-medium text-foreground">{patchesRejected}</div>
             
             <div className="text-muted-foreground">Files Modified:</div>
@@ -124,6 +124,13 @@ export default function PRSummary({ state }) {
           </div>
         </div>
       </div>
+
+      {state.scanner_notes?.length > 0 && (
+        <div className="bg-secondary/20 rounded-xl p-6 border border-border mb-6">
+          <h3 className="text-sm font-medium mb-2">Scan Coverage</h3>
+          {state.scanner_notes.map((note, index) => <p key={index} className="text-sm text-muted-foreground">{note}</p>)}
+        </div>
+      )}
 
       <div className="bg-background rounded-xl p-6 border border-border mb-6">
         <h3 className="text-sm font-medium text-foreground mb-4">Verification Status</h3>

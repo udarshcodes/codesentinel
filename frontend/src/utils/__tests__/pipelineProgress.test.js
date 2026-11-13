@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconstructProgress, AGENT_ORDER } from '../pipelineProgress';
+import { reconstructProgress, AGENT_ORDER, getAgentStatus } from '../pipelineProgress';
 
 describe('reconstructProgress', () => {
   it('1. last_completed_node = repo_mapper (RUNNING)', () => {
@@ -139,5 +139,19 @@ describe('reconstructProgress', () => {
     expect(result.completedAgents.has('repo_mapper')).toBe(true);
     expect(result.completedAgents.has('dependency_analyzer')).toBe(true);
     expect(result.currentAgent).toBe('static_analysis');
+  });
+});
+
+describe('verification evidence', () => {
+  const done = { isCompleted: true };
+  it('does not verify an incomplete static scan', () => {
+    expect(getAgentStatus('static_analysis', { scanners_failed: true }, done).statusType).toBe('warning');
+  });
+  it('uses the final validation rather than rejected historical attempts', () => {
+    expect(getAgentStatus('validator', { validation_results: [{ passed: false }, { passed: true }] }, done).displayStatus).toBe('Verified');
+  });
+  it('requires security evidence and reports an unverified PR as draft', () => {
+    expect(getAgentStatus('security_verifier', { security_verified: false }, done).displayStatus).toBe('Review Required');
+    expect(getAgentStatus('pr_author', { pr_url: 'https://github.com/a/b/pull/1', status: 'COMPLETED' }, done).displayStatus).toBe('Draft Created');
   });
 });

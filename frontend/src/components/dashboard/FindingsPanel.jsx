@@ -1,6 +1,11 @@
 import { useState, useMemo } from 'react'
 import { ShieldAlert, FileCode2, ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Search } from 'lucide-react'
 
+function normalizeCategory(category = 'Code Quality') {
+  const value = category.toLowerCase().replaceAll('_', ' ').trim()
+  return value === 'security' ? 'Security' : value === 'dependency' ? 'Dependency' : value === 'code quality' ? 'Code Quality' : category
+}
+
 export default function FindingsPanel({ state }) {
   const [selectedId, setSelectedId] = useState(null)
   const [filterSeverity, setFilterSeverity] = useState('all')
@@ -14,15 +19,13 @@ export default function FindingsPanel({ state }) {
     const resolveStatus = (issueId, initialStatus) => {
       if (!issueId && issueId !== 0) return initialStatus
       
-      const patch = state.patches?.find(p => p.issue_id === issueId || p.issue === issueId)
+      const patch = [...(state.patches || [])].reverse().find(p => (p.patch_id ?? p.issue_id ?? p.issue) === issueId)
       if (patch) {
         if (!patch.applied) return 'Rejected'
-        
-        const validation = state.validation_results?.find(v => v.issue_id === issueId || v.issue_description === issueId || v.patch === patch.patch_text)
-        if (validation) {
-          return validation.passed ? 'Fixed' : 'Needs Review'
-        }
-        return 'Applied'
+        const validation = state.validation_results?.at(-1)
+        if (!validation) return 'Applied'
+        const failed = validation.failed_issue_ids?.includes(issueId)
+        return validation.passed && !failed && state.security_verified === true ? 'Fixed' : 'Needs Review'
       }
       
       const isTerminal = ['COMPLETED', 'NEEDS_REVIEW'].includes(state.status)
@@ -41,11 +44,11 @@ export default function FindingsPanel({ state }) {
         // Derive title from original finding if generic
         let title = issue.title || 'Investigated Issue';
         if (title === 'Vulnerability' || title === 'Investigated Issue') {
-           title = issue.original_finding?.rule || issue.original_finding?.title || title;
+           title = issue.original_finding?.title || issue.original_finding?.rule || issue.original_finding?.issue || issue.description || title;
         }
 
         // Improve category mapping
-        let category = issue.category || 'Code Quality';
+        let category = normalizeCategory(issue.category || issue.original_finding?.category);
         if (title.toLowerCase().includes('css') || title.toLowerCase().includes('selector')) category = 'Code Quality';
         else if (title.toLowerCase().includes('security') || issue.severity?.toLowerCase() === 'critical') category = 'Security';
         else if (title.toLowerCase().includes('dependency') || title.toLowerCase().includes('outdated')) category = 'Dependency';
@@ -57,7 +60,7 @@ export default function FindingsPanel({ state }) {
           category,
           description: issue.description || issue.root_cause || issue.original_finding?.issue || 'No description provided.',
           file: issue.affected_files?.[0] || issue.file || issue.original_finding?.file || 'unknown',
-          line: issue.line || issue.location || issue.original_finding?.line || 'unknown',
+          line: issue.line || issue.location || issue.original_finding?.line || null,
           status: resolveStatus(id, 'Confirmed'),
           evidence: issue.evidence || issue.original_finding?.evidence || '',
           remediation: issue.remediation || issue.suggested_fix || ''
@@ -68,8 +71,8 @@ export default function FindingsPanel({ state }) {
       rawFindings.forEach((f, idx) => {
         const id = f.id !== undefined ? f.id : `raw-${idx}-${f.file}`
         
-        let title = f.title || f.rule || 'Static Finding';
-        let category = f.category || 'Code Quality';
+        let title = f.title || f.rule || f.issue || f.description || 'Static Finding';
+        let category = normalizeCategory(f.category || (f.package ? 'Dependency' : 'Code Quality'));
         if (title.toLowerCase().includes('css') || title.toLowerCase().includes('selector')) category = 'Code Quality';
         else if (title.toLowerCase().includes('security') || f.severity?.toLowerCase() === 'critical') category = 'Security';
         else if (title.toLowerCase().includes('dependency') || title.toLowerCase().includes('outdated')) category = 'Dependency';
@@ -81,7 +84,7 @@ export default function FindingsPanel({ state }) {
           category,
           description: f.description || f.issue || 'No description provided.',
           file: f.file || 'unknown',
-          line: f.line || 'unknown',
+          line: f.line || null,
           status: resolveStatus(id, 'Identified'),
           evidence: f.evidence || '',
           remediation: f.remediation || f.suggested_fix || ''
@@ -103,8 +106,8 @@ export default function FindingsPanel({ state }) {
 
   const filteredIssues = useMemo(() => {
     return allIssues.filter(issue => {
-      const matchSeverity = filterSeverity === 'all' || issue.severity === filterSeverity;
-      const matchCategory = filterCategory === 'all' || issue.category.toLowerCase().includes(filterCategory.toLowerCase());
+      const matchSeverity = filterSeverity === 'all' || issue.severity === filterSeverity || (filterSeverity === 'high' && issue.severity === 'critical');
+      const matchCategory = filterCategory === 'all' || issue.category.toLowerCase() === filterCategory.toLowerCase();
       const matchStatus = filterStatus === 'all' || issue.status.toLowerCase() === filterStatus.toLowerCase();
       const matchSearch = searchQuery === '' || 
         issue.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -131,7 +134,7 @@ export default function FindingsPanel({ state }) {
     switch (s) {
       case 'critical':
       case 'high':
-        return <span className="bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">High</span>
+        return <span className="bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">{s === 'critical' ? 'Critical' : 'High'}</span>
       case 'medium':
         return <span className="bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">Medium</span>
       default:
@@ -194,24 +197,24 @@ export default function FindingsPanel({ state }) {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input 
               type="text" 
-              placeholder="Search findings..." 
+              aria-label="Search findings" placeholder="Search findings..."
               className="w-full bg-background border border-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <select className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}>
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <select aria-label="Filter severity" className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)}>
               <option value="all">All Severities</option>
               <option value="high">High/Critical</option>
               <option value="medium">Medium</option>
               <option value="low">Low</option>
             </select>
-            <select className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+            <select aria-label="Filter category" className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
               <option value="all">All Categories</option>
               {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+            <select aria-label="Filter status" className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
               <option value="all">All Statuses</option>
               <option value="identified">Identified</option>
               <option value="confirmed">Confirmed</option>
@@ -234,8 +237,8 @@ export default function FindingsPanel({ state }) {
           }, {})
         ).map(([file, issuesInFile]) => (
           <div key={file} className="bg-card">
-            <div className="px-6 py-3 bg-secondary/10 border-b border-border flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm">
-              <div className="flex items-center gap-2 font-mono text-sm text-foreground font-semibold">
+            <div className="px-6 py-3 bg-secondary/10 border-b border-border flex items-center justify-between backdrop-blur-sm">
+              <div className="flex items-center gap-2 min-w-0 break-all font-mono text-sm text-foreground font-semibold">
                 <FileCode2 className="w-4 h-4 text-primary" />
                 {file}
               </div>
@@ -262,7 +265,7 @@ export default function FindingsPanel({ state }) {
                           {issue.title}
                         </span>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono mt-1">
-                          <span className="truncate">Line {issue.line}</span>
+                          <span className="truncate">{issue.line ? `Line ${issue.line}` : 'File-level finding'}</span>
                         </div>
                       </div>
                       <div className="shrink-0 mt-2 sm:mt-0">
@@ -289,7 +292,7 @@ export default function FindingsPanel({ state }) {
                           <div>
                             <h4 className="font-semibold text-foreground mb-2">Location</h4>
                             <p className="text-muted-foreground font-mono text-xs break-all mb-4 bg-muted p-2 rounded-md border border-border">
-                              {issue.file}{issue.line !== 'unknown' ? ` (Line: ${issue.line})` : ''}
+                              {issue.file}{issue.line ? ` (Line: ${issue.line})` : ''}
                             </p>
                             
                             {issue.remediation && (
@@ -301,7 +304,7 @@ export default function FindingsPanel({ state }) {
                             
                             <h4 className="font-semibold text-foreground mb-2">State Resolution</h4>
                             <div className="text-muted-foreground text-xs space-y-1">
-                              <div>Detection: <span className="font-medium text-foreground">Verified</span></div>
+                              <div>Detection: <span className="font-medium text-foreground">Reported</span></div>
                               <div>Remediation applied: <span className="font-medium text-foreground">{['Fixed', 'Needs Review'].includes(issue.status) ? 'Yes' : 'No'}</span></div>
                               <div>Validation passed: <span className="font-medium text-foreground">{issue.status === 'Fixed' ? 'Yes' : (issue.status === 'Needs Review' ? 'No' : 'N/A')}</span></div>
                             </div>

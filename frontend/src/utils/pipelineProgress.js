@@ -97,8 +97,10 @@ export function getAgentStatus(agentKey, state, flags) {
   }
 
   if (isCompleted) {
+    if (agentKey === 'static_analysis' && state.scanners_failed) return { displayStatus: 'Review Required', statusType: 'warning' };
+    if (agentKey === 'code_generator' && !(state.patches || []).some(p => p.applied)) return { displayStatus: 'No Changes Applied', statusType: 'warning' };
     if (agentKey === 'validator') {
-      const allPassed = state.validation_results?.length > 0 && state.validation_results.every(v => v.passed);
+      const allPassed = state.validation_results?.length > 0 && state.validation_results.at(-1).passed === true;
       if (state.validation_results?.length > 0 && !allPassed) {
         return { displayStatus: 'Review Required', statusType: 'warning' };
       }
@@ -107,16 +109,13 @@ export function getAgentStatus(agentKey, state, flags) {
       }
     }
     if (agentKey === 'security_verifier') {
-      if (state.security_verification === false || (state.security_verification !== null && !state.security_verified)) {
-        return { displayStatus: 'Review Required', statusType: 'warning' };
-      }
-      if (state.security_verification === null || state.security_verification === undefined) {
-          return { displayStatus: 'Not Run', statusType: 'skipped' };
-      }
+      return state.security_verified === true
+        ? { displayStatus: 'Verified', statusType: 'success' }
+        : { displayStatus: 'Review Required', statusType: 'warning' };
     }
     if (agentKey === 'pr_author') {
       if (state.pr_url) {
-        if (state.status === 'NEEDS_REVIEW') {
+        if ((state.status === 'NEEDS_REVIEW' || state.security_verified !== true || state.validation_results?.at(-1)?.passed !== true)) {
           return { displayStatus: 'Draft Created', statusType: 'warning' };
         }
         return { displayStatus: 'Created', statusType: 'success' };
@@ -128,7 +127,7 @@ export function getAgentStatus(agentKey, state, flags) {
         return { displayStatus: 'Creation Failed', statusType: 'error' };
       }
     }
-    return { displayStatus: 'Verified', statusType: 'success' };
+    return { displayStatus: agentKey === 'validator' ? 'Verified' : 'Completed', statusType: 'success' };
   }
 
   return { displayStatus: 'Waiting', statusType: 'pending' };

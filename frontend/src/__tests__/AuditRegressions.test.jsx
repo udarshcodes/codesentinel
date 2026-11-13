@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import LandingPage from '../components/landing/LandingPage';
 import DiffViewer from '../components/dashboard/DiffViewer';
+import FindingsPanel from '../components/dashboard/FindingsPanel';
 import PRSummary from '../components/dashboard/PRSummary';
 import { credentialStore } from '../services/credentialStore';
 
@@ -34,4 +35,18 @@ describe('audit regressions', () => {
       method: 'POST', headers: { Authorization: 'Bearer token-a' }
     }));
   });
+});
+
+it('keeps critical findings in the high filter and requires security before marking fixes resolved', () => {
+  render(<FindingsPanel state={{ status: 'COMPLETED', investigated_issues: [
+    { id: 1, title: 'Critical issue', severity: 'critical', category: 'security' },
+    { id: 2, title: 'High issue', severity: 'high', category: 'Security' }
+  ], patches: [{ patch_id: 1, applied: true }], validation_results: [{ passed: true }], security_verified: false }} />);
+  const severity = screen.getAllByRole('combobox')[0];
+  fireEvent.change(severity, { target: { value: 'high' } });
+  expect(screen.getByText('Critical issue')).toBeTruthy();
+  expect(screen.getByText('High issue')).toBeTruthy();
+  fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'fixed' } });
+  expect(screen.queryByText('Critical issue')).toBeNull();
+  expect(screen.queryByText('High issue')).toBeNull();
 });

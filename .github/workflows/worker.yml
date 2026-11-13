@@ -64,7 +64,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           WORKER_WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:17d875c448ff1b1d6e8dff53f8ea4d80fd77a8f899a72d2f86aa596ba8839c6d
+          SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:2529a1041ef37cb7941572da82d56d4355c9354abdfe5d388f5e5d38b04cc7ea
           TASK_ID: ${{ github.event.inputs.task_id }}
           REPO_URL: ${{ github.event.inputs.repo_url }}
           BACKEND_URL: ${{ github.event.inputs.backend_url }}
