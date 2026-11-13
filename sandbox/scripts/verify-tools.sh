@@ -73,7 +73,15 @@ verify_exec mvn --version
 check_tool "gradle"
 verify_exec gradle --version
 
-# Scanners / Linters
+# Validation / Scanners / Linters
+verify_exec python -c "import sys; assert sys.version_info >= (3, 11)"
+verify_exec python -m pytest --version
+verify_exec python -m build --version
+printf 'eval(input())\n' > /tmp/codesentinel-capability-check.py
+verify_exec semgrep --config=/opt/codesentinel/rules --metrics=off --disable-version-check --json /tmp/codesentinel-capability-check.py
+rm /tmp/codesentinel-capability-check.py
+verify_exec pylint --version
+verify_exec flake8 --version
 check_tool "bandit"
 verify_exec bandit --version
 check_tool "eslint"

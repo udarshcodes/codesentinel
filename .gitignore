@@ -34,3 +34,14 @@ temp.patch
 *.patch
 scratch/
 *.ses
+diff.txt
+*.diff
+AUDIT.md
+audit*
+audit-*
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

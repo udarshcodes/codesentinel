@@ -21,7 +21,7 @@ def setup_sandbox_image():
     os.makedirs(base_dir, exist_ok=True)
     
     if is_docker_available():
-        image_name = "ghcr.io/udarshcodes/codesentinel-sandbox:latest"
+        image_name = os.getenv("SANDBOX_IMAGE", "ghcr.io/udarshcodes/codesentinel-sandbox:latest")
         res = subprocess.run(["docker", "image", "inspect", image_name], capture_output=True)
         if res.returncode != 0:
             sandbox_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'sandbox'))
@@ -397,3 +397,21 @@ module.exports = {};
     
     assert_payload_executed(os.path.join(safe_repo_path, "eslint_payload_executed"))
     assert_attack_blocked(blocked_marker=os.path.join(safe_repo_path, "eslint_escaped"))
+
+def test_offline_semgrep_rules_find_dynamic_execution(safe_repo_path):
+    with open(os.path.join(safe_repo_path, "unsafe.py"), "w") as source:
+        source.write("eval(input())\n")
+    result = run_sandboxed_subprocess(
+        ["semgrep", "--config=/opt/codesentinel/rules", "--metrics=off", "--disable-version-check", "--json", "unsafe.py"],
+        repo_path=safe_repo_path, timeout=120,
+    )
+    assert result["status"] == "SUCCESS", result
+    assert any(hit["check_id"].endswith("python-eval-untrusted") for hit in json.loads(result["stdout"])["results"])
+
+
+def test_python_validation_toolchain(safe_repo_path):
+    result = run_sandboxed_subprocess(
+        ["python", "-c", "import sys, pytest, build; assert sys.version_info >= (3, 11)"],
+        repo_path=safe_repo_path, timeout=30,
+    )
+    assert result["status"] == "SUCCESS", result

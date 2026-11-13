@@ -1,0 +1,16 @@
+rules:
+  - id: python-eval-untrusted
+    languages: [python]
+    severity: WARNING
+    message: Review dynamic eval execution; untrusted input can execute code.
+    pattern: eval(...)
+  - id: python-shell-command
+    languages: [python]
+    severity: WARNING
+    message: Review shell execution; interpolated input can cause command injection.
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+  - id: javascript-eval
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: Review dynamic eval execution; untrusted input can execute code.
+    pattern: eval(...)

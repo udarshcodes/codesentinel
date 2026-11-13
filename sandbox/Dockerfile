@@ -1,4 +1,4 @@
-FROM ubuntu:22.04@sha256:829f6df217bcbae2b371026e81711d1a787c61b2967ad09d015063663ebafbf7
+FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5
 
 # Provenance arguments
 ARG REVISION=unknown
@@ -10,7 +10,7 @@ LABEL org.opencontainers.image.version="latest"
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Pin tool versions
-ENV PYTHON_VERSION=3.10
+ENV PYTHON_VERSION=3.12
 ENV NODE_VERSION=20.11.1
 ENV GO_VERSION=1.21.8
 ENV RUST_VERSION=1.75.0
@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     software-properties-common \
-    # Python 3.10 is default in 22.04
+    # Python 3.12 supports repositories requiring Python >=3.11
     python3 \
     python3-pip \
     python3-venv \
@@ -88,9 +88,11 @@ RUN wget -q https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-b
     && rm gradle-${GRADLE_VERSION}-bin.zip gradle-${GRADLE_VERSION}-bin.zip.sha256
 ENV PATH="/opt/gradle/bin:${PATH}"
 
-# 7. Install Python scanners (Global install via pip)
+# 7. Install Python scanners and validation tools in a dedicated environment
+RUN python3 -m venv /opt/codesentinel/venv
+ENV PATH="/opt/codesentinel/venv/bin:${PATH}"
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt \
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
 # 8. Install ESLint (Global install via npm)
@@ -105,6 +107,9 @@ RUN wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sona
     && ln -s /opt/sonar-scanner-${SONAR_SCANNER_VERSION}-linux /opt/sonar-scanner \
     && rm sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux.zip sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux.zip.sha256
 ENV PATH="/opt/sonar-scanner/bin:${PATH}"
+
+# Trusted rules are baked into the image; scans run without network access.
+COPY rules /opt/codesentinel/rules
 
 # 10. Copy verification script
 COPY scripts/verify-tools.sh /usr/local/bin/verify-tools.sh
@@ -127,8 +132,11 @@ RUN wget -qO shellspec.tar.gz "https://github.com/shellspec/shellspec/archive/re
     && rm shellspec.tar.gz
 
 # 13. Create unprivileged user "codesentinel"
-RUN groupadd -g 1000 codesentinel && \
-    useradd -u 1000 -g 1000 -m -s /bin/bash codesentinel
+RUN if id ubuntu >/dev/null 2>&1; then \
+      usermod -l codesentinel -d /home/codesentinel -m ubuntu && groupmod -n codesentinel ubuntu; \
+    else \
+      groupadd -g 1000 codesentinel && useradd -u 1000 -g 1000 -m -s /bin/bash codesentinel; \
+    fi
 
 # Create sandbox workspace directory
 RUN mkdir -p /sandbox/repo && chown codesentinel:codesentinel /sandbox/repo
