@@ -8,6 +8,8 @@ python-dotenv==1.2.2
 httpx==0.28.1
 httpx2==2.13.1
 typing_extensions==4.15.0
+tomli==2.5.0; python_version < "3.11"
+packaging>=24.2,<27
 pytest==9.1.1
 build==1.5.0
 

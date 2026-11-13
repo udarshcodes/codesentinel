@@ -39,14 +39,16 @@ async def test_llm_router_iteration(monkeypatch):
 
     monkeypatch.setattr("tools.llm_router.ChatGroq", MockChatGroq)
     monkeypatch.setattr("tools.llm_router.GROQ_API_KEYS", ["mock"])
+    monkeypatch.setattr("tools.llm_router.record_usage", lambda *args, **kwargs: None)
+    monkeypatch.setattr("tools.llm_router.get_cached", lambda *args, **kwargs: None)
     
     def mock_get_next(*args, **kwargs):
         return "mock_key", 0
         
     monkeypatch.setattr("tools.llm_router.get_next_key", mock_get_next)
     
-    with pytest.raises(LLMExhaustionError):
-        await invoke_llm("test prompt", "test_agent", expect_json=True)
+    # Invalid JSON is a schema failure, not provider capacity exhaustion.
+    assert await invoke_llm("test prompt", "test_agent", expect_json=True) == {}
     
     # It should try PRIMARY_MODELS[0] 3 times, PRIMARY_MODELS[1] 3 times, FALLBACK_MODEL 3 times
     assert len(models_tried) == 9

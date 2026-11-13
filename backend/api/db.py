@@ -10,10 +10,11 @@ _pg_pool = None
 
 def get_pg_pool():
     global _pg_pool
-    if _pg_pool is None and DATABASE_URL:
+    db_url = os.getenv("DATABASE_URL")
+    if _pg_pool is None and db_url:
         import psycopg2.pool
         # Use ThreadedConnectionPool since the backend uses thread pools for sync execution in FastAPI
-        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, DATABASE_URL)
+        _pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 20, db_url)
     return _pg_pool
 
 def _convert_placeholders(query: str) -> str:

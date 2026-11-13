@@ -64,8 +64,7 @@ async def test_d_clone_uses_no_checkout():
             clone_call = mock_run.call_args_list[0]
             cmd = clone_call[0][0]
             assert cmd[0] == "git"
-            assert cmd[1] == "clone"
-            assert cmd[2] == "--no-checkout"
+            assert cmd[1:5] == ["-c", "core.hooksPath=/dev/null", "clone", "--no-checkout"]
 
 def test_e_malicious_checkout_cannot_see_secrets():
     # Construct a controlled test repository that executes a harmless command during checkout

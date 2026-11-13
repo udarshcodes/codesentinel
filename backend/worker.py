@@ -219,7 +219,10 @@ async def run_worker():
                 has_meaningful_state = existing_state and (
                     existing_state.get("last_completed_node") or 
                     existing_state.get("knowledge_graph") or
-                    existing_state.get("status")
+                    existing_state.get("status") or
+                    existing_state.get("repo_url") or
+                    existing_state.get("task_id") or
+                    existing_state.get("patches")
                 )
                 
                 if has_meaningful_state:

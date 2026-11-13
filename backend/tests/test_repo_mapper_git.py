@@ -47,7 +47,7 @@ async def test_repo_mapper_git_isolation(monkeypatch):
     
     clone_inv = invocations[0]
     assert clone_inv["cmd"][0] == "git"
-    assert clone_inv["cmd"][1] == "clone"
+    assert clone_inv["cmd"][1:4] == ["-c", "core.hooksPath=/dev/null", "clone"]
     assert "--no-checkout" in clone_inv["cmd"]
     assert "TEST_GITHUB_SECRET" not in str(clone_inv["cmd"])
     

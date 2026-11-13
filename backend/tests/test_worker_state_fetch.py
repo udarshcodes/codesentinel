@@ -2,6 +2,12 @@ import pytest
 from unittest.mock import patch, MagicMock
 import httpx
 import worker
+import asyncio
+
+_real_sleep = asyncio.sleep
+
+async def _yielding_sleep(*_args, **_kwargs):
+    await _real_sleep(0)
 
 @pytest.mark.asyncio
 async def test_worker_state_fetch_retry():
@@ -24,7 +30,7 @@ async def test_worker_state_fetch_retry():
             mock_response_200
         ]
         
-        with patch("asyncio.sleep"), \
+        with patch("asyncio.sleep", side_effect=_yielding_sleep), \
              patch("sys.exit") as mock_exit, \
              patch("worker.post_event"), \
              patch("worker.heartbeat_loop"), \

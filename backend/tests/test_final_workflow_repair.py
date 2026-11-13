@@ -67,6 +67,8 @@ def test_forged_trusted_marker_cannot_bypass_trust():
     with patch.dict(os.environ, {"GITHUB_TOKEN": "dummy"}):
         from agents.pr_author import agent_pr_author
         with patch("os.path.exists", return_value=True), \
+             patch("tools.github_client.check_token_permissions"), \
+             patch("tools.patch_applier.apply_patch", return_value={"success": True}), \
              patch("tools.github_client.create_trusted_pr_workspace", return_value="/tmp/trusted_workspace") as mock_create_workspace, \
              patch("tools.github_client.prepare_repo_for_push", return_value={"branch_name": "b", "push_repo_url": "url", "repo_name": "r", "user_login": "u", "is_owner": True}), \
              patch("agents.pr_author.run_isolated_subprocess", return_value={"status": "SUCCESS", "stdout": "test.py\n"}), \
@@ -130,6 +132,7 @@ def test_worker_resumes_on_fresh_filesystem(mock_check, mock_get, mock_post):
          patch("worker.BACKEND_URL", "http://backend"), \
          patch("worker.WORKER_ATTEMPT_ID", "w1"), \
          patch("worker.WORKER_SECRET", "secret"):
+        mock_run.return_value.stdout = "abc1234\n"
         
         # Stop worker after first node
         async def mock_iter():
@@ -144,4 +147,4 @@ def test_worker_resumes_on_fresh_filesystem(mock_check, mock_get, mock_post):
         assert len(clone_calls) > 0
         
         # Check if apply_patch was called
-        mock_apply.assert_called_once_with("dummy_patch", clone_calls[0].args[0][6], "dummy.py")
+        mock_apply.assert_called_once_with("dummy_patch", clone_calls[0].args[0][-1], "dummy.py")

@@ -4,6 +4,12 @@ import httpx
 from unittest.mock import patch, MagicMock
 
 import worker
+import asyncio
+
+_real_sleep = asyncio.sleep
+
+async def _yielding_sleep(*_args, **_kwargs):
+    await _real_sleep(0)
 from tools.llm_router import LLMExhaustionError
 
 @pytest.mark.asyncio
@@ -13,7 +19,8 @@ async def test_llm_exhaustion_persistence_failure():
          patch("worker.authenticated_get") as mock_get, \
          patch("worker.TASK_ID", "test_123"), \
          patch("worker.REPO_URL", "test"), \
-         patch("worker.BACKEND_URL", "test"):
+         patch("worker.BACKEND_URL", "test"), \
+         patch("worker.heartbeat_loop"):
         
         mock_get_response = MagicMock()
         mock_get_response.status_code = 200
@@ -44,7 +51,7 @@ async def test_llm_exhaustion_persistence_failure():
             mock_exit.side_effect = SystemExit
             
             # Disable asyncio.sleep so the test runs fast
-            with patch("asyncio.sleep"):
+            with patch("asyncio.sleep", side_effect=_yielding_sleep):
                 try:
                     await worker.run_worker()
                 except SystemExit:

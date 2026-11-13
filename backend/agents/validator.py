@@ -69,7 +69,8 @@ async def agent_validator(state: PipelineState):
         target_file = patch.get("file", "")
 
         if not safe_path_exists(repo_local_path, target_file):
-            logs_list.append(f"[SKIPPED] {target_file} - file not found")
+            logs_list.append(f"[FAILED] {target_file} - file not found")
+            all_passed = False
             continue
 
         if not patch.get("applied", True):
@@ -230,6 +231,8 @@ async def agent_validator(state: PipelineState):
                     logs_list.append(f"[PASSED] Build verification passed (npm run build in {build_cwd})")
         except Exception as e:
             logs_list.append(f"[ERROR] package.json build error in {build_cwd}: {e}")
+            build_passed = False
+            all_passed = False
 
     if os.path.exists(os.path.join(repo_local_path, "pyproject.toml")) or os.path.exists(os.path.join(repo_local_path, "setup.py")):
         res = run_sandboxed_subprocess(
@@ -237,7 +240,7 @@ async def agent_validator(state: PipelineState):
             cwd=repo_local_path,
             timeout=60
         )
-        if res["status"] != "SUCCESS" and "No module named build" not in res["stderr"]:
+        if res["status"] != "SUCCESS":
             build_passed = False
             logs_list.append(f"[{res['status']}] Build verification failed (python -m build):\n{res['stderr'][:500]}")
             all_passed = False

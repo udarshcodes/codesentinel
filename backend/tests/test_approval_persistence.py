@@ -156,7 +156,7 @@ async def test_worker_emits_event_on_success(clean_db):
          patch("worker.authenticated_get") as mock_get, \
          patch("worker.post_event") as mock_post_event, \
          patch("worker.authenticated_post") as mock_post, \
-         patch("worker.asyncio.sleep"): # Skip sleep in loop
+         patch("worker.heartbeat_loop"): # Avoid a busy heartbeat when retry sleeps are skipped
              
         class MockGetRes:
             status_code = 200

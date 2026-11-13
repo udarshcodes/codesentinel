@@ -24,6 +24,7 @@ async def agent_dependency_analyzer(state: PipelineState):
     gradle_kts_paths = []
     gomod_paths = []
     cargo_paths = []
+    pyproject_paths = []
 
     for root_dir, dirs, fnames, _ in safe_walk(repo_local_path):
         dirs[:] = [
@@ -43,6 +44,8 @@ async def agent_dependency_analyzer(state: PipelineState):
         ]
         if "requirements.txt" in fnames:
             req_paths.append(os.path.join(root_dir, "requirements.txt"))
+        if "pyproject.toml" in fnames:
+            pyproject_paths.append(os.path.join(root_dir, "pyproject.toml"))
         if "package.json" in fnames:
             pkg_paths.append(os.path.join(root_dir, "package.json"))
         if "pom.xml" in fnames:
@@ -55,6 +58,33 @@ async def agent_dependency_analyzer(state: PipelineState):
             gomod_paths.append(os.path.join(root_dir, "go.mod"))
         if "Cargo.toml" in fnames:
             cargo_paths.append(os.path.join(root_dir, "Cargo.toml"))
+
+    # PEP 621 manifests are common in uv projects, including the Setu test target.
+    # Query OSV only for exact pins: a range is not an installed version.
+    for manifest in pyproject_paths:
+        try:
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+            from packaging.requirements import Requirement, InvalidRequirement
+            with open_safe(repo_local_path, manifest, "r", encoding="utf-8") as f:
+                project = tomllib.loads(f.read()).get("project", {})
+            for raw in project.get("dependencies", []):
+                try:
+                    requirement = Requirement(raw)
+                except InvalidRequirement:
+                    continue
+                pins = [s.version for s in requirement.specifier
+                        if s.operator == "==" and "*" not in s.version]
+                dependencies.append({
+                    "name": requirement.name,
+                    "version": pins[0] if len(pins) == 1 else "unknown",
+                    "ecosystem": "PyPI",
+                    "file": os.path.relpath(manifest, repo_local_path).replace("\\", "/"),
+                })
+        except (OSError, ValueError, TypeError) as e:
+            print(f"[DependencyAnalyzer] Failed to parse pyproject.toml: {e}")
 
     for req_path in req_paths:
         with open_safe(repo_local_path, req_path, "r") as f:
@@ -72,7 +102,8 @@ async def agent_dependency_analyzer(state: PipelineState):
                         ver = "latest"
                     if pkg:
                         dependencies.append(
-                            {"name": pkg, "version": ver, "ecosystem": "PyPI"}
+                            {"name": pkg, "version": ver, "ecosystem": "PyPI",
+                             "file": os.path.relpath(req_path, repo_local_path).replace("\\", "/")}
                         )
                 except (ValueError, IndexError) as e:
                     print(
@@ -88,7 +119,8 @@ async def agent_dependency_analyzer(state: PipelineState):
                     for pkg, ver in deps.items():
                         ver = ver.replace("^", "").replace("~", "")
                         dependencies.append(
-                            {"name": pkg, "version": ver, "ecosystem": "npm"}
+                            {"name": pkg, "version": ver, "ecosystem": "npm",
+                             "file": os.path.relpath(pkg_path, repo_local_path).replace("\\", "/")}
                         )
             except Exception as e:
                 print(f"[DependencyAnalyzer] Failed to parse package.json: {e}")
@@ -345,7 +377,9 @@ async def agent_dependency_analyzer(state: PipelineState):
     # Hit OSV API using batch query
     from tools.osv_client import batch_query_osv, fetch_vuln_details
 
-    cves_map = await batch_query_osv(dependencies)
+    cves_map = await batch_query_osv([
+        dep for dep in dependencies if dep["version"] not in ("unknown", "latest", "*", "")
+    ])
     osv_failed = False
 
     if cves_map is None:
