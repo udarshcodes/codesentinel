@@ -23,6 +23,8 @@ on:
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    env:
+      SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:2529a1041ef37cb7941572da82d56d4355c9354abdfe5d388f5e5d38b04cc7ea
     steps:
       - name: Checkout CodeSentinel Code
         uses: actions/checkout@v4
@@ -32,7 +34,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: 'backend/requirements*.txt'
           
@@ -52,6 +54,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.WORKER_GITHUB_TOKEN }}
           
+      - name: Prepare immutable sandbox image
+        continue-on-error: true # The Python worker reports any startup failure through the authenticated callback.
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 30 docker info >/dev/null; then break; fi
+            if [ "$attempt" = 3 ]; then echo "Docker daemon is unavailable" >&2; exit 1; fi
+            sleep 2
+          done
+          timeout 300 docker pull "$SANDBOX_IMAGE"
+
       - name: Run CodeSentinel AI Worker
         env:
           GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
@@ -64,7 +76,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           WORKER_WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:2529a1041ef37cb7941572da82d56d4355c9354abdfe5d388f5e5d38b04cc7ea
           TASK_ID: ${{ github.event.inputs.task_id }}
           REPO_URL: ${{ github.event.inputs.repo_url }}
           BACKEND_URL: ${{ github.event.inputs.backend_url }}
@@ -73,3 +84,14 @@ jobs:
           ENVIRONMENT: production
         run: |
           python backend/worker.py
+
+      - name: Report workflow failure
+        if: failure()
+        env:
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          REPO_URL: ${{ github.event.inputs.repo_url }}
+          BACKEND_URL: ${{ github.event.inputs.backend_url }}
+          COMMIT_SHA: ${{ github.event.inputs.commit_sha }}
+          WORKER_ATTEMPT_ID: ${{ github.event.inputs.worker_attempt_id }}
+          WORKER_WEBHOOK_SECRET: ${{ secrets.WORKER_WEBHOOK_SECRET }}
+        run: python backend/tools/worker_failure_callback.py
