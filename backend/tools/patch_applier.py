@@ -1,5 +1,4 @@
 import os
-import shutil
 import re
 import ast
 from tools.safe_path import resolve_safe_path
@@ -44,18 +43,19 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
     if not os.path.exists(full_path):
         return {"success": False, "stderr": f"File not found: {target_file}"}
 
+    original_text = None
+    write_started = False
     try:
         from tools.safe_path import open_safe
         with open_safe(repo_local_path, target_file, "r", encoding="utf-8", errors="ignore", newline="") as f:
             content = f.read()
+            original_text = content
             original_newlines = f.newlines
 
         content = content.replace("\r\n", "\n")
         original_content = content
 
-        # Create backup before patching
-        backup_path = full_path + ".bak"
-        shutil.copy2(full_path, backup_path)
+        # Keep rollback data in memory; a repository-controlled .bak path may be a symlink.
 
         # Very basic parse for <<<SEARCH>>> and <<<REPLACE>>>
         # Split by <<<SEARCH>>>
@@ -63,8 +63,6 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
         if not blocks:
             # Fallback for LLMs that ignored instructions and just returned code
             # We won't apply it automatically because it's too risky.
-            if os.path.exists(backup_path):
-                os.remove(backup_path)
             return {
                 "success": False,
                 "stderr": "No <<<SEARCH>>> blocks found in output.",
@@ -125,16 +123,12 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
             # If Exact (Attempt 1) and Whitespace-normalized (Attempt 2) fail, we reject the patch
             # to prevent malicious hallucinated patch modifications and force deterministic retries.
 
-            if os.path.exists(backup_path):
-                os.remove(backup_path)
             return {
                 "success": False,
                 "stderr": f"Search block not found in {target_file}:\n{search_str[:100]}...",
             }
 
         if modifications == 0 or content == original_content:
-            if os.path.exists(backup_path):
-                os.remove(backup_path)
             return {"success": False, "stderr": "No replacements were made."}
 
         # Pass 2: AST syntax verification for Python files on FULL content
@@ -142,8 +136,6 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
             try:
                 ast.parse(content)
             except SyntaxError as e:
-                if os.path.exists(backup_path):
-                    os.remove(backup_path)
                 return {
                     "success": False,
                     "stderr": f"SyntaxError after patch application: {e}",
@@ -155,17 +147,17 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
         elif isinstance(original_newlines, str):
             write_newline = original_newlines
 
+        write_started = True
         with open_safe(repo_local_path, target_file, "w", encoding="utf-8", newline=write_newline) as f:
             f.write(content)
 
-        if os.path.exists(backup_path):
-            os.remove(backup_path)
         return {"success": True, "stderr": ""}
 
     except Exception as e:
-        # Attempt rollback from backup
-        backup_path = full_path + ".bak"
-        if os.path.exists(backup_path):
-            shutil.copy2(backup_path, full_path)
-            os.remove(backup_path)
+        if write_started and original_text is not None:
+            try:
+                with open_safe(repo_local_path, target_file, "w", encoding="utf-8", newline="") as original:
+                    original.write(original_text)
+            except Exception:
+                return {"success": False, "stderr": f"Patch write failed and original could not be restored: {e}"}
         return {"success": False, "stderr": str(e)}

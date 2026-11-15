@@ -7,7 +7,7 @@ from models.pipeline_state import PipelineState
 from config import GROQ_API_KEYS
 from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists, open_safe
 
-from tools.llm_router import invoke_llm
+from tools.llm_router import invoke_llm, LLMExhaustionError
 from tools import context_cache
 from tools.prompt_cache import BUG_INVESTIGATOR_SYSTEM
 from tools.vector_store import query_similar_fixes, query_codebase
@@ -39,7 +39,7 @@ async def agent_bug_investigator(state: PipelineState):
         print(f"[BugInvestigator] Repository RAG UNAVAILABLE or failed: {rag_status.get('error', 'Not indexed')}")
 
     if not GROQ_API_KEYS:
-        return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings}
+        return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings, "rag_status": rag_status}
 
     if not all_findings:
         print("No static findings, falling back to deep LLM code review...")
@@ -105,13 +105,27 @@ If no bugs, return: {{"found": false}}"""
                         result["category"] = "functional"
                     investigated_issues.append(result)
             except Exception as e:
+                if isinstance(e, LLMExhaustionError):
+                    raise
                 print(f"Error in deep review: {e}")
 
-        return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings}
+        return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings, "rag_status": rag_status}
 
     for idx, finding in enumerate(all_findings):
         issue_desc = finding.get("issue", str(finding))
         file_path = finding.get("file", "")
+
+        # Newer does not mean vulnerable. Keep update notices visible without
+        # spending an LLM call or treating every major upgrade as a repair.
+        update_notice = issue_desc.startswith("Outdated dependency:") and finding.get("cve") == "N/A"
+        heuristic_advisory = finding.get("tool") in {"dead_code_detector", "dead_file_checker", "css_quality_checker"}
+        if update_notice or heuristic_advisory or finding.get("remediation_mode") == "manual_review":
+            investigated_issues.append({"id": idx, "description": issue_desc,
+                                         "severity": finding.get("severity", "low"),
+                                         "category": "dependency" if finding.get("package") else "quality",
+                                         "affected_files": [file_path], "original_finding": finding,
+                                         "remediation_mode": "manual_review"})
+            continue
 
         file_content = ""
         if file_path and repo_local_path:
@@ -199,6 +213,8 @@ Return ONLY valid JSON: {{"id": {idx}, "description": "...", "root_cause": "..."
                     issue_data["severity"] = {2: "medium", 3: "high", 4: "critical"}.get(levels[original_severity], original_severity)
                 investigated_issues.append(issue_data)
         except Exception as e:
+            if isinstance(e, LLMExhaustionError):
+                raise
             print(f"Error investigating issue {idx}: {e}")
 
-    return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings}
+    return {"investigated_issues": investigated_issues, "dismissed_findings": dismissed_findings, "rag_status": rag_status}

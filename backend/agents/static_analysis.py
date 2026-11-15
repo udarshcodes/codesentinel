@@ -9,6 +9,7 @@ from config import IGNORED_DIRS
 from models.pipeline_state import PipelineState
 from tools.sandbox_runner import run_sandboxed_subprocess
 from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists
+from tools.eslint_scan import scanner_path, scan_eslint_projects
 
 
 def _scanner_execution_failed(result):
@@ -28,6 +29,10 @@ async def agent_static_analysis(state: PipelineState):
     if not repo_local_path or not os.path.exists(repo_local_path):
         return {"static_findings": findings, "scanners_failed": scanners_failed}
 
+    has_python = any(file.endswith(".py") for _, _, files, _ in safe_walk(repo_local_path) for file in files)
+    if not has_python:
+        scanner_notes.append("Python scanners were not run: no Python source files were found.")
+
     # 1. Semgrep
     try:
         result = run_sandboxed_subprocess(
@@ -45,7 +50,7 @@ async def agent_static_analysis(state: PipelineState):
             for hit in data.get("results", []):
                 findings.append(
                     {
-                        "file": hit.get("path", ""),
+                        "file": scanner_path(hit.get("path", ""), repo_local_path),
                         "issue": hit.get("extra", {}).get(
                             "message", "Semgrep issue"
                         ),
@@ -60,66 +65,67 @@ async def agent_static_analysis(state: PipelineState):
         scanners_failed = True
         print(f"Semgrep execution skipped or failed: {e}")
 
-    # 2. Bandit
-    try:
-        result = run_sandboxed_subprocess(
-            ["bandit", "-r", ".", "-f", "json"],
-            repo_path=repo_local_path,
-            timeout=120,
-        )
-        if _scanner_execution_failed(result):
-            scanners_failed = True
-            print(f"Bandit execution failed: {result.get('stderr')}")
-        elif result.get("stdout"):
-            data = json.loads(result["stdout"])
-            for hit in data.get("results", []):
-                file_path = hit.get("filename", "")
-                if os.path.isabs(file_path):
-                    try:
-                        file_path = os.path.relpath(
-                            file_path, repo_local_path
-                        ).replace("\\", "/")
-                    except ValueError:
-                        pass
-                if file_path.startswith("./") or file_path.startswith(".\\"):
-                    file_path = file_path[2:]
-
-                # Assertions are the pytest contract, not production validation.
-                is_test = any(part in ("tests", "test") for part in file_path.replace("\\", "/").split("/")) or os.path.basename(file_path).startswith("test_") or os.path.basename(file_path).endswith("_test.py")
-                if hit.get("test_id") == "B101" and is_test:
-                    continue
-                findings.append(
-                    {
-                        "file": file_path,
-                        "issue": hit.get("issue_text", "Bandit issue"),
-                        "rule": hit.get("test_id", ""),
-                        "tool": "bandit",
-                        "severity": hit.get("issue_severity", "MEDIUM"),
-                        "line": hit.get("line_number", 1),
-                        "category": "security",
-                    }
-                )
-    except Exception as e:
-        scanners_failed = True
-        print(f"Bandit execution skipped or failed: {e}")
-
-    # ESLint is inapplicable to repositories with no JavaScript sources.
-    has_javascript = any(
-        file.endswith((".js", ".jsx", ".mjs", ".cjs"))
-        for _, _, files, _ in safe_walk(repo_local_path) for file in files
-    )
-    if has_javascript:
-        # 3. ESLint
+    if has_python:
+        # 2. Bandit
         try:
-            # ESLint might return non-zero exit code if it finds errors, but it still prints json to stdout
             result = run_sandboxed_subprocess(
-                ["eslint", ".", "--format", "json"],
+                ["bandit", "-r", ".", "-f", "json"],
                 repo_path=repo_local_path,
                 timeout=120,
             )
             if _scanner_execution_failed(result):
                 scanners_failed = True
-                print(f"ESLint execution failed: {result.get('stderr')}")
+                print(f"Bandit execution failed: {result.get('stderr')}")
+            elif result.get("stdout"):
+                data = json.loads(result["stdout"])
+                for hit in data.get("results", []):
+                    file_path = hit.get("filename", "")
+                    file_path = scanner_path(file_path, repo_local_path)
+
+                    # Assertions are the pytest contract, not production validation.
+                    is_test = any(part in ("tests", "test") for part in file_path.replace("\\", "/").split("/")) or os.path.basename(file_path).startswith("test_") or os.path.basename(file_path).endswith("_test.py")
+                    if hit.get("test_id") == "B101" and is_test:
+                        continue
+                    findings.append(
+                        {
+                            "file": file_path,
+                            "issue": hit.get("issue_text", "Bandit issue"),
+                            "rule": hit.get("test_id", ""),
+                            "tool": "bandit",
+                            "severity": hit.get("issue_severity", "MEDIUM"),
+                            "line": hit.get("line_number", 1),
+                            "category": "security",
+                        }
+                    )
+        except Exception as e:
+            scanners_failed = True
+            print(f"Bandit execution skipped or failed: {e}")
+
+    # Use project tooling/configuration, not an incompatible global ESLint.
+    eslint_findings, eslint_notes, eslint_failed = scan_eslint_projects(repo_local_path, run_sandboxed_subprocess)
+    findings.extend(eslint_findings)
+    scanner_notes.extend(eslint_notes)
+    scanners_failed = scanners_failed or eslint_failed
+
+    if has_python:
+        # 4. Pylint
+        try:
+            result = run_sandboxed_subprocess(
+                [
+                    "pylint",
+                    "--recursive=y",
+                    "--disable=all",
+                    "--enable=W0611,W0612,R0801,R0401,R0915",
+                    "-f",
+                    "json",
+                    ".",
+                ],
+                repo_path=repo_local_path,
+                timeout=120,
+            )
+            if _scanner_execution_failed(result):
+                scanners_failed = True
+                print(f"Pylint execution failed: {result.get('stderr')}")
             elif result.get("stdout"):
                 try:
                     start_idx = result["stdout"].find("[")
@@ -127,107 +133,51 @@ async def agent_static_analysis(state: PipelineState):
                         result["stdout"][start_idx:] if start_idx != -1 else result["stdout"]
                     )
                     data = json.loads(json_str)
-                    for file_result in data:
-                        file_path = file_result.get("filePath", "")
-                        if os.path.isabs(file_path):
-                            try:
-                                file_path = os.path.relpath(
-                                    file_path, repo_local_path
-                                ).replace("\\", "/")
-                            except ValueError:
-                                pass
-                        if file_path.startswith("./") or file_path.startswith(".\\"):
-                            file_path = file_path[2:]
-
-                        for msg in file_result.get("messages", []):
-                            findings.append(
-                                {
-                                    "file": file_path,
-                                    "issue": msg.get("message", "ESLint issue"),
-                                    "tool": "eslint",
-                                    "severity": (
-                                        "HIGH" if msg.get("severity") == 2 else "MEDIUM"
-                                    ),
-                                    "line": msg.get("line", 1),
-                                    "category": "quality",
-                                }
-                            )
-                except Exception:
+                    for hit in data:
+                        file_path = scanner_path(hit.get("path", ""), repo_local_path)
+                        findings.append(
+                            {
+                                "file": file_path,
+                                "issue": hit.get("message", "Pylint issue"),
+                                "tool": "pylint",
+                                "severity": "MEDIUM",
+                                "line": hit.get("line", 1),
+                                "category": "quality",
+                            }
+                        )
+                except json.JSONDecodeError:
                     scanners_failed = True
         except Exception as e:
             scanners_failed = True
-            print(f"ESLint execution skipped or failed: {e}")
+            print(f"Pylint execution skipped or failed: {e}")
 
-    # 4. Pylint
-    try:
-        result = run_sandboxed_subprocess(
-            [
-                "pylint",
-                "--recursive=y",
-                "--disable=all",
-                "--enable=W0611,W0612,R0801,R0401,R0915",
-                "-f",
-                "json",
-                ".",
-            ],
-            repo_path=repo_local_path,
-            timeout=120,
-        )
-        if _scanner_execution_failed(result):
-            scanners_failed = True
-            print(f"Pylint execution failed: {result.get('stderr')}")
-        elif result.get("stdout"):
-            try:
-                start_idx = result["stdout"].find("[")
-                json_str = (
-                    result["stdout"][start_idx:] if start_idx != -1 else result["stdout"]
-                )
-                data = json.loads(json_str)
-                for hit in data:
-                    file_path = hit.get("path", "")
-                    findings.append(
-                        {
-                            "file": file_path,
-                            "issue": hit.get("message", "Pylint issue"),
-                            "tool": "pylint",
-                            "severity": "MEDIUM",
-                            "line": hit.get("line", 1),
-                            "category": "quality",
-                        }
-                    )
-            except json.JSONDecodeError:
+        # 5. Flake8
+        try:
+            result = run_sandboxed_subprocess(
+                ["flake8", "--select=E9,F63,F7,F82", "."],
+                repo_path=repo_local_path,
+                timeout=120,
+            )
+            if _scanner_execution_failed(result):
                 scanners_failed = True
-    except Exception as e:
-        scanners_failed = True
-        print(f"Pylint execution skipped or failed: {e}")
-
-    # 5. Flake8
-    try:
-        result = run_sandboxed_subprocess(
-            ["flake8", "--select=E9,F63,F7,F82", "."],
-            repo_path=repo_local_path,
-            timeout=120,
-        )
-        if _scanner_execution_failed(result):
+                print(f"Flake8 execution failed: {result.get('stderr')}")
+            elif result.get("stdout"):
+                for line in result["stdout"].splitlines():
+                    parts = line.split(":", 3)
+                    if len(parts) >= 4:
+                        findings.append(
+                            {
+                                "file": parts[0],
+                                "issue": parts[3].strip(),
+                                "tool": "flake8",
+                                "severity": "LOW",
+                                "line": int(parts[1]),
+                                "category": "quality",
+                            }
+                        )
+        except Exception as e:
             scanners_failed = True
-            print(f"Flake8 execution failed: {result.get('stderr')}")
-        elif result.get("stdout"):
-            for line in result["stdout"].splitlines():
-                parts = line.split(":", 3)
-                if len(parts) >= 4:
-                    findings.append(
-                        {
-                            "file": parts[0],
-                            "issue": parts[3].strip(),
-                            "tool": "flake8",
-                            "severity": "LOW",
-                            "line": int(parts[1]),
-                            "category": "quality",
-                        }
-                    )
-    except Exception as e:
-        scanners_failed = True
-        print(f"Flake8 execution skipped or failed: {e}")
+            print(f"Flake8 execution skipped or failed: {e}")
 
     # SonarQube needs an operator-provided server and cannot run in the default offline sandbox.
     if os.getenv("ENABLE_SONAR_SCAN") == "1":
@@ -384,11 +334,8 @@ async def agent_static_analysis(state: PipelineState):
         "query",
         "all",
         "filter",
-        "get",
         "first",
         "one",
-        "items",
-        "values",
         "children",
         "parent",
         "relationship",
@@ -1170,7 +1117,10 @@ async def agent_static_analysis(state: PipelineState):
                     used_css_classes.add(cls)
 
     for rel_path, source in all_repo_sources.items():
-        if rel_path.endswith(".css"):
+        # JavaScript can generate class names at runtime; literal matching is insufficient.
+        if rel_path.endswith(".css") and not any(
+            name.endswith((".js", ".jsx", ".ts", ".tsx")) for name in all_repo_sources
+        ):
             lines = source.splitlines()
             for i, line in enumerate(lines, 1):
                 for m in re.finditer(r"\.([a-zA-Z0-9_-]+)\s*\{", line):
@@ -1218,6 +1168,8 @@ async def agent_static_analysis(state: PipelineState):
                 or "tests/" in rel_path.replace("\\", "/")
                 or "test/" in rel_path.replace("\\", "/")
             ):
+                continue
+            if ".config." in fname or rel_path.replace("\\", "/").startswith(("public/", "static/", "assets/")):
                 continue
             stem = os.path.splitext(fname)[0]
             is_referenced = False

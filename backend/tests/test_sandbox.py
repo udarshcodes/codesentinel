@@ -21,14 +21,25 @@ def setup_sandbox_image():
     os.makedirs(base_dir, exist_ok=True)
     
     if is_docker_available():
-        image_name = os.getenv("SANDBOX_IMAGE", "ghcr.io/udarshcodes/codesentinel-sandbox:latest")
+        image_name = os.getenv("SANDBOX_IMAGE", "codesentinel-sandbox:integration-local")
+        os.environ["SANDBOX_IMAGE"] = image_name
         res = subprocess.run(["docker", "image", "inspect", image_name], capture_output=True)
-        if res.returncode != 0:
+        if res.returncode != 0 and "@sha256:" in image_name:
+            subprocess.run(["docker", "pull", image_name], check=True)
+        elif res.returncode != 0 or image_name == "codesentinel-sandbox:integration-local":
             sandbox_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'sandbox'))
             subprocess.run(["docker", "build", "-t", image_name, sandbox_dir], check=True)
 
 @pytest.fixture
 def safe_repo_path():
+    # Availability may change after collection (or be cached by another test).
+    # Image-specific checks must never silently exercise development host fallback.
+    try:
+        available = subprocess.run(["docker", "info"], capture_output=True, timeout=15).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        available = False
+    if not available:
+        pytest.skip("A running Docker daemon is required for sandbox integration")
     base_dir = "/tmp/codesentinel_test_sandbox"
     os.makedirs(base_dir, exist_ok=True)
     path = tempfile.mkdtemp(dir=base_dir)

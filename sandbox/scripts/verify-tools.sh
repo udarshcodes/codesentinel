@@ -50,6 +50,7 @@ verify_exec pip --version
 # Node
 check_tool "node"
 verify_exec node --version
+verify_exec node -e 'if (Number(process.versions.node.split(".")[0]) < 22 || typeof require("node:util").styleText !== "function") process.exit(1)'
 check_tool "npm"
 verify_exec npm --version
 

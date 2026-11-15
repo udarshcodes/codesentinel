@@ -15,6 +15,17 @@ from agents.static_analysis import agent_static_analysis
 
 class TestDeadCodeDetection(unittest.TestCase):
     @unittest.mock.patch("agents.static_analysis.run_sandboxed_subprocess")
+    def test_runtime_classes_are_not_reported_as_dead_css(self, mock_run):
+        mock_run.return_value = {"status": "SUCCESS", "stdout": "{}", "stderr": ""}
+        with tempfile.TemporaryDirectory() as repo:
+            from pathlib import Path
+            Path(repo, "app.js").write_text('element.classList.add("active")')
+            Path(repo, "style.css").write_text('.active { opacity: 1; }')
+            result = asyncio.run(agent_static_analysis({"repo_local_path": repo}))
+            self.assertFalse(any("CSS class" in finding.get("issue", "")
+                                 for finding in result.get("static_findings", [])))
+
+    @unittest.mock.patch("agents.static_analysis.run_sandboxed_subprocess")
     def test_multi_lang_dead_code(self, mock_run):
         # Setup mock run to return empty JSON depending on the tool
         mock_run.return_value = unittest.mock.MagicMock(stdout="{}")

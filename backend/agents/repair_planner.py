@@ -10,9 +10,13 @@ from tools.prompt_cache import REPAIR_PLANNER_SYSTEM
 async def agent_repair_planner(state: PipelineState):
     import copy
     investigated_issues = copy.deepcopy(state.get("investigated_issues", []))
+    advisory_only = {"dead_code_detector", "dead_file_checker", "css_quality_checker"}
+    investigated_issues = [issue for issue in investigated_issues if issue.get("remediation_mode") != "manual_review" and issue.get("original_finding", {}).get("tool") not in advisory_only]
 
-    if not investigated_issues or not GROQ_API_KEYS:
-        return {"repair_plan": [], "awaiting_approval": False}
+    if not investigated_issues:
+        return {"repair_plan": [], "awaiting_approval": False, "pr_error": "No automatic repairs selected; advisory findings require manual review."}
+    if not GROQ_API_KEYS:
+        return {"repair_plan": [], "awaiting_approval": False, "pr_error": "No configured LLM credentials are available for repair planning."}
 
     # Prevent massive payloads from mangling the LLM prompt
     while (
@@ -22,18 +26,18 @@ async def agent_repair_planner(state: PipelineState):
 
     # Check if all issues are just dependency updates
     all_dependency = all(
-        "dependency" in str(issue.get("issue", "")).lower()
+        "dependency" in str(issue.get("description") or issue.get("issue", "")).lower() or bool(issue.get("original_finding", {}).get("package"))
         for issue in investigated_issues
     )
     
     if all_dependency:
         repair_plan = [{
-            "issue_id": 1, 
-            "proposed_action": "Update vulnerable dependencies to their latest secure versions.", 
-            "risk_level": "low-risk", 
-            "reasoning": "Standard dependency update.",
-            "issue_summary": "Vulnerable dependencies found."
-        }]
+            "issue_id": issue["id"],
+            "proposed_action": "Repair this dependency finding using a compatible supported version; synchronize the lockfile and validate the resulting build/tests.",
+            "risk_level": "low-risk",
+            "reasoning": "Dependency changes require compatibility and vulnerability checks, not just a latest-version substitution.",
+            "issue_summary": issue.get("description") or issue.get("issue", "Dependency finding")
+        } for issue in investigated_issues if "id" in issue]
     else:
         # Tier 2 — Repair planning requires deep reasoning about fix ordering
         # and risk classification.
@@ -68,10 +72,17 @@ Return ONLY valid JSON array:
             repair_plan = []
 
     # Never let model-generated identifiers select unrelated or nonexistent issues.
-    issues_by_id = {str(issue.get("id")): issue for issue in state.get("investigated_issues", []) if "id" in issue}
+    issues_by_id = {str(issue.get("id")): issue for issue in investigated_issues if "id" in issue}
     repair_plan = [fix for fix in repair_plan if isinstance(fix, dict) and str(fix.get("issue_id")) in issues_by_id]
+    advisory_only = {"dead_code_detector", "dead_file_checker", "css_quality_checker"}
+    repair_plan = [fix for fix in repair_plan if issues_by_id[str(fix["issue_id"])].get("original_finding", {}).get("tool") not in advisory_only]
     for fix in repair_plan:
         fix["issue_id"] = issues_by_id[str(fix["issue_id"])]["id"]
+        finding = issues_by_id[str(fix["issue_id"])].get("original_finding", {})
+        if finding.get("ecosystem") == "npm" and finding.get("recommended_version"):
+            fix["proposed_action"] = (f"Update {finding['package']} from {finding.get('current_version')} to the registry-confirmed "
+                                      f"same-major release {finding['recommended_version']}; its OSV candidate scan found no advisories. "
+                                      "Synchronize the npm lock, verify peer dependencies, build, lint and rescan. Do not downgrade or invent versions.")
     planned = {str(fix["issue_id"]) for fix in repair_plan}
     for issue in state.get("investigated_issues", []):
         if issue.get("original_finding", {}).get("rule") == "B113" and str(issue.get("id")) not in planned:

@@ -93,13 +93,11 @@ async def agent_dependency_analyzer(state: PipelineState):
                 if not line or line.startswith("#"):
                     continue
                 try:
-                    if any(op in line for op in ["==", ">=", "<=", "~=", ">", "<"]):
-                        parts = re.split(r"==|>=|<=|~=|>|<", line, maxsplit=1)
-                        pkg = parts[0].strip()
-                        ver = parts[1].strip()
-                    else:
-                        pkg = line.split()[0].strip()
-                        ver = "latest"
+                    from packaging.requirements import Requirement
+                    requirement = Requirement(line)
+                    pkg = requirement.name
+                    pins = [pin.version for pin in requirement.specifier if pin.operator == "==" and "*" not in pin.version]
+                    ver = pins[0] if len(pins) == 1 else "unknown"
                     if pkg:
                         dependencies.append(
                             {"name": pkg, "version": ver, "ecosystem": "PyPI",
@@ -114,10 +112,17 @@ async def agent_dependency_analyzer(state: PipelineState):
         with open_safe(repo_local_path, pkg_path, "r") as f:
             try:
                 data = json.load(f)
+                lock = {}
+                lock_path = os.path.join(os.path.dirname(pkg_path), "package-lock.json")
+                try:
+                    with open_safe(repo_local_path, lock_path, "r", encoding="utf-8") as locked:
+                        lock = json.load(locked)
+                except (OSError, ValueError):
+                    pass
                 for dep_section in ("dependencies", "devDependencies"):
                     deps = data.get(dep_section, {})
                     for pkg, ver in deps.items():
-                        ver = ver.replace("^", "").replace("~", "")
+                        ver = resolved_npm_version(pkg, ver, data, lock, dep_section)
                         dependencies.append(
                             {"name": pkg, "version": ver, "ecosystem": "npm",
                              "file": os.path.relpath(pkg_path, repo_local_path).replace("\\", "/")}
@@ -294,6 +299,8 @@ async def agent_dependency_analyzer(state: PipelineState):
 
     # Check for outdated packages against public registries
     async def check_outdated(dep):
+        if dep["version"] in ("unknown", "latest", "*", ""):
+            return None
         try:
             async with httpx.AsyncClient() as client:
                 if dep["ecosystem"] == "PyPI":
@@ -386,6 +393,15 @@ async def agent_dependency_analyzer(state: PipelineState):
         print("[DependencyAnalyzer] OSV batch query failed completely. Pipeline continuing without OSV data.")
         cves_map = {}
         osv_failed = True
+
+    # Ground npm repairs in current registry data, never the model's release memory.
+    # Restrict automatic candidates to a newer release within the installed major.
+    candidates = [{**dep, "version": latest} for dep, latest in zip(dependencies, outdated_results, strict=True)
+                  if dep["ecosystem"] == "npm" and cves_map.get(dep["name"])
+                  and compatible_registry_update(dep["version"], latest)]
+    candidate_cves = await batch_query_osv(candidates) if candidates else {}
+    safe_releases = {dep["name"]: dep["version"] for dep in candidates
+                     if candidate_cves is not None and dep["name"] in candidate_cves and not candidate_cves[dep["name"]]}
         
     # Collect all unique vuln IDs to fetch details
     all_vuln_ids = set()
@@ -467,6 +483,10 @@ async def agent_dependency_analyzer(state: PipelineState):
                 "cve": ", ".join(cve_ids),
                 "package": dep["name"],
                 "severity": highest_severity,
+                "ecosystem": dep["ecosystem"],
+                "current_version": dep["version"],
+                **({"recommended_version": safe_releases[dep["name"]]} if dep["name"] in safe_releases else
+                   {"remediation_mode": "manual_review"} if dep["ecosystem"] == "npm" else {}),
             }
         )
 
@@ -489,3 +509,20 @@ async def agent_dependency_analyzer(state: PipelineState):
         raise RuntimeError("OSV vulnerability scanning failed or was unavailable (Failing closed).")
 
     return {"dependency_findings": findings, "osv_failed": osv_failed}
+
+
+def resolved_npm_version(name, declared, manifest, lock, section):
+    root = lock.get("packages", {}).get("", {})
+    if root.get(section, {}) == manifest.get(section, {}):
+        entry = lock.get("packages", {}).get("node_modules/" + name, {})
+        version = entry.get("version", "")
+        if re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
+            return version
+    return declared if isinstance(declared, str) and re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", declared) else "unknown"
+
+
+def compatible_registry_update(current, latest):
+    if not all(isinstance(v, str) and re.fullmatch(r"\d+\.\d+\.\d+", v) for v in (current, latest)):
+        return False
+    before, after = tuple(map(int, current.split("."))), tuple(map(int, latest.split(".")))
+    return before[0] == after[0] and after > before

@@ -71,6 +71,10 @@ async def test_static_analysis_sandboxed_integration():
         with open(os.path.join(repo_dir, "test.js"), "w") as f:
             f.write("console.log('test');\\n")
 
+        # This fixture asserts routing to both JavaScript and Python scanners.
+        with open(os.path.join(repo_dir, "example.py"), "w") as f:
+            f.write("value = 1\n")
+
         with open(os.path.join(repo_dir, "host_canary.txt"), "w") as f:
             f.write("canary_content")
 

@@ -7,6 +7,18 @@ from typing import Dict, Any
 from tools.subprocess_runner import run_isolated_subprocess
 
 _project_dependencies = {}
+_node_dependencies = {}
+
+
+def register_node_dependencies(repo, packages):
+    repo, packages = os.path.realpath(repo), os.path.realpath(packages)
+    try:
+        inside_repo = os.path.commonpath([repo, packages]) == repo
+    except ValueError:  # Different Windows drives are outside the repository.
+        inside_repo = False
+    if inside_repo or not os.path.isdir(packages):
+        raise ValueError("Node dependencies must live outside the target repository.")
+    _node_dependencies[repo] = packages
 
 
 def register_project_dependencies(repo, packages):
@@ -205,6 +217,11 @@ def run_sandboxed_subprocess(
         if matches:
             docker_cmd.extend(["-v", f"{packages}:/opt/codesentinel/project-deps:ro", "-e", "PYTHONPATH=/opt/codesentinel/project-deps"])
             break
+    node_modules = _node_dependencies.get(os.path.realpath(actual_cwd))
+    if node_modules:
+        docker_cmd.extend(["-v", f"{node_modules}:/sandbox/repo/node_modules:ro"])
+        docker_cmd.extend(["--tmpfs", "/sandbox/repo/node_modules/.vite-temp:size=128m,mode=1777",
+                           "--tmpfs", "/sandbox/repo/node_modules/.vite:size=128m,mode=1777"])
     if network_disabled:
         docker_cmd.extend(["--network", "none"])
         

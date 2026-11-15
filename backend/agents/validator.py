@@ -72,6 +72,8 @@ async def agent_validator(state: PipelineState):
     logs_list = []
     failed_issue_ids = []
     passed_files = set()
+    deferred_files = {}
+    covered_projects = set()
 
     # Earlier rejected attempts must not invalidate a later successful repair.
     latest_attempts = {}
@@ -108,7 +110,7 @@ async def agent_validator(state: PipelineState):
             if res["status"] == "SUCCESS":
                 logs_list.append(f"[PASSED] {target_file} - syntax OK")
             elif "Unexpected token" in res["stderr"] or "Cannot use import" in res["stderr"]:
-                logs_list.append(f"[SKIPPED] {target_file} - ES module / JSX syntax not supported by node --check")
+                logs_list.append(f"[DEFERRED] {target_file} - ES module / JSX requires project build")
             elif res["status"] == "UNAVAILABLE":
                 logs_list.append(f"[UNAVAILABLE] {target_file} - node not available for syntax check")
             else:
@@ -117,29 +119,32 @@ async def agent_validator(state: PipelineState):
 
         # JSX/TSX files: skip node --check (Node.js can't parse JSX)
         elif target_file.endswith((".jsx", ".tsx")):
-            logs_list.append(f"[SKIPPED] {target_file} - JSX/TSX validated by build step")
+            logs_list.append(f"[DEFERRED] {target_file} - JSX/TSX requires project build")
 
         # TypeScript files: syntax check with tsc --noEmit
         elif target_file.endswith(".ts"):
-            tsc_bin = os.path.join(repo_local_path, "node_modules", ".bin", "tsc")
-            if os.name == 'nt':
-                tsc_bin += ".cmd"
-                
-            if not os.path.exists(tsc_bin):
-                logs_list.append(f"[UNAVAILABLE] {target_file} - local tsc not found. Avoiding dynamic npx --yes execution for security.")
+            if node_build_project(repo_local_path, target_file):
+                logs_list.append(f"[DEFERRED] {target_file} - TypeScript requires project build")
             else:
-                tsconfig_path = os.path.join(repo_local_path, "tsconfig.json")
-                if os.path.exists(tsconfig_path):
-                    tsc_cmd = ["./node_modules/.bin/tsc", "--noEmit", "--skipLibCheck", "--project", "tsconfig.json"]
+                tsc_bin = os.path.join(repo_local_path, "node_modules", ".bin", "tsc")
+                if os.name == 'nt':
+                    tsc_bin += ".cmd"
+                
+                if not os.path.exists(tsc_bin):
+                    logs_list.append(f"[UNAVAILABLE] {target_file} - local tsc not found. Avoiding dynamic npx --yes execution for security.")
                 else:
-                    tsc_cmd = ["./node_modules/.bin/tsc", "--noEmit", "--allowJs", "--checkJs", "--skipLibCheck", target_file]
+                    tsconfig_path = os.path.join(repo_local_path, "tsconfig.json")
+                    if os.path.exists(tsconfig_path):
+                        tsc_cmd = ["./node_modules/.bin/tsc", "--noEmit", "--skipLibCheck", "--project", "tsconfig.json"]
+                    else:
+                        tsc_cmd = ["./node_modules/.bin/tsc", "--noEmit", "--allowJs", "--checkJs", "--skipLibCheck", target_file]
 
-                res = run_sandboxed_subprocess(tsc_cmd, cwd=repo_local_path, timeout=60)
-                if res["status"] == "SUCCESS":
-                    logs_list.append(f"[PASSED] {target_file} - TypeScript syntax OK")
-                else:
-                    logs_list.append(f"[{res['status']}] {target_file} - {res['stderr'][:300]}")
-                    all_passed = False
+                    res = run_sandboxed_subprocess(tsc_cmd, cwd=repo_local_path, timeout=60)
+                    if res["status"] == "SUCCESS":
+                        logs_list.append(f"[PASSED] {target_file} - TypeScript syntax OK")
+                    else:
+                        logs_list.append(f"[{res['status']}] {target_file} - {res['stderr'][:300]}")
+                        all_passed = False
 
         # Go files: syntax check with go vet
         elif target_file.endswith(".go"):
@@ -157,27 +162,44 @@ async def agent_validator(state: PipelineState):
         # Java files: syntax check with javac (dry run)
         elif target_file.endswith(".java"):
             if os.path.exists(os.path.join(repo_local_path, "pom.xml")) or os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
-                logs_list.append(f"[SKIPPED] {target_file} - Java syntax validated by build step")
-                continue
+                logs_list.append(f"[DEFERRED] {target_file} - Java requires project build")
 
-            import tempfile as _tmpmod
-            import shutil as _shutil
-            _javac_tmp = _tmpmod.mkdtemp(prefix="cs_javac_")
-            try:
-                res = run_sandboxed_subprocess(["javac", "-d", _javac_tmp, target_file], cwd=repo_local_path, timeout=60)
-                if res["status"] == "SUCCESS":
-                    logs_list.append(f"[PASSED] {target_file} - Java syntax OK")
-                elif res["status"] == "UNAVAILABLE":
-                    logs_list.append(f"[UNAVAILABLE] {target_file} - javac not available")
-                else:
-                    logs_list.append(f"[{res['status']}] {target_file} - {res['stderr'][:300]}")
-                    all_passed = False
-            finally:
-                _shutil.rmtree(_javac_tmp, ignore_errors=True)
+            else:
+                import tempfile as _tmpmod
+                import shutil as _shutil
+                _javac_tmp = _tmpmod.mkdtemp(prefix="cs_javac_")
+                try:
+                    res = run_sandboxed_subprocess(["javac", "-d", _javac_tmp, target_file], cwd=repo_local_path, timeout=60)
+                    if res["status"] == "SUCCESS":
+                        logs_list.append(f"[PASSED] {target_file} - Java syntax OK")
+                    elif res["status"] == "UNAVAILABLE":
+                        logs_list.append(f"[UNAVAILABLE] {target_file} - javac not available")
+                    else:
+                        logs_list.append(f"[{res['status']}] {target_file} - {res['stderr'][:300]}")
+                        all_passed = False
+                finally:
+                    _shutil.rmtree(_javac_tmp, ignore_errors=True)
 
         # Rust files: validated by cargo build step
         elif target_file.endswith(".rs"):
-            logs_list.append(f"[SKIPPED] {target_file} - Rust validated by cargo build step")
+            logs_list.append(f"[DEFERRED] {target_file} - Rust requires cargo build")
+
+        elif target_file.endswith(".toml"):
+            try:
+                import tomllib
+                tomllib.loads(safe_read_text(repo_local_path, target_file))
+                logs_list.append(f"[PASSED] {target_file} - TOML parsed OK")
+            except (ValueError, OSError) as error:
+                logs_list.append(f"[FAILED] {target_file} - TOML parse error: {error}")
+                all_passed = False
+
+        elif target_file.endswith(".json"):
+            try:
+                json.loads(safe_read_text(repo_local_path, target_file))
+                logs_list.append(f"[PASSED] {target_file} - JSON parsed OK")
+            except (ValueError, OSError) as error:
+                logs_list.append(f"[FAILED] {target_file} - JSON parse error: {error}")
+                all_passed = False
 
         # HTML files: basic structure check
         elif target_file.endswith((".html", ".htm")):
@@ -209,6 +231,11 @@ async def agent_validator(state: PipelineState):
             logs_list.append(f"[SKIPPED] {target_file} - no validator for this file type")
 
         file_logs = logs_list[logs_len_before:]
+        if any("[DEFERRED]" in log for log in file_logs):
+            language = "java" if target_file.endswith(".java") else "rust" if target_file.endswith(".rs") else "node"
+            project = node_build_project(repo_local_path, target_file) if language == "node" else os.path.abspath(repo_local_path)
+            entry = deferred_files.setdefault(target_file, {"project": (language, project), "ids": []})
+            entry["ids"].append(patch.get("patch_id"))
         if any(any(f"[{status}]" in log for status in ("FAILED", "ERROR", "TIMEOUT", "UNAVAILABLE", "SKIPPED")) for log in file_logs):
             failed_issue_ids.append(patch.get("patch_id"))
             passed_files.discard(target_file)
@@ -230,13 +257,26 @@ async def agent_validator(state: PipelineState):
             with open(pkg_path, "r", encoding="utf-8") as f:
                 pkg = json.load(f)
 
-            # Install dependencies first securely
-            res = run_sandboxed_subprocess(
-                ["npm", "install", "--no-audit", "--no-fund"],
-                cwd=build_cwd,
-                timeout=180
-            )
+            from tools.node_dependencies import prepare_node_dependencies
+            prepared = prepare_node_dependencies(build_cwd)
+            res = {"status": "SUCCESS" if prepared["status"] == "ready" else "FAILED",
+                   "stdout": "", "stderr": prepared.get("error", "")}
 
+            if res["status"] != "SUCCESS":
+                diagnostic = res.get("stdout", "") + "\n" + res.get("stderr", "")
+                changed_manifests = [p for p in latest_attempts.values() if p.get("applied") and
+                                     p.get("file", "").replace("\\", "/") in {
+                                         os.path.relpath(pkg_path, repo_local_path).replace("\\", "/"),
+                                         os.path.relpath(os.path.join(build_cwd, "package-lock.json"), repo_local_path).replace("\\", "/")}]
+                repair_conflict = bool(changed_manifests) and any(code in diagnostic for code in ("ERESOLVE", "ETARGET"))
+                result = {"passed": False, "infrastructure_error": not repair_conflict, "suite_failed": True,
+                          "build_failed": False, "files_passed": len(passed_files), "files_validated": len({p.get("file") for p in latest_attempts.values() if p.get("file")}),
+                          "failed_issue_ids": [p.get("patch_id") for p in changed_manifests] if repair_conflict else [], "tests_executed": False,
+                          "logs": "Node dependency preparation failed. A synchronized npm lockfile with supported registry packages is required.\n" +
+                                  (res.get("stdout", "") + "\n" + res.get("stderr", ""))[-6000:]}
+                return {"validation_results": list(validation_results) + [result], "security_verified": False}
+
+            project_built = False
             if "scripts" in pkg and "build" in pkg["scripts"]:
                 res = run_sandboxed_subprocess(
                     ["npm", "run", "build"],
@@ -249,6 +289,16 @@ async def agent_validator(state: PipelineState):
                     all_passed = False
                 else:
                     logs_list.append(f"[PASSED] Build verification passed (npm run build in {build_cwd})")
+                    project_built = True
+            if "lint" in pkg.get("scripts", {}) and build_passed:
+                lint = run_sandboxed_subprocess(["npm", "run", "lint"], cwd=build_cwd, timeout=60)
+                logs_list.append(f"[{lint['status']}] Lint verification (npm run lint in {build_cwd}):\n" +
+                                 (lint.get("stdout", "") + "\n" + lint.get("stderr", ""))[-6000:])
+                if lint["status"] != "SUCCESS":
+                    build_passed = False
+                    all_passed = False
+            if project_built and build_passed:
+                covered_projects.add(("node", os.path.abspath(build_cwd)))
         except Exception as e:
             logs_list.append(f"[ERROR] package.json build error in {build_cwd}: {e}")
             build_passed = False
@@ -293,6 +343,7 @@ async def agent_validator(state: PipelineState):
             all_passed = False
         else:
             logs_list.append("[PASSED] Build verification passed (mvn package)")
+            covered_projects.add(("java", os.path.abspath(repo_local_path)))
 
     if os.path.exists(os.path.join(repo_local_path, "build.gradle")) or os.path.exists(os.path.join(repo_local_path, "build.gradle.kts")):
         gradle_cmd = ["./gradlew", "assemble"] if os.path.exists(os.path.join(repo_local_path, "gradlew")) else ["gradle", "assemble"]
@@ -307,6 +358,7 @@ async def agent_validator(state: PipelineState):
             all_passed = False
         else:
             logs_list.append(f"[PASSED] Build verification passed ({' '.join(gradle_cmd)})")
+            covered_projects.add(("java", os.path.abspath(repo_local_path)))
 
     if os.path.exists(os.path.join(repo_local_path, "go.mod")):
         res = run_sandboxed_subprocess(
@@ -333,6 +385,16 @@ async def agent_validator(state: PipelineState):
             all_passed = False
         else:
             logs_list.append("[PASSED] Build verification passed (cargo build)")
+            covered_projects.add(("rust", os.path.abspath(repo_local_path)))
+
+    for file, deferred in deferred_files.items():
+        if deferred["project"] in covered_projects:
+            passed_files.add(file)
+            logs_list.append(f"[PASSED] {file} - validated by configured project build/lint")
+        else:
+            all_passed = False
+            failed_issue_ids.extend(deferred["ids"])
+            logs_list.append(f"[UNAVAILABLE] {file} - no successful configured project build covered this file")
 
     test_logs = ""
     suite_failed = False
@@ -492,3 +554,20 @@ async def agent_validator(state: PipelineState):
         "retry_count": retry_count,
         "touched_symbols": touched_symbols,
     }
+
+
+def node_build_project(repo, target_file):
+    current = os.path.dirname(os.path.abspath(os.path.join(repo, target_file)))
+    root = os.path.abspath(repo)
+    while os.path.commonpath([root, current]) == root:
+        relative = os.path.relpath(os.path.join(current, "package.json"), root)
+        if safe_path_exists(root, relative):
+            try:
+                pkg = json.loads(safe_read_text(root, relative))
+                return current if pkg.get("scripts", {}).get("build") else None
+            except (ValueError, OSError):
+                return None
+        if current == root:
+            break
+        current = os.path.dirname(current)
+    return None

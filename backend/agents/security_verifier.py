@@ -30,7 +30,7 @@ async def agent_security_verifier(state: PipelineState):
     modified_files = {
         os.path.normpath(os.path.join(repo_local_path, p["file"]))
         for p in patches
-        if p.get("file")
+        if p.get("file") and p.get("applied", True)
     }
 
     if not modified_files:
@@ -51,6 +51,17 @@ async def agent_security_verifier(state: PipelineState):
         }
 
     still_vulnerable = []
+
+    dependency_names = {"package.json", "package-lock.json", "requirements.txt", "pyproject.toml", "pom.xml", "go.mod", "Cargo.toml"}
+    if any(os.path.basename(path) in dependency_names for path in modified_files):
+        try:
+            from agents.dependency_analyzer import agent_dependency_analyzer
+            dependency_scan = await agent_dependency_analyzer(dict(state))
+            still_vulnerable.extend(f for f in dependency_scan.get("dependency_findings", [])
+                                    if f.get("cve") not in (None, "", "N/A"))
+        except Exception as error:
+            return {"security_verified": False, "security_retry_count": existing_retries + 1,
+                    "security_retry_context": [{"issue": f"Dependency verification unavailable: {error}"}]}
 
     for finding in new_findings:
         f_path = finding.get("file", "")

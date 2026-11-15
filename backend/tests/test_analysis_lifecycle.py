@@ -70,9 +70,22 @@ def test_already_completed_task_cannot_rerun(clean_db):
         JobManager.transition_job_state(cursor, task_id, "RUNNING", worker_attempt_id="attempt-1")
     
 @pytest.mark.asyncio
-async def test_repo_mapper_json_validate_fallback():
-    # 11. LLM JSON validation errors are not converted into capacity exhaustion (should retry safely or fail properly)
-    pass
+@pytest.mark.parametrize('response', [[], {'error': 'invalid JSON'}, ValueError('invalid JSON')])
+async def test_repo_mapper_json_validate_fallback(tmp_path, monkeypatch, response):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    monkeypatch.setenv('TEMP_REPO_PATH', str(tmp_path))
+    monkeypatch.setattr('tools.subprocess_runner.clone_github_repo', lambda *args: None)
+    monkeypatch.setattr('subprocess.run', lambda *args, **kwargs: SimpleNamespace(stdout=''))
+    monkeypatch.setattr('agents.repo_mapper.GROQ_API_KEYS', ['test'])
+    llm = AsyncMock(side_effect=response) if isinstance(response, Exception) else AsyncMock(return_value=response)
+    monkeypatch.setattr('agents.repo_mapper.invoke_llm', llm)
+    monkeypatch.setattr('tools.vector_store.index_codebase', lambda *args: {'status': 'unavailable'})
+    result = await agent_repo_mapper({'repo_url': 'https://github.com/foo/bar', 'commit_sha': 'abc'})
+    assert result['repo_local_path']
+    assert result['knowledge_graph']['language'] == 'unknown'
+    assert result['knowledge_graph']['test_framework'] == ''
+    assert result['knowledge_graph']['modules'] == []
 
 @pytest.mark.asyncio
 async def test_repo_mapper_llm_exhaustion_propagation(monkeypatch):
@@ -99,6 +112,3 @@ async def test_repo_mapper_llm_exhaustion_propagation(monkeypatch):
         
     GROQ_API_KEYS.clear()
 
-def test_successful_worker_completion():
-    # 12. Successful worker completion produces backend COMPLETED state
-    pass

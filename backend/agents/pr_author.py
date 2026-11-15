@@ -158,9 +158,16 @@ async def agent_pr_author(state: PipelineState):
                 return {"pr_url": "", "pr_error": "No valid code changes were generated.",
                         "confidence_score": _calculate_confidence(state, security_verified)}
 
+            stale = stale_lockfiles(trusted_workspace, all_modified)
+            if stale:
+                shutil.rmtree(trusted_workspace, ignore_errors=True)
+                return {"pr_url": "", "pr_error": "Dependency changes require synchronized lockfiles: " + ", ".join(stale),
+                        "confidence_score": _calculate_confidence(state, security_verified)}
             material_files = sorted(all_modified)
             diff_result = run_isolated_subprocess(["git", "diff", "HEAD", "--stat"], cwd=trusted_workspace)
             title, desc = describe_material_changes(all_modified, diff_result.get("stdout", ""), needs_review)
+            if latest.get("logs"):
+                desc += "\n\n### Validation diagnostics\n```text\n" + str(latest["logs"])[-6000:].replace("```", "~~~") + "\n```"
             if state.get("scanner_notes"):
                 desc += "\n\n### Scan coverage\n" + "\n".join(f"- {note}" for note in state["scanner_notes"])
 
@@ -226,7 +233,7 @@ async def agent_pr_author(state: PipelineState):
     # Dynamic confidence score based on pipeline results
     confidence_score = _calculate_confidence(state, security_verified)
 
-    result = {"pr_url": pr_url, "confidence_score": confidence_score}
+    result = {"pr_url": pr_url, "confidence_score": confidence_score, "pr_error": pr_error}
     if material_files is not None:
         result["material_files"] = material_files
     if pr_error:
@@ -254,3 +261,18 @@ def describe_material_changes(files, diff_stat, needs_review):
     description += "\n\n### Modified files\n" + "\n".join(f"- `{path}`" for path in paths)
     description += "\n\n### Git diff summary\n```text\n" + diff_stat.strip() + "\n```"
     return title, description
+
+
+def stale_lockfiles(workspace, changed):
+    from pathlib import PurePosixPath
+    pairs = {"pyproject.toml": ("uv.lock", "poetry.lock"),
+             "package.json": ("package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"),
+             "Cargo.toml": ("Cargo.lock",)}
+    missing = []
+    for name in changed:
+        path = PurePosixPath(name)
+        for lock in pairs.get(path.name, ()):
+            relative = str(path.parent / lock)
+            if os.path.isfile(os.path.join(workspace, relative)) and relative not in changed:
+                missing.append(relative)
+    return sorted(set(missing))

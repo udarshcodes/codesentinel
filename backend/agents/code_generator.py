@@ -137,7 +137,7 @@ Attempt Count: {touched.get("attempt_count")}
 
         prompt = f"""{CODE_GENERATOR_SYSTEM}
 
-Issue to fix: {plan.get("action")}
+Issue to fix: {plan.get("proposed_action") or plan.get("action") or plan.get("issue_summary")}
 Original Issue Context: {json.dumps(issue)}
 {failure_context}
 {previous_attempt_context}
@@ -149,9 +149,13 @@ Current file content:
 ```"""
 
         try:
-            from tools.remediations import request_timeout_patch
+            from tools.remediations import request_timeout_patch, npm_dependency_patch, deferred_effect_state_patch
             finding = issue.get("original_finding", {})
             fixed_content = request_timeout_patch(file_content, finding.get("line")) if finding.get("rule") == "B113" else None
+            if finding.get("rule") == "react-hooks/set-state-in-effect":
+                fixed_content = deferred_effect_state_patch(file_content, finding.get("line"))
+            if finding.get("ecosystem") == "npm" and finding.get("recommended_version"):
+                fixed_content = npm_dependency_patch(file_content, target_file, finding)
             if not fixed_content:
                 fixed_content = await invoke_llm(
                     prompt,
@@ -188,13 +192,13 @@ Current file content:
                     with open_safe(repo_local_path, target_file, "r", errors="ignore") as f:
                         new_content = f.read()
                     diff = _generate_diff(file_content, new_content, target_file)
-                    if target_file.endswith(".py") and ast.dump(ast.parse(file_content)) == ast.dump(ast.parse(new_content)):
+                    if non_behavioral_repair(target_file, file_content, new_content):
                         # An automated code repair must change behavior, not add a comment
                         # claiming a fix. Keep such proposals out of the replay journal.
                         with open_safe(repo_local_path, target_file, "w", encoding="utf-8") as original:
                             original.write(file_content)
                         patch_applied = False
-                        patch_result = {"success": False, "stderr": "Rejected comment/format-only Python repair: no AST change."}
+                        patch_result = {"success": False, "stderr": "Rejected comment/format-only repair: no AST change or CSS behavior change."}
                     if not diff.strip():
                         diff = fixed_content
 
@@ -207,7 +211,7 @@ Current file content:
                         )
                         + 1,
                         "last_patch": fixed_content,
-                        "last_failure_reason": None,
+                        "last_failure_reason": None if patch_applied else patch_result["stderr"],
                     }
                 else:
                     print(
@@ -246,10 +250,25 @@ Current file content:
 
             traceback.print_exc()
 
+    lock_errors = []
+    from tools.npm_lock_repair import synchronize_npm_lock
+    manifests = {p["file"] for p in list(patches) + new_patches
+                 if p.get("applied") and p.get("file", "").endswith("package.json")}
+    for manifest in sorted(manifests):
+        lock_path = os.path.join(os.path.dirname(manifest), "package-lock.json").replace("\\", "/")
+        if safe_path_exists(repo_local_path, lock_path):
+            try:
+                lock_patch = synchronize_npm_lock(repo_local_path, manifest)
+                if lock_patch:
+                    new_patches.append(lock_patch)
+            except Exception as error:
+                lock_errors.append(f"Lockfile regeneration for {manifest} failed: {error}")
     result = {
         "patches": list(patches) + new_patches,
         "touched_symbols": touched_symbols,
     }
+    if lock_errors:
+        result["pr_error"] = "\n".join(lock_errors)
     if repair_plan and not new_patches and not any(p.get("applied") for p in patches):
         result["pr_error"] = state.get(
             "pr_error",
@@ -267,3 +286,18 @@ def _generate_diff(old_content, new_content, filename):
         old_lines, new_lines, fromfile=f"a/{filename}", tofile=f"b/{filename}"
     )
     return "".join(diff)
+
+
+def non_behavioral_repair(path, before, after):
+    if path.endswith(".py"):
+        try:
+            original = ast.parse(before)
+        except SyntaxError:
+            return False  # Repairing invalid original syntax is a material fix.
+        return ast.dump(original) == ast.dump(ast.parse(after))
+    if path.endswith(".css"):
+        import re
+        def normalized(text):
+            return re.sub(r"\s+", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
+        return normalized(before) == normalized(after)
+    return False
