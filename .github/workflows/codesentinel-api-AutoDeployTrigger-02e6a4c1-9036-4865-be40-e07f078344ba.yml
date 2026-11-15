@@ -2,21 +2,23 @@ name: Trigger auto deployment for codesentinel-api
 
 # When this action will be executed
 on:
-  # Automatically trigger it when detected changes in repo
-  push:
-    branches: 
-      [ main ]
-    paths:
-    - '**'
-    - '.github/workflows/codesentinel-api-AutoDeployTrigger-02e6a4c1-9036-4865-be40-e07f078344ba.yml'
+  workflow_run:
+    workflows: [Application checks]
+    types: [completed]
+    branches: [main]
 
-  # Allow manual trigger 
-  workflow_dispatch:      
+  # Allow manual trigger
+  workflow_dispatch:
+
+concurrency:
+  group: codesentinel-api-production
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_sha == github.sha)
     runs-on: ubuntu-latest
-    permissions: 
+    permissions:
       id-token: write #This is required for requesting the OIDC JWT Token
       contents: read #Required when GH token is used to authenticate with private repo
       packages: write #Required to push to GHCR
@@ -24,6 +26,13 @@ jobs:
     steps:
       - name: Checkout to the branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up release probe interpreter
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Azure Login
         uses: azure/login@v1
@@ -37,18 +46,34 @@ jobs:
           inlineScript: |
             az containerapp secret set -n codesentinel-api -g CodeSentinel-RG --secrets worker-webhook-secret="${{ secrets.WORKER_WEBHOOK_SECRET }}" github-webhook-secret="${{ secrets.GH_WEBHOOK_SECRET }}" database-url="${{ secrets.DATABASE_URL }}"
 
+      - name: Wait for Container App provisioning
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            for attempt in $(seq 1 30); do
+              state=$(az containerapp show -n codesentinel-api -g CodeSentinel-RG --query properties.provisioningState -o tsv)
+              if [ "$state" = "Succeeded" ]; then exit 0; fi
+              if [ "$state" = "Failed" ]; then echo "Container App provisioning failed"; exit 1; fi
+              sleep 10
+            done
+            echo "Container App provisioning did not finish within five minutes"
+            exit 1
+
       - name: Build and push container image to registry
         uses: azure/container-apps-deploy-action@v2
         with:
-          appSourcePath: ${{ github.workspace }}/backend
-          dockerfilePath: Dockerfile
+          appSourcePath: ${{ github.workspace }}
+          dockerfilePath: backend/Dockerfile
           registryUrl: ghcr.io
           registryUsername: ${{ github.actor }}
           registryPassword: ${{ secrets.GITHUB_TOKEN }}
           containerAppName: codesentinel-api
           resourceGroup: CodeSentinel-RG
-          imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.sha }}
+          imageToBuild: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.event.workflow_run.head_sha || github.sha }}
 
           ingress: external
           targetPort: 8000
-          environmentVariables: GROQ_API_KEY_1=secretref:groq-api-key-1 GROQ_API_KEY_2=secretref:groq-api-key-2 GROQ_API_KEY_3=secretref:groq-api-key-3 GROQ_API_KEY_4=secretref:groq-api-key-4 GROQ_API_KEY_5=secretref:groq-api-key-5 GROQ_API_KEY_6=secretref:groq-api-key-6 GITHUB_TOKEN=secretref:github-token ADMIN_SECRET=secretref:admin-secret WORKER_WEBHOOK_SECRET=secretref:worker-webhook-secret GITHUB_WEBHOOK_SECRET=secretref:github-webhook-secret PORT=8000 ENVIRONMENT=production DATABASE_URL=secretref:database-url
+          environmentVariables: GROQ_API_KEY_1=secretref:groq-api-key-1 GROQ_API_KEY_2=secretref:groq-api-key-2 GROQ_API_KEY_3=secretref:groq-api-key-3 GROQ_API_KEY_4=secretref:groq-api-key-4 GROQ_API_KEY_5=secretref:groq-api-key-5 GROQ_API_KEY_6=secretref:groq-api-key-6 GITHUB_TOKEN=secretref:github-token ADMIN_SECRET=secretref:admin-secret WORKER_WEBHOOK_SECRET=secretref:worker-webhook-secret GITHUB_WEBHOOK_SECRET=secretref:github-webhook-secret APP_REVISION=${{ github.event.workflow_run.head_sha || github.sha }} PUBLIC_API_URL=https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io PORT=8000 ENVIRONMENT=production DATABASE_URL=secretref:database-url
+
+      - name: Verify deployed revision and authenticated admin lifecycle
+        run: python backend/tools/release_probe.py --url https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io --revision ${{ github.event.workflow_run.head_sha || github.sha }} --azure-admin

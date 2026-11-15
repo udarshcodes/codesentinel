@@ -23,6 +23,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up supported test interpreter
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:

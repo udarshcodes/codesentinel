@@ -19,17 +19,22 @@ on:
       worker_attempt_id:
         description: 'Worker attempt ID for lease validation'
         required: true
+      application_revision:
+        description: 'Tested CodeSentinel revision supplied by the API release'
+        required: false
+        default: ''
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
     env:
-      SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:2529a1041ef37cb7941572da82d56d4355c9354abdfe5d388f5e5d38b04cc7ea
+      SANDBOX_IMAGE: ghcr.io/udarshcodes/codesentinel-sandbox@sha256:144c81559354b8e094c32fb87ef7babe87c2e8f7293a2861ecc04947bb2c4e32
     steps:
       - name: Checkout CodeSentinel Code
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ inputs.application_revision || github.sha }}
         
       - name: Set up Python
         uses: actions/setup-python@v5

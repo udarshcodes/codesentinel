@@ -1,3 +1,12 @@
+FROM node:22.23.5-alpine AS admin-web
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY frontend/ ./
+# API-hosted admin must call its own origin, independent of the public SPA host.
+ENV VITE_API_URL=""
+RUN npm run build
+
 # Build lightweight orchestrator backend
 FROM python:3.12-slim
 
@@ -15,11 +24,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install lightweight Python requirements (NO heavy scanning tools)
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install uv && uv pip install --system -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY backend/ .
+COPY --from=admin-web /web/dist /opt/codesentinel/admin-web
 
 # Add Healthcheck for Azure Container Apps
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

@@ -23,3 +23,18 @@ chroma_data/
 
 # Temp directories
 /tmp/repos/
+**/.env*
+**/node_modules/
+**/dist/
+**/.venv*/
+**/venv*/
+**/__pycache__/
+**/.pytest_cache/
+**/chroma_data/
+**/chroma_db/
+**/*.db
+**/*.sqlite*
+**/*.log
+**/*.bak
+**/tests/
+**/*.md
