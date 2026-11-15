@@ -51,7 +51,7 @@ export default function DiffViewer({ state }) {
         </div>
         {totalGenerated > 0 && (
           <div className="text-sm font-medium text-muted-foreground bg-card border border-border px-3 py-1.5 rounded-lg flex items-center gap-2">
-            <span>Acceptance Rate: <strong className="text-foreground">{acceptanceRate}%</strong></span>
+            <span>Application Rate: <strong className="text-foreground">{acceptanceRate}%</strong></span>
             <span className="opacity-50">|</span>
             <span className="text-[#22C55E]">{totalApplied} applied</span>
             <span className="opacity-50">|</span>
@@ -84,7 +84,7 @@ function FilePatchGroup({ group, state }) {
           <span className="text-sm font-semibold text-foreground font-mono">{group.file}</span>
         </div>
         <div className="flex items-center gap-3 text-xs sm:text-sm whitespace-nowrap">
-          <span className="text-muted-foreground"><strong className="text-foreground">{group.generated}</strong> generated</span>
+          <span className="text-muted-foreground"><strong className="text-foreground">{group.generated}</strong> attempts</span>
           <div className="w-1 h-1 rounded-full bg-border"></div>
           <span className="text-[#22C55E]"><strong className="text-[#22C55E]">{group.applied}</strong> applied</span>
           <div className="w-1 h-1 rounded-full bg-border"></div>

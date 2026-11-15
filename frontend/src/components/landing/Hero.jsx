@@ -44,16 +44,16 @@ export default function Hero() {
           className="text-[clamp(3rem,8vw,6rem)] font-bold leading-[1.05] tracking-[-0.05em] text-foreground mb-2 md:mb-4 uppercase animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-forwards"
           style={{ animationDelay: '200ms' }}
         >
-          Find the vulnerability.<br />
-          Fix the vulnerability.<br />
-          <span className="text-primary">Ship the fix.</span>
+          Find potential risks.<br />
+          Review proposed repairs.<br />
+          <span className="text-primary">Verify before merging.</span>
         </h1>
 
         <p
           className="text-foreground/80 text-[clamp(1.125rem,2.5vw,1.875rem)] font-light mb-3 md:mb-6 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-forwards"
           style={{ animationDelay: '400ms' }}
         >
-          Autonomous security remediation for the code you actually ship.
+          Repository analysis and assisted remediation for the code you ship.
         </p>
 
         <p

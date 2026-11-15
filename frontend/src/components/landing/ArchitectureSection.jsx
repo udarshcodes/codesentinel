@@ -59,7 +59,7 @@ export default function ArchitectureSection() {
                 <div className="border-2 border-[#8B5CF6] bg-[#8B5CF6]/5 p-5 rounded-lg shadow-[0_0_20px_rgba(139,92,246,0.1)]">
                   <div className="text-[#FAFAFA] font-bold mb-3">FastAPI Backend</div>
                   <div className="flex gap-2 text-xs font-mono text-[#A1A1AA]">
-                    <span className="bg-[#242428] px-2 py-1 rounded">SQLite</span>
+                    <span className="bg-[#242428] px-2 py-1 rounded">PostgreSQL / SQLite</span>
                     <span className="bg-[#242428] px-2 py-1 rounded">Uvicorn</span>
                   </div>
                 </div>

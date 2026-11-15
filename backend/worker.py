@@ -431,6 +431,10 @@ async def run_worker():
 
     try:
         print(f"[Diag] astream_before: task_id={TASK_ID}, status={state.get('status', 'N/A')}, last_completed_node={state.get('last_completed_node', '')}, repo_url_present={bool(state.get('repo_url'))}, dep_findings={len(state.get('dependency_findings', []))}, static_findings={len(state.get('static_findings', []))}, patches={len(state.get('patches', []))}, validations={len(state.get('validation_results', []))}")
+        from tools.worker_usage import capture_usage
+        import copy
+        usage_baseline = copy.deepcopy(state.get("llm_telemetry", {}))
+        cache_baseline = copy.deepcopy(state.get("worker_cache_metrics", {}))
         astream_iter = langgraph_app.astream(state)
 
         fatal_error = False
@@ -451,6 +455,7 @@ async def run_worker():
                 output = anext_task.result()
                 
             except LLMExhaustionError:
+                capture_usage(state, usage_baseline, cache_baseline)
                 raise
             except StopAsyncIteration:
                 output = None
@@ -500,6 +505,7 @@ async def run_worker():
 
                 # StateGraph nodes return complete replacement values, not list deltas.
                 state.update(safe_update)
+                capture_usage(state, usage_baseline, cache_baseline)
                 state["last_completed_node"] = node_name
                 
                 # Persist state back to SQLite

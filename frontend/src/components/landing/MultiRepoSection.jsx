@@ -16,7 +16,7 @@ export default function MultiRepoSection() {
         {/* Left: Typography */}
         <div className="flex flex-col">
           <h2 className="text-4xl md:text-5xl font-bold tracking-tighter leading-tight text-[#FAFAFA] mb-6">
-            Scale across your<br />
+            Analyze batches across your<br />
             <span className="text-[#A1A1AA]">entire organization.</span>
           </h2>
           <div className="w-12 h-1 bg-[#8B5CF6] mb-8"></div>
@@ -24,7 +24,7 @@ export default function MultiRepoSection() {
             Security doesn&apos;t happen in a single repository. CodeSentinel supports organization wide batch analysis, for up to 10 non-archived repositories per request.
           </p>
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-md p-4 max-w-md font-mono text-sm">
-            <span className="text-[#71717A]">$</span> <span className="text-[#FAFAFA]">codesentinel analyze</span> <span className="text-[#8B5CF6]">github.com/udarshcodes/*</span>
+            <span className="text-[#71717A]">Repository input:</span> <span className="text-[#8B5CF6]">github.com/udarshcodes/*</span>
           </div>
         </div>
 

@@ -34,12 +34,12 @@ export default function PipelineView({ state }) {
     const isActive = currentAgent === agentKey && !isError && !isPaused
     const isAgentPaused = currentAgent === agentKey && isPaused
     const isAgentError = currentAgent === agentKey && isError
-    const { statusType } = getAgentStatus(agentKey, state, { isCompleted, isActive, isSkipped, isAgentPaused, isAgentError });
+    const { statusType, displayStatus } = getAgentStatus(agentKey, state, { isCompleted, isActive, isSkipped, isAgentPaused, isAgentError });
     
     if (isCompleted || isAgentError) {
       executedCount++;
     }
-    if (statusType === 'success') {
+    if (displayStatus === 'Verified') {
       verifiedCount++;
     } else if (statusType === 'warning') {
       reviewCount++;

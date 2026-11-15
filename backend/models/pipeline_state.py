@@ -20,6 +20,9 @@ class PipelineState(TypedDict, total=False):
     security_verified: bool
     pr_url: NotRequired[str]
     retry_count: int
+    security_retry_count: NotRequired[int]
+    last_completed_node: NotRequired[str]
+    approval_cycle_id: NotRequired[str]
     
     # State tracking
     status: NotRequired[str]
@@ -55,3 +58,5 @@ class PipelineState(TypedDict, total=False):
     touched_symbols: NotRequired[dict]
     dependency_graph: NotRequired[dict]
     rag_status: NotRequired[dict]
+    llm_telemetry: NotRequired[dict]
+    worker_cache_metrics: NotRequired[dict]

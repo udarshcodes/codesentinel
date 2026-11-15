@@ -8,6 +8,18 @@ def _get_db():
     from api.db import get_connection
     return get_connection()
 
+
+def _cooldown_active(value, now=None):
+    if value is None:
+        return False
+    try:
+        until = datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else value
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        return until > (now or datetime.now(timezone.utc))
+    except (TypeError, ValueError, AttributeError):
+        return True  # Malformed persisted cooldowns must not grant fresh capacity.
+
 def _reset_if_new_day(cursor):
     today = datetime.now(timezone.utc).date().isoformat()
     cursor.execute("SELECT date_str FROM llm_global_state WHERE id = 1")
@@ -43,7 +55,7 @@ def get_next_key() -> tuple[str, int]:
                 emergency_active = bool(row[0]) if row else False
                 emergency_rate_limited_until = row[1] if row else None
                 
-                if emergency_rate_limited_until and emergency_rate_limited_until > now_ts:
+                if _cooldown_active(emergency_rate_limited_until):
                     raise RuntimeError("[KeyDispatcher] All API keys and emergency key are exhausted/rate-limited.")
                     
                 if not emergency_active:
@@ -138,7 +150,7 @@ def get_usage_report() -> dict:
         emergency_rate_limited_until = global_row[3] if global_row else None
         
         emergency_rate_limited = False
-        if emergency_rate_limited_until and emergency_rate_limited_until > now_ts:
+        if _cooldown_active(emergency_rate_limited_until):
             emergency_active = False
             emergency_rate_limited = True
         
@@ -156,7 +168,7 @@ def get_usage_report() -> dict:
             status = "active"
             if daily_exhausted:
                 status = "exhausted"
-            elif rate_limited_until and rate_limited_until > now_ts:
+            elif _cooldown_active(rate_limited_until):
                 status = "rate_limited"
                 
             if status == "active":
@@ -175,7 +187,7 @@ def get_usage_report() -> dict:
             "date": date_str,
             "primary_keys": primary_keys_report,
             "emergency_key": {
-                "available": GROQ_EMERGENCY_KEY is not None and not emergency_rate_limited,
+                "available": bool(GROQ_EMERGENCY_KEY) and not emergency_rate_limited,
                 "active": emergency_active,
                 "rate_limited": emergency_rate_limited,
                 "rate_limited_until": emergency_rate_limited_until,

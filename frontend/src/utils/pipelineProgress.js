@@ -24,16 +24,9 @@ export function reconstructProgress(state) {
     lastCompletedIdx = AGENT_ORDER.indexOf(lastCompleted);
   }
 
-  // 1. If we have a last_completed_node, ensure it and all predecessors are marked completed
-  // (unless it's skipped, but codesentinel pipeline is strictly sequential so if a node is
-  // completed, all its predecessors must have been completed or skipped. For robustness, 
-  // we just mark them all completed as requested: "If last_completed_node is repo_mapper, 
-  // then repo_mapper must be Verified... If pr_author, all nine agents must be Verified."
-  if (lastCompletedIdx >= 0) {
-    for (let i = 0; i <= lastCompletedIdx; i++) {
-      completedAgents.add(AGENT_ORDER[i]);
-    }
-  }
+  // A last-node cursor proves that node completed, not that every predecessor ran.
+  // Validation infrastructure failures can legitimately bypass security verification.
+  if (lastCompletedIdx >= 0) completedAgents.add(lastCompleted);
 
   // 2. Determine currentAgent
   if (state.status !== 'COMPLETED' && state.status !== 'NEEDS_REVIEW') {
@@ -42,6 +35,15 @@ export function reconstructProgress(state) {
     } else if (!lastCompleted && (state.status === 'RUNNING' || state.status === 'DISPATCHING' || isError || isWaitingLLM)) {
       currentAgent = AGENT_ORDER[0];
     }
+  }
+
+  const latestValidation = state.validation_results?.at(-1);
+  if (currentAgent && lastCompleted === 'validator' && latestValidation?.infrastructure_error) {
+    currentAgent = 'pr_author';
+  } else if (currentAgent && lastCompleted === 'validator' && latestValidation?.passed === false && !latestValidation.unresolvable && (state.retry_count || 0) < 3 && state.patches?.some(p => p.applied)) {
+    currentAgent = 'code_generator';
+  } else if (currentAgent && lastCompleted === 'security_verifier' && state.security_verified !== true && (state.security_retry_count || 0) < 3) {
+    currentAgent = 'code_generator';
   }
 
   // Overrides for specific paused states
@@ -100,6 +102,8 @@ export function getAgentStatus(agentKey, state, flags) {
     if (agentKey === 'static_analysis' && state.scanners_failed) return { displayStatus: 'Review Required', statusType: 'warning' };
     if (agentKey === 'code_generator' && !(state.patches || []).some(p => p.applied)) return { displayStatus: 'No Changes Applied', statusType: 'warning' };
     if (agentKey === 'validator') {
+      if (state.validation_results?.at(-1)?.infrastructure_error) return { displayStatus: 'Environment Unavailable', statusType: 'warning' };
+      if (state.validation_results?.at(-1)?.passed === true && state.validation_results.at(-1).tests_executed === false) return { displayStatus: 'Syntax Only', statusType: 'warning' };
       const allPassed = state.validation_results?.length > 0 && state.validation_results.at(-1).passed === true;
       if (state.validation_results?.length > 0 && !allPassed) {
         return { displayStatus: 'Review Required', statusType: 'warning' };

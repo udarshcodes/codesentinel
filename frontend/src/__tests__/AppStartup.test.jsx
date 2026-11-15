@@ -47,6 +47,8 @@ vi.mock('../components/landing/LandingPage', () => ({
 
 describe('App Startup State', () => {
   beforeEach(() => {
+    sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
     vi.stubGlobal('fetch', vi.fn());
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
@@ -154,4 +156,21 @@ describe('App Startup State', () => {
       expect(screen.getByTestId('landing-page')).toBeInTheDocument();
     });
   });
+  it('restores a selected result after a page remount without starting a new analysis', async () => {
+    globalThis.fetch.mockResolvedValue({ok: true, json: async () => ({task_id: 'task-restore', view_token: 'private-token'})});
+    const view = render(<App />);
+    fireEvent.change(screen.getByTestId('repo-input'), {target: {value: 'https://github.com/udarshcodes/setu'}});
+    fireEvent.click(screen.getByTestId('start-btn'));
+    await waitFor(() => expect(screen.getByTestId('pipeline-dashboard')).toBeInTheDocument());
+    expect(window.location.search).toContain('task=task-restore');
+    expect(window.location.href).not.toContain('private-token');
+    view.unmount();
+    render(<App />);
+    expect(screen.getByTestId('pipeline-dashboard')).toHaveTextContent('task-restore');
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', {name: 'Back to Home'}));
+    expect(screen.getByTestId('landing-page')).toBeInTheDocument();
+    expect(window.location.search).toBe('');
+  });
+
 });

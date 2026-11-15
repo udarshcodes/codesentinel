@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import LandingPage from '../components/landing/LandingPage';
 import DiffViewer from '../components/dashboard/DiffViewer';
 import FindingsPanel from '../components/dashboard/FindingsPanel';
+import PipelineView from '../components/dashboard/PipelineView';
 import PRSummary from '../components/dashboard/PRSummary';
 import { credentialStore } from '../services/credentialStore';
 
@@ -28,7 +29,7 @@ describe('audit regressions', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
     const { rerender } = render(<PRSummary state={null} />);
-    rerender(<PRSummary state={{ task_id: 'task-a', status: 'FAILED', pr_error: 'Push failed', confidence: 85 }} />);
+    rerender(<PRSummary state={{ task_id: 'task-a', status: 'FAILED', pr_error: 'Push failed', confidence: 85, patches: [{file: 'app.py', applied: true}] }} />);
     expect(screen.getByText('85.0', { exact: false })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry Pull Request Creation' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/job/task-a/retry-pr', {
@@ -49,4 +50,51 @@ it('keeps critical findings in the high filter and requires security before mark
   fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'fixed' } });
   expect(screen.queryByText('Critical issue')).toBeNull();
   expect(screen.queryByText('High issue')).toBeNull();
+});
+
+it('does not count completed mapping/planning stages as verified repairs', () => {
+  render(<PipelineView state={{status: 'COMPLETED', completed_nodes: ['repo_mapper', 'dependency_analyzer', 'repair_planner']}} />);
+  expect(screen.queryByText(/Verified$/)).toBeNull();
+});
+
+it('reports applied and validation evidence separately from security verification', () => {
+  render(<FindingsPanel state={{status: 'COMPLETED', investigated_issues: [{id: 0, title: 'Timeout issue', severity: 'high'}],
+    patches: [{patch_id: 0, applied: true}], validation_results: [{passed: true}], security_verified: false}} />);
+  fireEvent.click(screen.getByRole('button', {name: /Timeout issue/}));
+  expect(screen.getByText('Remediation applied:').textContent).toContain('Yes');
+  expect(screen.getByText('Validation passed:').textContent).toContain('Yes');
+  expect(screen.queryByText('Fixed')).toBeTruthy(); // Only the filter option, never the issue status.
+});
+
+it('does not offer a futile publication retry for invalid persisted patch history', () => {
+  render(<PRSummary state={{status: 'COMPLETED', pr_error: 'Patch re-application failed on trusted workspace: search missing'}} />);
+  expect(screen.queryByRole('button', {name: 'Retry Pull Request Creation'})).toBeNull();
+  expect(screen.getByText(/start a new analysis/)).toBeTruthy();
+});
+
+it('renders finite patch group counts and application rate', () => {
+  render(<DiffViewer state={{patches: [{file:'app.py',applied:true},{file:'app.py',applied:false}]}} />);
+  expect(screen.getByRole('button', {name: /app.py 2 attempts 1 applied 1 rejected/})).toBeTruthy();
+  expect(screen.queryByText('NaN')).toBeNull();
+  expect(screen.getByText('50.0%')).toBeTruthy();
+});
+
+
+it('shows advisory-only completion without a futile PR retry', () => {
+  render(<PRSummary state={{status: 'COMPLETED', pr_error: 'No automatic repairs selected; advisory findings require manual review.', patches: []}} />);
+  expect(screen.getAllByText('Analysis complete — no automatic changes').length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', {name: 'Retry Pull Request Creation'})).toBeNull();
+});
+
+
+it('does not show a final PR failure during a repair retry', () => {
+  const {container} = render(<PRSummary state={{status:'RUNNING',pr_error:'Temporary repair failure',patches:[]}} />);
+  expect(container.textContent).toBe('');
+});
+
+it('keeps update advisories filterable without calling them unresolved repairs', () => {
+  render(<FindingsPanel state={{status:'COMPLETED', investigated_issues:[{id:0,description:'Outdated dependency: example',severity:'low',affected_files:['package.json'],remediation_mode:'manual_review'}],patches:[]}} />);
+  fireEvent.change(screen.getByRole('combobox',{name:'Filter status'}),{target:{value:'advisory'}});
+  expect(screen.getByRole('button',{name:/Outdated dependency: example.*Advisory/})).toBeTruthy();
+  expect(screen.queryByRole('button',{name:/Outdated dependency: example.*Unresolved/})).toBeNull();
 });

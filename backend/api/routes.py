@@ -225,6 +225,11 @@ async def trigger_github_worker(
                     print(f"Warning: Could not fetch HEAD commit for {repo_url}: {e}")
 
             inputs = {"task_id": task_id, "repo_url": repo_url, "backend_url": backend_url}
+            application_revision = os.getenv("APP_REVISION", "")
+            if application_revision:
+                if not re.fullmatch(r"[a-f0-9]{40}", application_revision):
+                    raise RuntimeError("Invalid configured application revision.")
+                inputs["application_revision"] = application_revision
             if commit_sha:
                 inputs["commit_sha"] = commit_sha
             if worker_attempt_id:
@@ -912,9 +917,22 @@ from tools.key_dispatcher import get_usage_report
 class LoginRequest(BaseModel):
     secret: str
 
+def _validate_admin_origin(request: Request):
+    # Cross-site cookies require an explicit CSRF origin boundary on mutations.
+    origin = request.headers.get("origin")
+    allowed = {item.strip() for item in os.getenv("CORS_ORIGINS", "").replace(",", " ").split() if item.strip() != "*"}
+    allowed.add("https://salmon-ground-0362fac00.7.azurestaticapps.net")
+    allowed.add(os.getenv("PUBLIC_API_URL", "https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io").rstrip("/"))
+    if origin and origin not in allowed and origin != str(request.base_url).rstrip("/"):
+        raise HTTPException(status_code=403, detail="Untrusted admin request origin")
+    if not origin and request.headers.get("sec-fetch-site") == "cross-site":
+        raise HTTPException(status_code=403, detail="Admin mutations require a trusted origin")
+
+
 @router.post("/v1/admin/login")
 @limiter.limit("5/minute")
-async def admin_login(request: Request, body: LoginRequest, response: Response):
+def admin_login(request: Request, body: LoginRequest, response: Response):
+    _validate_admin_origin(request)
     admin_secret = os.getenv("ADMIN_SECRET", "")
     # Use hmac.compare_digest for constant-time comparison
     if not admin_secret or not hmac.compare_digest(body.secret.encode('utf-8'), admin_secret.encode('utf-8')):
@@ -930,31 +948,29 @@ async def admin_login(request: Request, body: LoginRequest, response: Response):
         value=session_id,
         httponly=True,
         secure=is_prod,
-        samesite="lax",
+        samesite="none" if is_prod else "lax",
         max_age=3600
     )
     return {"status": "ok"}
 
 @router.post("/v1/admin/logout")
-async def admin_logout(request: Request, response: Response):
+def admin_logout(request: Request, response: Response):
+    _validate_admin_origin(request)
     session_id = request.cookies.get("admin_session")
     if session_id:
         JobManager.delete_admin_session(session_id)
     is_prod = os.getenv("ENVIRONMENT") == "production"
-    response.delete_cookie(key="admin_session", httponly=True, secure=is_prod, samesite="lax")
+    response.delete_cookie(key="admin_session", httponly=True, secure=is_prod, samesite="none" if is_prod else "lax")
     return {"status": "ok"}
 
 @router.get("/v1/admin/telemetry")
 @limiter.limit("10/minute")
-async def admin_telemetry(request: Request, admin_session: str = Cookie(None)):
+def admin_telemetry(request: Request, admin_session: str = Cookie(None)):
     if not JobManager.validate_admin_session(admin_session):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    from tools.llm_router import get_telemetry as get_agent_telemetry
-    from tools.response_cache import cache_metrics
-    
     usage = get_usage_report()
-    agents = get_agent_telemetry()
+    worker_usage = JobManager.get_worker_usage()
+    agents = worker_usage["agents"]
     pipeline = JobManager.get_pipeline_health_metrics()
     
     failed_jobs = pipeline.get("failed", 0) + pipeline.get("active_failed", 0)
@@ -964,24 +980,26 @@ async def admin_telemetry(request: Request, admin_session: str = Cookie(None)):
         "pipeline_health": "stable" if failed_jobs == 0 else "unstable",
         "overview": {
             "total_models": len(agents),
-            "total_keys": usage.get("overview", {}).get("active_primary_keys", 0),
+            "total_keys": len(usage.get("primary_keys", {})),
             "status": "EMERGENCY" if usage.get("overview", {}).get("emergency_engaged") else "ACTIVE",
-            "cache_metrics": cache_metrics.get("global", {"hits": 0, "misses": 0})
+            "cache_metrics": worker_usage["cache"],
+            "telemetry_scope": "Latest 100 job snapshots",
+            "reported_jobs": worker_usage["reported_jobs"]
         },
         "models": {
             agent: {
                 "requests": data.get("calls", 0),
                 "tokens": data.get("prompt_tokens", 0) + data.get("completion_tokens", 0),
-                "failures": 0,
-                "rate_limit_status": "ok"
+                "failures": None,
+                "rate_limit_status": "unknown"
             } for agent, data in agents.items()
         },
         "credentials": {
             f"key_{k}": {
                 "all_models": {
-                    "status": v.get("status", "active"),
-                    "tokens": v.get("tokens_used", 0),
-                    "failures": 0
+                    "status": "configured",
+                    "tokens": None,
+                    "failures": None
                 }
             } for k, v in usage.get("primary_keys", {}).items()
         }

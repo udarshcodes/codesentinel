@@ -51,7 +51,7 @@ export default function FeaturesSection() {
               Human Approval
               <span className="w-2 h-2 rounded-full bg-[#F59E0B]"></span>
             </h4>
-            <p className="text-[#71717A] text-sm leading-relaxed">High risk architectural changes are automatically paused for human review before any code is generated or executed.</p>
+            <p className="text-[#71717A] text-sm leading-relaxed">Plans classified as high risk pause for authorized review before generation. Classification is heuristic and can miss risks.</p>
           </div>
           
           <div className="bg-[#0A0A0A] border border-[#242428] rounded-xl p-8 lg:col-span-2 flex flex-col md:flex-row gap-8 items-center justify-between">
@@ -60,7 +60,7 @@ export default function FeaturesSection() {
               <p className="text-[#71717A] text-sm leading-relaxed max-w-md">The pipeline attempts build, test, and security checks. Failed or incomplete verification can produce a draft pull request requiring review.</p>
             </div>
             <div className="shrink-0 text-5xl font-bold text-[#FAFAFA]">
-              98<span className="text-[#8B5CF6]">.4%</span>
+              SSE
             </div>
           </div>
 

@@ -8,6 +8,7 @@ export default function AdminDashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
 
   useEffect(() => {
 
@@ -47,7 +48,7 @@ export default function AdminDashboard() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshAttempt]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -61,9 +62,10 @@ export default function AdminDashboard() {
       });
       if (res.ok) {
         setIsAuthenticated(true);
+        setSecret('');
         setError(null);
       } else {
-        setError('Invalid Admin Secret');
+        setError(res.status === 401 ? 'Invalid Admin Secret' : `Unable to authenticate (HTTP ${res.status}). Please retry.`);
       }
     } catch {
       setError('Connection failed');
@@ -73,9 +75,11 @@ export default function AdminDashboard() {
   const handleLogout = async () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
-      await fetch(`${apiUrl}/api/v1/admin/logout`, { method: 'POST', credentials: 'include' });
+      const res = await fetch(`${apiUrl}/api/v1/admin/logout`, { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error('Could not end the admin session. Please retry Lock.');
     } catch(err) {
-      console.error(err);
+      setError(err.message || 'Connection failed. Please retry Lock.');
+      return;
     }
     setIsAuthenticated(false);
     setSecret('');
@@ -125,8 +129,14 @@ export default function AdminDashboard() {
   if (!data) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
-        <div className="w-12 h-12 border-4 border-border border-t-primary rounded-full animate-spin"></div>
-        <p className="text-muted-foreground font-medium animate-pulse">Fetching telemetry...</p>
+        {error ? <>
+          <p role="alert" className="text-destructive text-center px-4">{error}</p>
+          <button onClick={() => { setError(null); setRefreshAttempt(n => n + 1); }} className="text-primary font-medium">Retry telemetry</button>
+          <button onClick={handleLogout} className="text-muted-foreground">Lock</button>
+        </> : <>
+          <div className="w-12 h-12 border-4 border-border border-t-primary rounded-full animate-spin"></div>
+          <p className="text-muted-foreground font-medium animate-pulse">Fetching telemetry...</p>
+        </>}
       </div>
     );
   }
@@ -140,10 +150,10 @@ export default function AdminDashboard() {
             <div className="bg-primary p-2 rounded-lg">
               <Activity className="w-5 h-5 text-primary-foreground" />
             </div>
-            <h1 className="text-xl font-bold text-foreground tracking-tight">CodeSentinel Telemetry</h1>
+            <h1 className="text-sm sm:text-xl font-bold text-foreground tracking-tight">CodeSentinel Telemetry</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
               <Clock className="w-4 h-4" />
               <span>Refreshed: {lastRefreshed?.toLocaleTimeString()}</span>
             </div>
@@ -156,14 +166,15 @@ export default function AdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+        {error && <p role="alert" className="text-destructive">{error}</p>}
         
         {/* Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard 
             icon={<Server className="w-6 h-6 text-blue-500" />}
-            title="Total Models" 
+            title="Agents Reporting"
             value={data.overview?.total_models ?? 0}
-            sub="Active LLM endpoints"
+            sub={data.overview?.telemetry_scope || "Worker job snapshots"}
           />
           <StatCard 
             icon={<Key className="w-6 h-6 text-yellow-500" />}
@@ -179,28 +190,30 @@ export default function AdminDashboard() {
           />
           <StatCard 
             icon={<Activity className="w-6 h-6 text-primary" />}
-            title="System Status" 
+            title="API Key Routing"
             value={data.overview?.status || 'UNKNOWN'}
-            sub="Worker availability"
+            sub="API process configuration"
           />
           <StatCard 
             icon={<Server className="w-6 h-6 text-indigo-500" />}
-            title="Global Cache" 
+            title="Recent Worker Cache"
             value={
               <div className="flex gap-2 items-center mt-1">
                 <span className="text-emerald-500 text-sm">Hits: {data.overview?.cache_metrics?.hits || 0}</span>
                 <span className="text-amber-500 text-sm">Misses: {data.overview?.cache_metrics?.misses || 0}</span>
               </div>
             }
-            sub="Response Caching"
+            sub={`${data.overview?.reported_jobs || 0} jobs reporting usage`}
           />
         </div>
 
         {/* Model Telemetry */}
         <div className="glass-panel rounded-3xl p-6 sm:p-8">
           <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
-            Model Health & Usage
+            Worker Agent Usage
           </h2>
+          <p className="text-sm text-muted-foreground mb-4">Cumulative processed tokens and calls from the latest 100 jobs, not a billing estimate. Older jobs without worker snapshots are not included.</p>
+          {Object.keys(data.models || {}).length === 0 && <p className="text-sm text-muted-foreground">Usage appears after an analysis reports its first agent activity.</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {Object.entries(data.models || {}).map(([model, mData]) => (
               <div key={model} className="bg-muted rounded-2xl p-4 border border-border/50">
@@ -211,17 +224,17 @@ export default function AdminDashboard() {
                     <span className="font-medium text-foreground">{mData.requests?.toLocaleString() || 0}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Tokens</span>
+                    <span className="text-muted-foreground">Tokens processed</span>
                     <span className="font-medium text-foreground">{mData.tokens?.toLocaleString() || 0}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
+                  {mData.failures != null && <div className="flex justify-between items-center text-sm">
                     <span className="text-muted-foreground">Failures</span>
-                    <span className="font-medium text-foreground">{mData.failures || 0}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
+                    <span className="font-medium text-foreground">{mData.failures}</span>
+                  </div>}
+                  {mData.rate_limit_status !== 'unknown' && <div className="flex justify-between items-center text-sm">
                     <span className="text-muted-foreground">Status</span>
                     <span className={`font-semibold uppercase text-xs ${mData.rate_limit_status === 'ok' ? 'text-emerald-500' : 'text-amber-500'}`}>{mData.rate_limit_status || 'UNKNOWN'}</span>
-                  </div>
+                  </div>}
                 </div>
               </div>
             ))}
@@ -231,8 +244,9 @@ export default function AdminDashboard() {
         {/* Credential Telemetry */}
         <div className="glass-panel rounded-3xl p-6 sm:p-8">
             <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
-              Credential Health
+              Credential Configuration
             </h2>
+            <p className="text-sm text-muted-foreground mb-4">Keys configured on the API. Worker rate limits and per-key token usage are not reported here.</p>
             <div className="space-y-8">
               {Object.entries(data.credentials || {}).map(([keyId, keyData]) => (
                 <div key={keyId} className="space-y-4">
@@ -242,18 +256,18 @@ export default function AdminDashboard() {
                        <div key={model} className={`rounded-xl p-3 border ${st.status === 'exhausted' ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-card'} text-sm`}>
                          <div className="flex justify-between items-center mb-2">
                            <span className="text-muted-foreground truncate max-w-[120px]" title={model}>{model.split('/').pop()}</span>
-                           <span className={`text-xs font-bold uppercase ${st.status === 'active' ? 'text-emerald-500' : st.status === 'rate_limited' ? 'text-amber-500' : 'text-destructive'}`}>
+                           <span className={`text-xs font-bold uppercase ${['active', 'configured'].includes(st.status) ? 'text-emerald-500' : st.status === 'rate_limited' ? 'text-amber-500' : 'text-destructive'}`}>
                              {st.status || 'UNKNOWN'}
                            </span>
                          </div>
-                         <div className="flex justify-between items-center">
+                         {st.tokens != null && <div className="flex justify-between items-center">
                            <span className="text-muted-foreground text-xs">Tokens:</span>
                            <span className="font-medium text-xs">{st.tokens?.toLocaleString() || 0}</span>
-                         </div>
-                         <div className="flex justify-between items-center mt-1">
+                         </div>}
+                         {st.failures != null && <div className="flex justify-between items-center mt-1">
                            <span className="text-muted-foreground text-xs">Failures:</span>
-                           <span className="font-medium text-xs">{st.failures || 0}</span>
-                         </div>
+                           <span className="font-medium text-xs">{st.failures}</span>
+                         </div>}
                        </div>
                     ))}
                   </div>
@@ -277,7 +291,7 @@ function StatCard({ icon, title, value, sub, alert }) {
         <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
       </div>
       <div className="space-y-1">
-        <p className="text-3xl font-bold text-foreground">{value}</p>
+        <div className="text-3xl font-bold text-foreground">{value}</div>
         <p className="text-sm text-muted-foreground font-medium">{sub}</p>
       </div>
     </div>

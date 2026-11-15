@@ -1644,28 +1644,30 @@ class JobManager:
         if not session_id:
             return False
         conn = get_connection()
-        cursor = conn.cursor()
-        now = datetime.now(timezone.utc).isoformat()
-        cursor.execute(
-            "SELECT expires_at FROM admin_sessions WHERE session_id = ?",
-            (session_id,)
-        )
-        row = cursor.fetchone()
-        
-        if not row:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT expires_at FROM admin_sessions WHERE session_id = ?", (session_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+            expires_at = row[0]
+            if isinstance(expires_at, str):
+                try:
+                    expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                except ValueError:
+                    return False
+            if not isinstance(expires_at, datetime):
+                return False
+            # PostgreSQL TIMESTAMP returns a naive datetime; stored values are UTC.
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) >= expires_at:
+                cursor.execute("DELETE FROM admin_sessions WHERE session_id = ?", (session_id,))
+                conn.commit()
+                return False
+            return True
+        finally:
             conn.close()
-            return False
-            
-        expires_at = row[0]
-        if now > expires_at:
-            # Lazy cleanup
-            cursor.execute("DELETE FROM admin_sessions WHERE session_id = ?", (session_id,))
-            conn.commit()
-            conn.close()
-            return False
-            
-        conn.close()
-        return True
 
     @classmethod
     def delete_admin_session(cls, session_id: str):
@@ -1722,6 +1724,23 @@ class JobManager:
                 metrics["active_failed"] = active_count
             
         return metrics
+
+    @classmethod
+    def get_worker_usage(cls, limit=100):
+        from tools.worker_usage import aggregate_usage
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT pipeline_state FROM jobs ORDER BY created_at DESC LIMIT ?", (min(max(int(limit), 1), 100),))
+            states = []
+            for row in cursor.fetchall():
+                try:
+                    states.append(json.loads(row[0]) if isinstance(row[0], str) else row[0])
+                except (TypeError, ValueError):
+                    continue
+            return aggregate_usage(states)
+        finally:
+            conn.close()
 
     @classmethod
     def create_sse_capability(cls, task_id: str) -> str:

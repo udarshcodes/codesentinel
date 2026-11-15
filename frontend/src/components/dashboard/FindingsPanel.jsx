@@ -3,7 +3,20 @@ import { ShieldAlert, FileCode2, ChevronDown, ChevronRight, CheckCircle2, AlertC
 
 function normalizeCategory(category = 'Code Quality') {
   const value = category.toLowerCase().replaceAll('_', ' ').trim()
-  return value === 'security' ? 'Security' : value === 'dependency' ? 'Dependency' : value === 'code quality' ? 'Code Quality' : category
+  return ({security: 'Security', dependency: 'Dependency', quality: 'Code Quality', 'code quality': 'Code Quality', performance: 'Performance', functional: 'Functional'})[value] || category
+}
+
+function issueEvidence(state, id) {
+  const attempts = (state.patches || []).filter(p => String(p.patch_id ?? p.issue_id ?? p.issue) === String(id))
+  const validation = state.validation_results?.at(-1)
+  return {attempted: attempts.length > 0, applied: attempts.some(p => p.applied), validationRan: !!validation,
+    validationPassed: validation?.passed === true && validation.tests_executed !== false && !(validation.failed_issue_ids || []).some(failed => String(failed) === String(id))}
+}
+
+function findingTitle(finding) {
+  const detail = finding.title || finding.description || finding.issue
+  if (detail) return detail.length > 180 ? detail.slice(0, 177) + '...' : detail
+  return finding.rule || 'Reported finding'
 }
 
 export default function FindingsPanel({ state }) {
@@ -19,15 +32,13 @@ export default function FindingsPanel({ state }) {
     const resolveStatus = (issueId, initialStatus) => {
       if (!issueId && issueId !== 0) return initialStatus
       
-      const patch = [...(state.patches || [])].reverse().find(p => (p.patch_id ?? p.issue_id ?? p.issue) === issueId)
-      if (patch) {
-        if (!patch.applied) return 'Rejected'
-        const validation = state.validation_results?.at(-1)
-        if (!validation) return 'Applied'
-        const failed = validation.failed_issue_ids?.includes(issueId)
-        return validation.passed && !failed && state.security_verified === true ? 'Fixed' : 'Needs Review'
+      const evidence = issueEvidence(state, issueId)
+      if (evidence.attempted) {
+        if (!evidence.applied) return 'Rejected'
+        if (!evidence.validationRan) return 'Applied'
+        return evidence.validationPassed && state.security_verified === true && !state.scanners_failed ? 'Fixed' : 'Needs Review'
       }
-      
+
       const isTerminal = ['COMPLETED', 'NEEDS_REVIEW'].includes(state.status)
       if (isTerminal && initialStatus === 'Identified') return 'Unresolved'
       if (isTerminal && initialStatus === 'Confirmed') return 'Unresolved'
@@ -44,7 +55,7 @@ export default function FindingsPanel({ state }) {
         // Derive title from original finding if generic
         let title = issue.title || 'Investigated Issue';
         if (title === 'Vulnerability' || title === 'Investigated Issue') {
-           title = issue.original_finding?.title || issue.original_finding?.rule || issue.original_finding?.issue || issue.description || title;
+           title = findingTitle({...issue.original_finding, description: issue.description || issue.original_finding?.issue});
         }
 
         // Improve category mapping
@@ -61,9 +72,9 @@ export default function FindingsPanel({ state }) {
           description: issue.description || issue.root_cause || issue.original_finding?.issue || 'No description provided.',
           file: issue.affected_files?.[0] || issue.file || issue.original_finding?.file || 'unknown',
           line: issue.line || issue.location || issue.original_finding?.line || null,
-          status: resolveStatus(id, 'Confirmed'),
+          status: issue.remediation_mode === 'manual_review' ? 'Advisory' : resolveStatus(id, 'Confirmed'),
           evidence: issue.evidence || issue.original_finding?.evidence || '',
-          remediation: issue.remediation || issue.suggested_fix || ''
+          remediation: issue.remediation || issue.suggested_fix || (issue.remediation_mode === 'manual_review' ? 'A newer version alone is not evidence of a vulnerability. Review compatibility before upgrading.' : '')
         })
       })
     } else {
@@ -71,7 +82,7 @@ export default function FindingsPanel({ state }) {
       rawFindings.forEach((f, idx) => {
         const id = f.id !== undefined ? f.id : `raw-${idx}-${f.file}`
         
-        let title = f.title || f.rule || f.issue || f.description || 'Static Finding';
+        let title = findingTitle(f);
         let category = normalizeCategory(f.category || (f.package ? 'Dependency' : 'Code Quality'));
         if (title.toLowerCase().includes('css') || title.toLowerCase().includes('selector')) category = 'Code Quality';
         else if (title.toLowerCase().includes('security') || f.severity?.toLowerCase() === 'critical') category = 'Security';
@@ -158,7 +169,7 @@ export default function FindingsPanel({ state }) {
         <div className="flex items-center gap-3 mb-6">
           <ShieldAlert className="w-5 h-5 text-primary" />
           <h2 className="text-lg font-semibold text-foreground">
-            {counts.isRemediationCandidates ? 'Remediation Candidates' : 'Detected Findings'}
+            {counts.isRemediationCandidates ? 'Investigated Findings' : 'Detected Findings'}
           </h2>
           <span className="bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full text-xs font-bold ml-2" title="Matches the count in the final summary">
             {counts.total} Total
@@ -216,6 +227,7 @@ export default function FindingsPanel({ state }) {
             </select>
             <select aria-label="Filter status" className="bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
               <option value="all">All Statuses</option>
+              <option value="advisory">Advisory</option>
               <option value="identified">Identified</option>
               <option value="confirmed">Confirmed</option>
               <option value="fixed">Fixed</option>
@@ -305,8 +317,8 @@ export default function FindingsPanel({ state }) {
                             <h4 className="font-semibold text-foreground mb-2">State Resolution</h4>
                             <div className="text-muted-foreground text-xs space-y-1">
                               <div>Detection: <span className="font-medium text-foreground">Reported</span></div>
-                              <div>Remediation applied: <span className="font-medium text-foreground">{['Fixed', 'Needs Review'].includes(issue.status) ? 'Yes' : 'No'}</span></div>
-                              <div>Validation passed: <span className="font-medium text-foreground">{issue.status === 'Fixed' ? 'Yes' : (issue.status === 'Needs Review' ? 'No' : 'N/A')}</span></div>
+                              <div>Remediation applied: <span className="font-medium text-foreground">{issueEvidence(state, issue.id).applied ? 'Yes' : 'No'}</span></div>
+                              <div>Validation passed: <span className="font-medium text-foreground">{!issueEvidence(state, issue.id).validationRan ? 'Not run' : issueEvidence(state, issue.id).validationPassed ? 'Yes' : 'No'}</span></div>
                             </div>
                           </div>
                         </div>

@@ -105,6 +105,50 @@ def test_pg_migrations_and_init(postgres_db):
     assert c.fetchone()[0] == 1
     conn.close()
 
+def test_pg_admin_session_http_lifecycle(postgres_db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from main import app
+    from api.db import get_connection
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr('tools.key_dispatcher.GROQ_API_KEYS', ['test-key'])
+    monkeypatch.setenv("ADMIN_SECRET", "test-admin-only")
+    conn = get_connection()
+    future = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    conn.execute("INSERT INTO llm_key_state (key_index, tokens_used_today, daily_exhausted, rate_limited_until) VALUES (?, ?, ?, ?) ON CONFLICT(key_index) DO UPDATE SET rate_limited_until = excluded.rate_limited_until", (0, 0, False, future))
+    conn.execute("UPDATE llm_global_state SET emergency_rate_limited_until = ? WHERE id = 1", (future,))
+    conn.commit()
+    conn.close()
+    client = TestClient(app, base_url="https://testserver")
+    assert client.post("/api/v1/admin/login", json={"secret": "test-admin-only"}).status_code == 200
+    response = client.get("/api/v1/admin/telemetry")
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "ok"
+    assert response.json()["overview"]["total_keys"] == 1  # A cooling-down key is still configured.
+    assert client.post("/api/v1/admin/logout", json={}).status_code == 200
+    assert client.get("/api/v1/admin/telemetry").status_code == 401
+    conn = get_connection()
+    conn.execute("UPDATE llm_key_state SET rate_limited_until = NULL")
+    conn.execute("UPDATE llm_global_state SET emergency_rate_limited_until = NULL WHERE id = 1")
+    conn.commit()
+    conn.close()
+
+
+def test_pg_admin_expiry_and_repeated_validation_release_connections(postgres_db):
+    from api.job_manager import JobManager
+    from api.db import get_connection
+    from datetime import datetime, timedelta, timezone
+    session = JobManager.create_admin_session()
+    # More checks than the pool's maximum size detects a leaked connection.
+    for _ in range(25):
+        assert JobManager.validate_admin_session(session)
+    conn = get_connection()
+    conn.execute("UPDATE admin_sessions SET expires_at = ? WHERE session_id = ?",
+                 ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(), session))
+    conn.commit()
+    conn.close()
+    assert not JobManager.validate_admin_session(session)
+    assert not JobManager.validate_admin_session(session)
+
 def test_pg_atomic_job_claim(postgres_db):
     """Test concurrent claiming of jobs to ensure FOR UPDATE locks work correctly."""
     from api.job_manager import JobManager, init_db

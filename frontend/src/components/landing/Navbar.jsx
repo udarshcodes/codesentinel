@@ -1,3 +1,4 @@
+import { adminUrl } from '../../services/adminUrl'
 export default function Navbar() {
   const navLinks = [
     { label: 'Product', href: '#' },
@@ -35,7 +36,7 @@ export default function Navbar() {
       {/* Right: CTA */}
       <div className="hidden md:flex items-center gap-4">
         <a 
-          href="/admin"
+          href={adminUrl()}
           target="_blank" 
           rel="noopener noreferrer"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors uppercase tracking-widest"

@@ -21,7 +21,7 @@ describe('reconstructProgress', () => {
       completed_nodes: []
     };
     const result = reconstructProgress(state);
-    expect(result.completedAgents.has('repo_mapper')).toBe(true);
+    expect(result.completedAgents.has('repo_mapper')).toBe(false);
     expect(result.completedAgents.has('dependency_analyzer')).toBe(true);
     expect(result.currentAgent).toBe('static_analysis');
     expect(result.isError).toBe(true);
@@ -34,8 +34,8 @@ describe('reconstructProgress', () => {
       completed_nodes: []
     };
     const result = reconstructProgress(state);
-    expect(result.completedAgents.has('repo_mapper')).toBe(true);
-    expect(result.completedAgents.has('dependency_analyzer')).toBe(true);
+    expect(result.completedAgents.has('repo_mapper')).toBe(false);
+    expect(result.completedAgents.has('dependency_analyzer')).toBe(false);
     expect(result.completedAgents.has('static_analysis')).toBe(true);
     expect(result.currentAgent).toBe('bug_investigator');
   });
@@ -48,7 +48,7 @@ describe('reconstructProgress', () => {
     };
     const result = reconstructProgress(state);
     AGENT_ORDER.forEach(agent => {
-      expect(result.completedAgents.has(agent)).toBe(true);
+      expect(result.completedAgents.has(agent)).toBe(agent === 'pr_author');
     });
     expect(result.currentAgent).toBeNull();
   });
@@ -114,7 +114,7 @@ describe('reconstructProgress', () => {
     };
     const result = reconstructProgress(state);
     expect(result.completedAgents.has('bug_investigator')).toBe(true);
-    expect(result.completedAgents.has('static_analysis')).toBe(true);
+    expect(result.completedAgents.has('static_analysis')).toBe(false);
     expect(result.currentAgent).toBe('repair_planner'); // Overridden correctly
     expect(result.isPaused).toBe(true);
   });
@@ -135,8 +135,8 @@ describe('reconstructProgress', () => {
       last_completed_node: 'dependency_analyzer'
     };
     const result = reconstructProgress(state);
-    // reconstructProgress should fill in the gap for repo_mapper
-    expect(result.completedAgents.has('repo_mapper')).toBe(true);
+    // An incomplete history must not invent completed/verified stages.
+    expect(result.completedAgents.has('repo_mapper')).toBe(false);
     expect(result.completedAgents.has('dependency_analyzer')).toBe(true);
     expect(result.currentAgent).toBe('static_analysis');
   });

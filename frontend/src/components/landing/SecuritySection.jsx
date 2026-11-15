@@ -6,8 +6,8 @@ export default function SecuritySection() {
         {/* Left: Typography */}
         <div className="flex flex-col">
           <h2 className="text-4xl md:text-5xl font-bold tracking-tighter leading-tight text-[#FAFAFA] mb-6">
-            AI writes the fix.<br />
-            <span className="text-[#8B5CF6]">Verification proves it.</span>
+            AI proposes a repair.<br />
+            <span className="text-[#8B5CF6]">Checks inform your review.</span>
           </h2>
           <div className="w-12 h-1 bg-[#8B5CF6] mb-8"></div>
           <p className="text-lg text-[#A1A1AA] leading-relaxed max-w-lg mb-8">

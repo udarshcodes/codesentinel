@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -92,6 +93,15 @@ async def resume_waiting_jobs_loop():
 
 app = FastAPI(title="CodeSentinel", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def release_revision_header(request, call_next):
+    response = await call_next(request)
+    revision = os.getenv("APP_REVISION", "")
+    if re.fullmatch(r"[a-f0-9]{40}", revision):
+        response.headers["X-CodeSentinel-Revision"] = revision
+    return response
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -119,6 +129,27 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api")
 app.include_router(sse_router, prefix="/api")
+
+ADMIN_WEB_DIR = os.getenv("ADMIN_WEB_DIR", "/opt/codesentinel/admin-web")
+if os.path.isdir(os.path.join(ADMIN_WEB_DIR, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(ADMIN_WEB_DIR, "assets")), name="admin-assets")
+
+
+@app.get("/admin", include_in_schema=False)
+@app.get("/admin/", include_in_schema=False)
+def admin_page():
+    index = os.path.join(ADMIN_WEB_DIR, "index.html")
+    if not os.path.isfile(index):
+        raise HTTPException(503, "Admin UI is not bundled. For local development, open the Vite frontend /admin route.")
+    return FileResponse(index, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/logo.jpg", include_in_schema=False)
+def admin_logo():
+    path = os.path.join(ADMIN_WEB_DIR, "logo.jpg")
+    if not os.path.isfile(path):
+        raise HTTPException(404, "Logo unavailable")
+    return FileResponse(path, media_type="image/jpeg", headers={"X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/")

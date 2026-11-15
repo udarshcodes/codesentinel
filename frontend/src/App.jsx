@@ -1,4 +1,6 @@
+import { adminUrl } from './services/adminUrl'
 import { useState, useEffect } from 'react'
+import { readAnalysisSession, saveAnalysisSession, clearAnalysisSession } from './services/analysisSession'
 import { credentialStore } from './services/credentialStore'
 import PipelineDashboard from './components/dashboard/PipelineDashboard'
 import ThemeToggle from './components/dashboard/ThemeToggle'
@@ -7,12 +9,16 @@ import AdminDashboard from './pages/admin/AdminDashboard'
 import { ArrowLeft } from 'lucide-react'
 
 function App() {
-  const [repoUrlInput, setRepoUrlInput] = useState('')
-  const [activeTaskId, setActiveTaskId] = useState(null)
+  const adminDestination = adminUrl();
+  const redirectAdmin = window.location.pathname.startsWith('/admin') &&
+    new URL(adminDestination, window.location.href).origin !== window.location.origin;
+  const [savedAnalysis] = useState(() => window.location.pathname.startsWith('/admin') ? null : readAnalysisSession())
+  const [repoUrlInput, setRepoUrlInput] = useState(savedAnalysis?.repoUrl || '')
+  const [activeTaskId, setActiveTaskId] = useState(savedAnalysis?.taskId || null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
-  const [batchTasks, setBatchTasks] = useState([])
-  const [isPipelineRunning, setIsPipelineRunning] = useState(false)
+  const [batchTasks, setBatchTasks] = useState(savedAnalysis?.tasks || [])
+  const [isPipelineRunning, setIsPipelineRunning] = useState(!!savedAnalysis?.taskId)
 
 
   useEffect(() => {
@@ -24,7 +30,16 @@ function App() {
   }, [])
 
 
+  useEffect(() => {
+    if (activeTaskId) saveAnalysisSession(activeTaskId, repoUrlInput, batchTasks)
+  }, [activeTaskId, repoUrlInput, batchTasks])
+
+  useEffect(() => {
+    if (redirectAdmin) window.location.replace(adminDestination)
+  }, [redirectAdmin, adminDestination])
+
   if (window.location.pathname.startsWith('/admin')) {
+    if (redirectAdmin) return <a href={adminDestination}>Open admin dashboard</a>
     return <AdminDashboard />
   }
 
@@ -112,6 +127,7 @@ function App() {
       <div className="flex items-center justify-between mb-8">
         <button 
           onClick={() => {
+            clearAnalysisSession()
             setActiveTaskId(null)
             setBatchTasks([])
             setIsPipelineRunning(false)
@@ -125,7 +141,7 @@ function App() {
         <div className="flex items-center gap-4">
           <ThemeToggle />
           <a 
-            href="/admin"
+            href={adminUrl()}
             className="hidden sm:flex items-center gap-2 bg-card border border-border hover:border-primary text-foreground hover:bg-accent px-4 py-2 rounded-full font-medium transition-all text-sm shadow-sm"
           >
             Admin Dashboard
@@ -140,7 +156,7 @@ function App() {
             Analysis Workspace
           </h1>
           <p className="text-sm text-muted-foreground font-mono break-all">
-            {repoUrlInput || 'Multiple Repositories'}
+            {repoUrlInput || 'Restored analysis'}
           </p>
         </div>
       </header>

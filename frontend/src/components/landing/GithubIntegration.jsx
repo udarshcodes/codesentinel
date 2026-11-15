@@ -20,7 +20,7 @@ export default function GithubIntegration() {
           </h2>
           <div className="w-12 h-1 bg-[#8B5CF6] mb-8"></div>
           <p className="text-lg text-[#A1A1AA] leading-relaxed max-w-lg mb-8">
-            CodeSentinel doesn&apos;t just create a ticket in Jira. It completes the engineering lifecycle by opening a structured, verified Pull Request directly in your repository.
+            CodeSentinel doesn&apos;t just create a ticket in Jira. It can open a structured Pull Request with material changes. Failed or incomplete checks require human review.
           </p>
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3 text-[#A1A1AA] font-mono text-sm">

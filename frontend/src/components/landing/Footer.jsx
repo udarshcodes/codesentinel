@@ -1,3 +1,4 @@
+import { adminUrl } from '../../services/adminUrl'
 export default function Footer() {
   const languages = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Go', 'Rust', 'HTML', 'CSS']
 
@@ -24,7 +25,7 @@ export default function Footer() {
           <a href="#languages" className="text-[#A1A1AA] hover:text-[#FAFAFA] transition-colors">Languages</a>
           <a href="#architecture" className="text-[#A1A1AA] hover:text-[#FAFAFA] transition-colors">Architecture</a>
           <a href="https://github.com/udarshcodes/codesentinel" target="_blank" rel="noreferrer" className="text-[#A1A1AA] hover:text-[#FAFAFA] transition-colors">GitHub</a>
-          <a href="/admin" target="_blank" rel="noreferrer" className="text-[#A1A1AA] hover:text-[#FAFAFA] transition-colors">Admin Dashboard</a>
+          <a href={adminUrl()} target="_blank" rel="noreferrer" className="text-[#A1A1AA] hover:text-[#FAFAFA] transition-colors">Admin Dashboard</a>
         </div>
         
         {/* Supported Languages */}

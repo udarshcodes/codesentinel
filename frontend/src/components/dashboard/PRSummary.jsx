@@ -9,7 +9,7 @@ export default function PRSummary({ state }) {
   if (!state) return null;
   const { status, pr_url, pr_error, pipeline_error, confidence_score = state.confidence, task_id } = state;
 
-  if (!pr_url && !pr_error && !confidence_score && status !== 'FAILED' && status !== 'COMPLETED' && status !== 'NEEDS_REVIEW') {
+  if (!pr_url && !['FAILED', 'COMPLETED', 'NEEDS_REVIEW'].includes(status)) {
     return null;
   }
 
@@ -19,16 +19,18 @@ export default function PRSummary({ state }) {
   const patchesApplied = state.patches?.filter(p => p.applied)?.length || 0;
   const patchesRejected = state.patches?.filter(p => p.applied === false)?.length || 0;
   
-  const modifiedFiles = new Set(
+  const modifiedFiles = Array.isArray(state.material_files) ? state.material_files.length : new Set(
     (state.patches || []).filter(p => p.applied && p.file).map(p => p.file)
   ).size;
 
+  const requiresNewAnalysis = /Patch re-application failed|Persisted patch is missing|Secure patch_text is missing|require synchronized lockfiles/i.test(pr_error || "");
   const validationResults = state.validation_results || [];
   const validationRan = validationResults.length > 0;
-  const allTestsPassed = validationRan && validationResults.at(-1).passed === true;
+  const allTestsPassed = validationRan && validationResults.at(-1).passed === true && validationResults.at(-1).tests_executed !== false;
   
   const securityVerified = state.security_verified === true;
   const needsReview = !allTestsPassed || !securityVerified || state.scanners_failed === true;
+  const noAutomaticChanges = patchesGenerated === 0 && /^No (automatic repairs|bugs were found|valid code changes)/i.test(pr_error || '');
 
   let title = "Analysis Complete";
   let description = "CodeSentinel has finished the analysis and remediation pipeline.";
@@ -41,9 +43,14 @@ export default function PRSummary({ state }) {
     description = pipeline_error || "The pipeline encountered a fatal error and halted.";
     isError = true;
     Icon = XCircle;
+  } else if (noAutomaticChanges) {
+    title = "Analysis complete — no automatic changes";
+    description = pr_error;
+    isWarning = true;
+    Icon = AlertTriangle;
   } else if (pr_error) {
     title = "Pull Request Generation Failed";
-    description = "The AI remediation completed, but pushing the branch or opening the PR failed.";
+    description = "Proposed changes could not be published. Review the validation results and publication error below.";
     isError = true;
     Icon = XCircle;
   } else if (status === 'NEEDS_REVIEW' || needsReview) {
@@ -57,7 +64,7 @@ export default function PRSummary({ state }) {
   const iconColorClass = isError ? 'text-[#EF4444]' : (isWarning ? 'text-[#F59E0B]' : 'text-[#22C55E]');
   const borderClass = isError ? 'border-[#EF4444]/30' : (isWarning ? 'border-[#F59E0B]/30' : 'border-[#22C55E]/30');
 
-  const validationStatus = validationRan ? (allTestsPassed ? "Verified" : "Review Required") : "Skipped";
+  const validationStatus = validationResults.at(-1)?.infrastructure_error ? "Environment Unavailable" : validationRan ? (allTestsPassed ? "Verified" : "Review Required") : "Not Run";
   const securityStatus = securityVerified ? "Verified" : "Review Required";
 
   const handleRetryPR = async () => {
@@ -107,8 +114,12 @@ export default function PRSummary({ state }) {
             <div className="text-muted-foreground">Total Findings Detected:</div>
             <div className="font-medium text-foreground">{totalFindings}</div>
 
-            <div className="text-muted-foreground">Remediation Candidates:</div>
+            <div className="text-muted-foreground">Investigated Findings:</div>
             <div className="font-medium text-foreground">{remediationCandidates}</div>
+            <div className="text-muted-foreground">Automatic Repair Plan:</div>
+            <div className="font-medium text-foreground">{state.repair_plan?.length || 0}</div>
+            <div className="text-muted-foreground">Advisory Findings:</div>
+            <div className="font-medium text-foreground">{state.investigated_issues?.filter(issue => issue.remediation_mode === 'manual_review').length || 0}</div>
             
             <div className="text-muted-foreground">Patch Attempts:</div>
             <div className="font-medium text-foreground">{patchesGenerated}</div>
@@ -119,7 +130,7 @@ export default function PRSummary({ state }) {
             <div className="text-muted-foreground">Rejected Attempts:</div>
             <div className="font-medium text-foreground">{patchesRejected}</div>
             
-            <div className="text-muted-foreground">Files Modified:</div>
+            <div className="text-muted-foreground">{Array.isArray(state.material_files) ? 'Files in Git Diff:' : 'Files With Applied Attempts:'}</div>
             <div className="font-medium text-foreground">{modifiedFiles}</div>
           </div>
         </div>
@@ -132,6 +143,10 @@ export default function PRSummary({ state }) {
         </div>
       )}
 
+      {validationResults.at(-1)?.logs && <details className="bg-background rounded-xl p-6 border border-border mb-6">
+        <summary className="cursor-pointer font-medium">Validation diagnostics</summary>
+        <pre className="text-xs whitespace-pre-wrap break-words mt-3 max-h-96 overflow-auto">{validationResults.at(-1).logs}</pre>
+      </details>}
       <div className="bg-background rounded-xl p-6 border border-border mb-6">
         <h3 className="text-sm font-medium text-foreground mb-4">Verification Status</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -184,7 +199,7 @@ export default function PRSummary({ state }) {
             <p className="text-sm text-muted-foreground mb-4">
               {description}
             </p>
-            {pr_error && (
+            {pr_error && !noAutomaticChanges && (
               <div className="bg-[#EF4444]/5 rounded-lg p-4 mb-4 border border-[#EF4444]/20">
                 <p className="font-mono text-sm text-[#EF4444] whitespace-pre-wrap">{pr_error}</p>
               </div>
@@ -195,7 +210,8 @@ export default function PRSummary({ state }) {
               </div>
             )}
             
-            {pr_error && (
+            {requiresNewAnalysis && <p className="text-sm text-muted-foreground">This saved run has invalid patch history. Use Back to Home to start a new analysis; retrying publication cannot reconstruct these changes.</p>}
+            {pr_error && patchesApplied > 0 && !requiresNewAnalysis && (
               <div className="mt-4 flex flex-col gap-2">
                 <button
                   onClick={handleRetryPR}

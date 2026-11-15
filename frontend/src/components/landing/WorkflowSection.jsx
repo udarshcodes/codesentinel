@@ -8,7 +8,7 @@ export default function WorkflowSection() {
     { num: '06', title: 'Code Generation', desc: 'Generate the patch.' },
     { num: '07', title: 'Validation', desc: 'Build and test the change.' },
     { num: '08', title: 'Security Verification', desc: 'Rescan the modified code.' },
-    { num: '09', title: 'Pull Request', desc: 'Open the verified fix.' }
+    { num: '09', title: 'Pull Request', desc: 'Open a reviewable change when available.' }
   ]
 
   return (
@@ -20,10 +20,10 @@ export default function WorkflowSection() {
       <div className="max-w-[1400px] mx-auto px-6 relative z-10">
         <div className="mb-16 md:mb-24">
           <h2 className="text-4xl md:text-5xl font-bold tracking-tighter text-[#FAFAFA] mb-6">
-            From vulnerability to verified Pull Request.
+            From findings to reviewable Pull Request.
           </h2>
           <p className="text-lg text-[#A1A1AA] max-w-2xl">
-            A completely autonomous pipeline that takes security from an alert on a dashboard to a verified patch ready for review.
+            An assisted pipeline that investigates findings and attempts repairs. Available checks determine whether changes are verified or require further review.
           </p>
         </div>
 
