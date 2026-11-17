@@ -1,0 +1,57 @@
+name: Deployed application smoke checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: Optional public GitHub repository to analyze through the deployed UI
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright==1.65.2
+      - run: google-chrome --version
+      - name: Verify worker GitHub transport authentication
+        env:
+          GITHUB_TOKEN: ${{ secrets.WORKER_GITHUB_TOKEN }}
+          PYTHONPATH: backend
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          from tools.subprocess_runner import get_safe_env, github_git_authorization
+          token = os.environ['GITHUB_TOKEN']
+          if not token:
+              raise SystemExit('Worker GitHub token is not configured')
+          environment = get_safe_env(keep_github_token=False)
+          environment.update(GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0='http.extraHeader', GIT_CONFIG_VALUE_0=github_git_authorization(token))
+          result = subprocess.run(['git', 'ls-remote', 'https://github.com/udarshcodes/codesentinel.git', 'HEAD'], env=environment, capture_output=True, text=True, timeout=30)
+          if result.returncode:
+              raise SystemExit('Authenticated GitHub Git transport failed')
+          print('Authenticated GitHub Git transport passed')
+          PY
+      - name: Check the deployed UI and API
+        env:
+          SMOKE_REPO_URL: ${{ inputs.repo_url }}
+          SMOKE_BROWSER_CHANNEL: chrome
+          SMOKE_SITE_URL: https://salmon-ground-0362fac00.7.azurestaticapps.net
+          SMOKE_API_URL: https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io
+        run: python scripts/production_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployed-smoke-evidence
+          path: smoke-evidence/
+          retention-days: 7

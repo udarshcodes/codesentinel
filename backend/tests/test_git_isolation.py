@@ -6,20 +6,20 @@ import pytest
 from unittest.mock import patch
 from tools.subprocess_runner import get_safe_env
 
-def test_a_clone_env_may_contain_token():
-    os.environ["GITHUB_TOKEN"] = "super_secret_clone_token"
+def test_a_clone_env_may_contain_token(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "super_secret_clone_token")
     env = get_safe_env(keep_github_token=True)
     assert "GITHUB_TOKEN" in env
     assert env["GITHUB_TOKEN"] == "super_secret_clone_token"
     assert env.get("GIT_TERMINAL_PROMPT") == "0"
 
-def test_b_checkout_safe_env_must_not_contain_token():
-    os.environ["GITHUB_TOKEN"] = "super_secret_clone_token"
-    os.environ["GIT_CONFIG_VALUE_0"] = "AUTHORIZATION: bearer super_secret_clone_token"
-    os.environ["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-    os.environ["GIT_CONFIG_COUNT"] = "1"
-    os.environ["HOME"] = "/home/test"
-    os.environ["USERPROFILE"] = "C:\\Users\\test"
+def test_b_checkout_safe_env_must_not_contain_token(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "super_secret_clone_token")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "AUTHORIZATION: bearer super_secret_clone_token")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "http.extraHeader")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("HOME", "/home/test")
+    monkeypatch.setenv("USERPROFILE", "C:\\Users\\test")
     
     env = get_safe_env(keep_github_token=False)
     
@@ -31,11 +31,11 @@ def test_b_checkout_safe_env_must_not_contain_token():
     assert "USERPROFILE" not in env
     assert env.get("GIT_TERMINAL_PROMPT") == "0"
 
-def test_c_safe_env_removes_other_secrets():
-    os.environ["GROQ_API_KEY"] = "groq_secret"
-    os.environ["GROQ_API_KEY_1"] = "groq_secret_1"
-    os.environ["WORKER_WEBHOOK_SECRET"] = "webhook_secret"
-    os.environ["ADMIN_SECRET"] = "admin_secret"
+def test_c_safe_env_removes_other_secrets(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "groq_secret")
+    monkeypatch.setenv("GROQ_API_KEY_1", "groq_secret_1")
+    monkeypatch.setenv("WORKER_WEBHOOK_SECRET", "webhook_secret")
+    monkeypatch.setenv("ADMIN_SECRET", "admin_secret")
     
     env = get_safe_env(keep_github_token=False)
     
@@ -66,7 +66,7 @@ async def test_d_clone_uses_no_checkout():
             assert cmd[0] == "git"
             assert cmd[1:5] == ["-c", "core.hooksPath=/dev/null", "clone", "--no-checkout"]
 
-def test_e_malicious_checkout_cannot_see_secrets():
+def test_e_malicious_checkout_cannot_see_secrets(monkeypatch):
     # Construct a controlled test repository that executes a harmless command during checkout
     temp_dir = tempfile.mkdtemp()
     subprocess.run(["git", "init"], cwd=temp_dir, check=True, capture_output=True)
@@ -91,9 +91,9 @@ def test_e_malicious_checkout_cannot_see_secrets():
     subprocess.run(["git", "branch", "test-branch"], cwd=temp_dir, check=True)
     
     # Inject fake secrets into the test's process environment
-    os.environ["GITHUB_TOKEN"] = "super_secret_gh"
-    os.environ["GROQ_API_KEY_1"] = "super_secret_groq"
-    os.environ["WORKER_WEBHOOK_SECRET"] = "super_secret_webhook"
+    monkeypatch.setenv("GITHUB_TOKEN", "super_secret_gh")
+    monkeypatch.setenv("GROQ_API_KEY_1", "super_secret_groq")
+    monkeypatch.setenv("WORKER_WEBHOOK_SECRET", "super_secret_webhook")
     
     safe_env = get_safe_env(keep_github_token=False)
     

@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install application and worker test dependencies
-        run: python -m pip install -r backend/requirements.txt -r backend/requirements-worker.txt
+        run: python -m pip install -r backend/requirements.txt -r backend/requirements-worker.txt uv
       - name: Use the production sandbox reference
         run: |
           python - <<'PY'

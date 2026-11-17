@@ -1,5 +1,9 @@
 name: CodeSentinel CI/CD
 
+permissions:
+  contents: read
+  pull-requests: write
+
 on:
   pull_request:
     branches:
@@ -14,8 +18,10 @@ jobs:
     steps:
       - name: Trigger CodeSentinel Analysis
         id: codesentinel
+        env:
+          CODESENTINEL_API_URL: ${{ secrets.CODESENTINEL_API_URL }}
         run: |
-          API_URL="${{ secrets.CODESENTINEL_API_URL }}"
+          API_URL="$CODESENTINEL_API_URL"
           REPO_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           SHA="$GITHUB_SHA"
           
@@ -27,37 +33,38 @@ jobs:
           echo "Triggering CodeSentinel analysis for $REPO_URL at $SHA..."
           
           # We call the /api/analyze endpoint to queue the repository.
-          RESPONSE=$(curl -s -X POST "$API_URL/api/analyze" \
+          RESPONSE=$(curl --fail-with-body --silent --show-error --max-time 60 -X POST "$API_URL/api/analyze" \
                -H "Content-Type: application/json" \
                -d "{\"repo_url\": \"$REPO_URL\", \"commit_sha\": \"$SHA\"}")
           
           # Extract task_id using jq
-          TASK_ID=$(echo $RESPONSE | jq -r '.task_id')
+          TASK_ID=$(printf '%s' "$RESPONSE" | jq -er '.task_id | select(type == "string" and length > 0)')
           
           if [ "$TASK_ID" == "null" ] || [ -z "$TASK_ID" ]; then
-             echo "Failed to retrieve task_id from response: $RESPONSE"
+             echo "The API did not return an analysis task ID."
              exit 1
           fi
           
           echo "Analysis triggered successfully. Task ID: $TASK_ID"
           echo "task_id=$TASK_ID" >> $GITHUB_OUTPUT
 
-      - name: Post PR Comment with Telemetry Link
+      - name: Post PR Submission Receipt
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TASK_ID: ${{ steps.codesentinel.outputs.task_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          TASK_ID="${{ steps.codesentinel.outputs.task_id }}"
-          API_URL="${{ secrets.CODESENTINEL_API_URL }}"
-          STREAM_URL="$API_URL/api/stream?task_id=$TASK_ID"
-          
-          COMMENT="🚀 **CodeSentinel Analysis Started**
+          RECEIPT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat > "$RUNNER_TEMP/codesentinel-comment.md" <<EOF
+          **CodeSentinel analysis requested**
 
-          An autonomous AI remediation pipeline has been triggered for this Pull Request.
-          
-          **Task ID:** \`$TASK_ID\`
-          **Live Telemetry Stream:** [View SSE Stream]($STREAM_URL)
-          
-          _CodeSentinel will automatically open a fix PR if vulnerabilities are detected._"
-          
-          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT" --repo $GITHUB_REPOSITORY
+          Task ID: \`$TASK_ID\`
+
+          [Submission workflow]($RECEIPT_URL)
+
+          This workflow confirms submission only. Analysis and any proposed repair run asynchronously; a successful submission does not mean validation passed or a fix was produced.
+
+          Live telemetry requires an authorized CodeSentinel viewer session. Viewer and approval credentials are never published in this comment.
+          EOF
+          gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/codesentinel-comment.md" --repo "$GITHUB_REPOSITORY"

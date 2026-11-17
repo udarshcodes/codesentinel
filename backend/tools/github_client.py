@@ -8,6 +8,7 @@ import tempfile
 import threading
 import secrets
 import requests
+from tools.subprocess_runner import github_git_authorization
 
 _trusted_workspaces = {}
 _trusted_lock = threading.Lock()
@@ -75,7 +76,7 @@ def create_trusted_pr_workspace(repo_url: str, token: str, commit_sha: str = "")
         if token and repo_url.startswith("https://github.com/"):
             clone_env["GIT_CONFIG_COUNT"] = "1"
             clone_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-            clone_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {token}"
+            clone_env["GIT_CONFIG_VALUE_0"] = github_git_authorization(token)
             try:
                 subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "clone", "--no-checkout", repo_url, temp_dir], check=True, timeout=300, env=clone_env, capture_output=True, text=True)
             except subprocess.CalledProcessError as clone_err:
@@ -105,6 +106,7 @@ def create_trusted_pr_workspace(repo_url: str, token: str, commit_sha: str = "")
         err_msg = e.stderr or str(e)
         if token:
             err_msg = err_msg.replace(token, "***")
+            err_msg = err_msg.replace(github_git_authorization(token).split()[-1], "***")
         raise RuntimeError(f"Clone failed: {err_msg}")
         
     safe_env = get_safe_env(keep_github_token=False)

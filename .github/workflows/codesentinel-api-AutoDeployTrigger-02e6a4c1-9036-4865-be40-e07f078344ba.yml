@@ -75,5 +75,20 @@ jobs:
           targetPort: 8000
           environmentVariables: GROQ_API_KEY_1=secretref:groq-api-key-1 GROQ_API_KEY_2=secretref:groq-api-key-2 GROQ_API_KEY_3=secretref:groq-api-key-3 GROQ_API_KEY_4=secretref:groq-api-key-4 GROQ_API_KEY_5=secretref:groq-api-key-5 GROQ_API_KEY_6=secretref:groq-api-key-6 GITHUB_TOKEN=secretref:github-token ADMIN_SECRET=secretref:admin-secret WORKER_WEBHOOK_SECRET=secretref:worker-webhook-secret GITHUB_WEBHOOK_SECRET=secretref:github-webhook-secret APP_REVISION=${{ github.event.workflow_run.head_sha || github.sha }} PUBLIC_API_URL=https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io PORT=8000 ENVIRONMENT=production DATABASE_URL=secretref:database-url
 
-      - name: Verify deployed revision and authenticated admin lifecycle
+      # The build token expires when this workflow finishes. Never leave it as
+      # Azure's runtime pull credential: a scale-to-zero restart would fail.
+      - name: Configure and verify durable runtime image pulls
+        env:
+          REGISTRY_PULL_TOKEN: ${{ secrets.WORKER_GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.repository_owner }}
+          RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/codesentinel-backend:${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          test -n "$REGISTRY_PULL_TOKEN" || { echo "Durable runtime registry credential is missing"; exit 1; }
+          printf '%s' "$REGISTRY_PULL_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          docker pull "$RELEASE_IMAGE"
+          az containerapp registry set -n codesentinel-api -g CodeSentinel-RG --server ghcr.io --username "$REGISTRY_USER" --password "$REGISTRY_PULL_TOKEN" --output none
+          revision=$(az containerapp show -n codesentinel-api -g CodeSentinel-RG --query properties.latestRevisionName -o tsv)
+          az containerapp revision restart -n codesentinel-api -g CodeSentinel-RG --revision "$revision" --output none
+
+      - name: Verify restarted revision and authenticated admin lifecycle
         run: python backend/tools/release_probe.py --url https://codesentinel-api.kindhill-aee3896c.southeastasia.azurecontainerapps.io --revision ${{ github.event.workflow_run.head_sha || github.sha }} --azure-admin

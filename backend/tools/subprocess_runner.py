@@ -1,6 +1,13 @@
 import os
 import subprocess
+import base64
 from typing import Dict, Any
+
+
+def github_git_authorization(token: str) -> str:
+    """Git HTTPS uses Basic credentials; Bearer is for GitHub's REST API."""
+    encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
+    return "AUTHORIZATION: basic " + encoded
 
 
 def get_safe_env(keep_github_token: bool = False) -> Dict[str, str]:
@@ -44,7 +51,7 @@ def clone_github_repo(repo_url: str, target_dir: str, github_token: str = "") ->
             auth_clone_env = clone_env.copy()
             auth_clone_env["GIT_CONFIG_COUNT"] = "1"
             auth_clone_env["GIT_CONFIG_KEY_0"] = "http.extraHeader"
-            auth_clone_env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: bearer {github_token}"
+            auth_clone_env["GIT_CONFIG_VALUE_0"] = github_git_authorization(github_token)
             
             try:
                 subprocess.run(cmd, check=True, timeout=300, env=auth_clone_env, capture_output=True, text=True)
@@ -65,6 +72,7 @@ def clone_github_repo(repo_url: str, target_dir: str, github_token: str = "") ->
         err_msg = e.stderr or e.stdout or str(e)
         if github_token:
             err_msg = err_msg.replace(github_token, "***")
+            err_msg = err_msg.replace(github_git_authorization(github_token).split()[-1], "***")
         raise RuntimeError(f"Git clone failed (exit code {e.returncode}): {err_msg}")
 
 

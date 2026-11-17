@@ -1,0 +1,21 @@
+name: Production runtime diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Inspect deployment health without exposing configuration secrets
+        run: |
+          az containerapp show -n codesentinel-api -g CodeSentinel-RG --query '{running:properties.runningStatus,provisioning:properties.provisioningState,latest:properties.latestRevisionName,ready:properties.latestReadyRevisionName,scale:properties.template.scale,traffic:properties.configuration.ingress.traffic}' -o json
+          az containerapp revision list -n codesentinel-api -g CodeSentinel-RG --query '[].{name:name,active:properties.active,health:properties.healthState,running:properties.runningState,replicas:properties.replicas,created:properties.createdTime}' -o json
+          az containerapp logs show -n codesentinel-api -g CodeSentinel-RG --type system --tail 50 --format json

@@ -58,7 +58,10 @@ def test_clone_github_repo_private_with_token(mock_run):
     mock_run.assert_called_once()
     args, kwargs = mock_run.call_args
     assert kwargs["env"]["GIT_CONFIG_KEY_0"] == "http.extraHeader"
-    assert "AUTHORIZATION: bearer ghp_SECRET" in kwargs["env"]["GIT_CONFIG_VALUE_0"]
+    import base64
+    header = kwargs["env"]["GIT_CONFIG_VALUE_0"]
+    assert header.startswith("AUTHORIZATION: basic ")
+    assert base64.b64decode(header.split()[-1]).decode() == "x-access-token:ghp_SECRET"
 
 @patch("subprocess.run")
 def test_clone_github_repo_auth_fallback_public(mock_run):

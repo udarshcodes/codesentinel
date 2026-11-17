@@ -54,7 +54,10 @@ async def test_repo_mapper_git_isolation(monkeypatch):
     # Verify clone environment
     clone_env = clone_inv["env"]
     assert "GIT_CONFIG_VALUE_0" in clone_env
-    assert "TEST_GITHUB_SECRET" in clone_env["GIT_CONFIG_VALUE_0"]
+    import base64
+    header = clone_env["GIT_CONFIG_VALUE_0"]
+    assert header.startswith("AUTHORIZATION: basic ")
+    assert base64.b64decode(header.split()[-1]).decode() == "x-access-token:TEST_GITHUB_SECRET"
     assert "GITHUB_TOKEN" not in clone_env
     
     checkout_inv = invocations[1]

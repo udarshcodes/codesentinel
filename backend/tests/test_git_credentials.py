@@ -25,5 +25,8 @@ class TestGitCredentials(unittest.IsolatedAsyncioTestCase):
             if args[1] == "clone":
                 env = call[1].get("env", {})
                 self.assertEqual(env.get("GIT_CONFIG_COUNT"), "1")
-                self.assertIn("AUTHORIZATION: bearer secret_gh_token_123", env.get("GIT_CONFIG_VALUE_0", ""))
+                import base64
+                header = env.get("GIT_CONFIG_VALUE_0", "")
+                self.assertTrue(header.startswith("AUTHORIZATION: basic "))
+                self.assertEqual(base64.b64decode(header.split()[-1]).decode(), "x-access-token:" + token)
 
