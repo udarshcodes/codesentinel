@@ -363,25 +363,28 @@ async def worker_event_webhook(request: Request, task_id: str, event: WorkerEven
         if "Invalid state transition" in str(e):
             raise HTTPException(409, str(e))
         raise HTTPException(400, str(e))
-    # Persist validated patches to ChromaDB upon pipeline completion
-    if event.event == "pipeline_complete" and event.status == JobManager.COMPLETED:
-        from tools import vector_store
-
-        validated_fixes = event.data.get("validated_fixes", [])
-        
-        # RAG Authenticity: Scope to specific repo to prevent cross-tenant data leaks
-        job = JobManager.get_job(task_id)
-        repo_url = job.get("repo_url", "") if job else ""
-        
-        for fix in validated_fixes:
-            vector_store.store_validated_fix(
-                repo_url, fix["issue"], fix["patch"], fix["confidence"]
-            )
+    # Fix memory is derived from persisted, verified state when a worker queries
+    # it. Never trust arbitrary terminal-event records as validated patches.
 
     if success:
         return {"status": "ok"}
     else:
         return {"status": "ignored_duplicate"}
+
+class FixMemoryQuery(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/v1/job/{task_id}/fix-memory/query")
+async def worker_fix_memory(request: Request, task_id: str, body: FixMemoryQuery):
+    from api.worker_auth import validate_worker_attempt
+    from tools.fix_memory import query_repository_memory
+    job = await validate_worker_attempt(request, task_id)
+    try:
+        return await asyncio.to_thread(query_repository_memory, job["repo_url"], body.query)
+    except Exception:
+        raise HTTPException(503, "Verified fix memory is temporarily unavailable")
+
 
 @router.post("/v1/job/{task_id}/state")
 @router.post("/job/{task_id}/state")

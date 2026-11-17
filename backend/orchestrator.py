@@ -24,11 +24,14 @@ class OrchestratorAgent:
         retry_count = state.get("retry_count", 0)
         patches = state.get("patches", [])
 
+        if state.get("dependency_blocked_files") and not any(p.get("applied") for p in patches):
+            return "pr_author"
+
         if not validation_results:
             print(
-                "[Orchestrator] No validation results — proceeding to security verification."
+                "[Orchestrator] No validation evidence — finishing without a verification claim."
             )
-            return "security_verifier"
+            return "pr_author"
 
         latest = validation_results[-1]
 
@@ -49,17 +52,17 @@ class OrchestratorAgent:
         if latest.get("unresolvable") or retry_count >= 3:
             print(
                 f"[Orchestrator] Validation FAILED after {retry_count} retries — "
-                f"marking as unresolvable and proceeding to security verification."
+                f"marking as unresolvable and finishing for review."
             )
-            return "security_verifier"
+            return "pr_author"
 
         applied_patches = [p for p in patches if p.get("applied")]
         if not applied_patches:
             print(
                 "[Orchestrator] No patches were successfully applied — skipping retry, "
-                "proceeding to security verification."
+                "finishing for review."
             )
-            return "security_verifier"
+            return "pr_author"
 
         files_passed = latest.get("files_passed", 0)
         files_validated = latest.get("files_validated", 1)

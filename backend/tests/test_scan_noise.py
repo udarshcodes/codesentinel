@@ -5,6 +5,27 @@ from agents.bug_investigator import agent_bug_investigator
 
 
 @pytest.mark.asyncio
+async def test_python_dead_code_checks_cross_module_and_dynamic_references(tmp_path):
+    import json
+    (tmp_path / 'helpers.py').write_text(
+        'def direct(): pass\ndef aliased(): pass\ndef qualified(): pass\n'
+        'def callback(): pass\ndef exported(): pass\ndef unreachable(): pass\n'
+        'class Service:\n    def public_method(self): pass\n'
+        '__all__ = ["exported"]\n')
+    (tmp_path / 'main.py').write_text(
+        'from helpers import direct, aliased as other\nimport helpers\n'
+        'direct()\nother()\nhelpers.qualified()\ngetattr(helpers, "callback")()\n')
+    def report(command, **kwargs):
+        output = {'results': []} if command[0] in ('semgrep', 'bandit') else []
+        return {'status': 'SUCCESS', 'stdout': json.dumps(output), 'stderr': '', 'returncode': 0}
+    with patch('agents.static_analysis.run_sandboxed_subprocess', side_effect=report):
+        result = await agent_static_analysis({'repo_local_path': str(tmp_path)})
+    dead = [f for f in result['static_findings'] if f.get('tool') == 'dead_code_detector']
+    assert len(dead) == 1
+    assert "'unreachable'" in dead[0]['issue']
+
+
+@pytest.mark.asyncio
 async def test_normal_test_assertions_and_public_lm_studio_placeholder_are_not_security_repairs(tmp_path):
     (tmp_path / 'test_app.py').write_text('def test_example():\n    assert True\n')
     (tmp_path / 'app.py').write_text('assert user_is_allowed\napi_key="lm-studio"\n')

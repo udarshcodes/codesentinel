@@ -8,6 +8,22 @@ from tools.subprocess_runner import run_isolated_subprocess
 
 _project_dependencies = {}
 _node_dependencies = {}
+_project_runtimes = {}
+
+
+def clear_project_runtime(repo):
+    _project_runtimes.pop(os.path.realpath(repo), None)
+
+
+def clear_project_dependencies(repo):
+    _project_dependencies.pop(os.path.realpath(repo), None)
+
+
+def register_project_runtime(repo, runtime):
+    repo, root = os.path.realpath(repo), os.path.realpath(runtime['root'])
+    if os.path.commonpath([repo, root]) == repo or not os.path.isdir(root):
+        raise ValueError('The managed interpreter must live outside the target repository.')
+    _project_runtimes[repo] = {**runtime, 'root': root}
 
 
 def register_node_dependencies(repo, packages):
@@ -209,12 +225,22 @@ def run_sandboxed_subprocess(
         "-w", "/sandbox/repo"
     ]
     
+    runtime = next((value for project, value in sorted(_project_runtimes.items(), key=lambda item: len(item[0]), reverse=True)
+                    if os.path.commonpath([project, os.path.realpath(actual_cwd)]) == project), None)
+    scanner_modules = {'bandit', 'pylint', 'flake8', 'semgrep'}
+    scanner_command = os.path.basename(cmd[0]) in scanner_modules or (len(cmd) > 2 and cmd[1] == '-m' and cmd[2] in scanner_modules)
+    if runtime and not scanner_command:
+        docker_cmd.extend(['-v', f"{runtime['root']}:/opt/codesentinel/project-python:ro",
+                           '-e', 'PATH=/opt/codesentinel/project-python/bin:/opt/codesentinel/venv/bin:/usr/local/go/bin:/opt/rust/bin:/opt/maven/bin:/opt/gradle/bin:/opt/sonar-scanner/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'])
+        if os.path.basename(cmd[0]) in {'python', 'python3'}:
+            cmd = [runtime['executable']] + cmd[1:]
+
     for project, packages in _project_dependencies.items():
         try:
             matches = os.path.commonpath([project, os.path.realpath(actual_cwd)]) == project
         except ValueError:
             matches = False
-        if matches:
+        if matches and not (runtime and scanner_command):
             docker_cmd.extend(["-v", f"{packages}:/opt/codesentinel/project-deps:ro", "-e", "PYTHONPATH=/opt/codesentinel/project-deps"])
             break
     node_modules = _node_dependencies.get(os.path.realpath(actual_cwd))

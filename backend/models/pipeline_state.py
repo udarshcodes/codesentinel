@@ -15,6 +15,8 @@ class PipelineState(TypedDict, total=False):
     rag_confidence_score: NotRequired[float]
     repair_plan: list
     patches: list
+    manifest_originals: NotRequired[dict]
+    dependency_blocked_files: NotRequired[list]
     material_files: NotRequired[list]
     validation_results: list
     security_verified: bool

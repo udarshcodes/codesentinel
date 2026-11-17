@@ -141,6 +141,19 @@ def apply_patch(diff_content: str, repo_local_path: str, target_file: str) -> di
                     "stderr": f"SyntaxError after patch application: {e}",
                 }
 
+        try:
+            if target_file.endswith('.json'):
+                import json
+                json.loads(content)
+            elif target_file.endswith('.toml') or os.path.basename(target_file) in {'uv.lock', 'poetry.lock', 'Cargo.lock'}:
+                try:
+                    import tomllib
+                except ImportError:
+                    import tomli as tomllib
+                tomllib.loads(content)
+        except ValueError as error:
+            return {'success': False, 'stderr': f'Structured file syntax error after patch application: {error}'}
+
         write_newline = "\n"
         if isinstance(original_newlines, tuple):
             write_newline = original_newlines[0]

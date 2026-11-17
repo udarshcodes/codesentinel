@@ -52,7 +52,7 @@ async def agent_validator(state: PipelineState):
         return {"validation_results": validation_results}
 
     repo_local_path = state.get("repo_local_path", "")
-    patches = state.get("patches", [])
+    patches = [patch for patch in state.get("patches", []) if not patch.get("excluded_from_validation")]
 
     if not patches or not repo_local_path:
         retry_count = state.get("retry_count", 0)
@@ -63,10 +63,20 @@ async def agent_validator(state: PipelineState):
     from tools.project_dependencies import prepare_python_dependencies
     dependencies = prepare_python_dependencies(repo_local_path)
     if dependencies["status"] == "failed":
-        result = {"passed": False, "infrastructure_error": True, "suite_failed": True,
-                  "build_failed": False, "files_passed": 0, "files_validated": 0,
-                  "failed_issue_ids": [], "logs": "Dependency preparation failed: " + dependencies["error"]}
-        return {"validation_results": list(validation_results) + [result], "security_verified": False}
+        conflict = any(marker in dependencies["error"] for marker in ("ResolutionImpossible", "conflicting dependencies"))
+        manifests = {patch.get("file") for patch in patches if patch.get("applied") and patch.get("file") in state.get("manifest_originals", {})}
+        if conflict and manifests:
+            from tools.dependency_transaction import rollback_dependencies
+            restored = rollback_dependencies(state, manifests, "Proposed dependency versions conflict. Original dependencies restored; compatible upgrades require manual review.")
+            validation = await agent_validator({**state, **restored})
+            return {**restored, **validation}
+        syntax_failure = dependencies['error'].startswith('TOMLDecodeError:')
+        result = {"passed": False, "infrastructure_error": not syntax_failure, "suite_failed": not syntax_failure,
+                  "build_failed": syntax_failure, "files_passed": 0, "files_validated": 0,
+                  "failed_issue_ids": [patch.get('patch_id') for patch in patches if syntax_failure and patch.get('file', '').endswith('pyproject.toml')],
+                  "logs": "Dependency preparation failed: " + dependencies["error"]}
+        return {"validation_results": list(validation_results) + [result], "security_verified": False,
+                'retry_count': state.get('retry_count', 0) + int(syntax_failure)}
 
     all_passed = True
     logs_list = []
@@ -184,7 +194,7 @@ async def agent_validator(state: PipelineState):
         elif target_file.endswith(".rs"):
             logs_list.append(f"[DEFERRED] {target_file} - Rust requires cargo build")
 
-        elif target_file.endswith(".toml"):
+        elif target_file.endswith(".toml") or os.path.basename(target_file) in ("uv.lock", "poetry.lock", "Cargo.lock"):
             try:
                 import tomllib
                 tomllib.loads(safe_read_text(repo_local_path, target_file))

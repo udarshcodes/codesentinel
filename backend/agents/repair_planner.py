@@ -10,7 +10,7 @@ from tools.prompt_cache import REPAIR_PLANNER_SYSTEM
 async def agent_repair_planner(state: PipelineState):
     import copy
     investigated_issues = copy.deepcopy(state.get("investigated_issues", []))
-    advisory_only = {"dead_code_detector", "dead_file_checker", "css_quality_checker"}
+    advisory_only = {"dead_code_detector", "dead_file_checker", "css_quality_checker", "long_method_detector"}
     investigated_issues = [issue for issue in investigated_issues if issue.get("remediation_mode") != "manual_review" and issue.get("original_finding", {}).get("tool") not in advisory_only]
 
     if not investigated_issues:
@@ -74,15 +74,15 @@ Return ONLY valid JSON array:
     # Never let model-generated identifiers select unrelated or nonexistent issues.
     issues_by_id = {str(issue.get("id")): issue for issue in investigated_issues if "id" in issue}
     repair_plan = [fix for fix in repair_plan if isinstance(fix, dict) and str(fix.get("issue_id")) in issues_by_id]
-    advisory_only = {"dead_code_detector", "dead_file_checker", "css_quality_checker"}
+    advisory_only = {"dead_code_detector", "dead_file_checker", "css_quality_checker", "long_method_detector"}
     repair_plan = [fix for fix in repair_plan if issues_by_id[str(fix["issue_id"])].get("original_finding", {}).get("tool") not in advisory_only]
     for fix in repair_plan:
         fix["issue_id"] = issues_by_id[str(fix["issue_id"])]["id"]
         finding = issues_by_id[str(fix["issue_id"])].get("original_finding", {})
-        if finding.get("ecosystem") == "npm" and finding.get("recommended_version"):
+        if finding.get("ecosystem") in {"npm", "PyPI"} and finding.get("recommended_version"):
             fix["proposed_action"] = (f"Update {finding['package']} from {finding.get('current_version')} to the registry-confirmed "
                                       f"same-major release {finding['recommended_version']}; its OSV candidate scan found no advisories. "
-                                      "Synchronize the npm lock, verify peer dependencies, build, lint and rescan. Do not downgrade or invent versions.")
+                                      "Synchronize applicable lockfiles, verify compatibility, build, test and rescan. Do not downgrade or invent versions.")
     planned = {str(fix["issue_id"]) for fix in repair_plan}
     for issue in state.get("investigated_issues", []):
         if issue.get("original_finding", {}).get("rule") == "B113" and str(issue.get("id")) not in planned:

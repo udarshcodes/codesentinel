@@ -43,8 +43,16 @@ def prepare_python_dependencies(repo):
     cache_key = (repo, ())
     try:
         requirements = python_requirements(repo)
-        cache_key = (repo, tuple(requirements))
+        from tools.python_runtime import prepare_project_runtime
+        from tools.sandbox_runner import clear_project_dependencies, register_project_dependencies
+        runtime = prepare_project_runtime(repo)
+        if runtime and not any(Requirement(value).name.lower() == 'pytest' for value in requirements):
+            requirements.append('pytest>=8,<10')
+        cache_key = (repo, tuple(requirements), runtime['version'] if runtime else 'image')
+        clear_project_dependencies(repo)
         if cache_key in _prepared:
+            if _prepared[cache_key][0]['status'] == 'ready':
+                register_project_dependencies(repo, str(Path(_prepared[cache_key][1].name) / 'packages'))
             return _prepared[cache_key][0]
         if not requirements:
             return {"status": "not_required"}
@@ -57,17 +65,25 @@ def prepare_python_dependencies(repo):
         manifest.write_text("\n".join(requirements) + "\n", encoding="utf-8")
         wheels = workspace / "wheels"
         packages = workspace / "packages"
+        scratch = workspace / "scratch"
         wheels.mkdir()
         packages.mkdir()
+        scratch.mkdir()
         user = f"{os.getuid()}:{os.getgid()}" if hasattr(os, "getuid") else "1000:1000"
         prefix = ["docker", "run", "--rm", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
                   "--memory=2g", "--pids-limit=128", "--user", user, "--tmpfs", "/tmp:size=512m",
-                  "-e", "HOME=/tmp", "-v", f"{manifest}:/requirements.txt:ro", "-v", f"{wheels}:/wheels"]
+                  "-e", "HOME=/tmp", "-e", "TMPDIR=/scratch", "-v", f"{scratch}:/scratch",
+                  "-v", f"{manifest}:/requirements.txt:ro", "-v", f"{wheels}:/wheels"]
+        python = runtime['executable'] if runtime else 'python'
+        if runtime:
+            prefix.extend(['-v', f"{runtime['root']}:/opt/codesentinel/project-python:ro",
+                           '-v', f"{runtime['pip_tools']}:/opt/codesentinel/prep-tools:ro",
+                           '-e', 'PYTHONPATH=/opt/codesentinel/prep-tools'])
         environment = {k: v for k, v in os.environ.items() if k.upper() in
                        {"PATH", "HOME", "USERPROFILE", "DOCKER_CONFIG", "DOCKER_HOST", "DOCKER_CONTEXT", "SYSTEMROOT", "TEMP", "TMP"}}
         # An operator-prepared image can satisfy legacy/native requirements already.
         probe_code = "from importlib.metadata import version; from packaging.requirements import Requirement; import sys; rs=[Requirement(s) for s in open('/requirements.txt') if s.strip()]; sys.exit(0 if all((r.marker and not r.marker.evaluate()) or r.specifier.contains(version(r.name), prereleases=True) for r in rs) else 1)"
-        probe = subprocess.run(prefix + ["--network", "none", image, "python", "-c", probe_code],
+        probe = subprocess.run(prefix + ["--network", "none", image, python, "-c", probe_code],
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, env=environment, cwd=workspace)
         if probe.returncode == 0:
             outcome = {"status": "image_ready", "requirements_count": len(requirements)}
@@ -75,7 +91,7 @@ def prepare_python_dependencies(repo):
             return outcome
         # This online container has no repository mount or secrets. Wheel metadata is
         # resolved/downloaded only; sdists, VCS URLs and install scripts are forbidden.
-        download = prefix + ["--network", "bridge", image, "python", "-m", "pip", "--isolated",
+        download = prefix + ["--network", "bridge", image, python, "-m", "pip", "--isolated",
                              "--disable-pip-version-check", "--no-cache-dir", "download", "--only-binary=:all:",
                              "--index-url=https://pypi.org/simple", "--dest=/wheels", "-r", "/requirements.txt"]
         result = subprocess.run(download, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240, env=environment, cwd=workspace)
@@ -83,15 +99,15 @@ def prepare_python_dependencies(repo):
             raise RuntimeError("Wheel resolution/download failed (no source builds are permitted): " + result.stderr[-1600:])
         if sum(p.stat().st_size for p in wheels.iterdir()) > 750 * 1024 * 1024:
             raise RuntimeError("Dependency wheels exceed the 750 MiB preparation limit.")
-        install = prefix + ["--network", "none", "-v", f"{packages}:/deps", image, "python", "-m", "pip", "--isolated",
+        install = prefix + ["--network", "none", "-v", f"{packages}:/deps", image, python, "-m", "pip", "--isolated",
                             "--disable-pip-version-check", "--no-cache-dir", "install", "--no-index", "--find-links=/wheels",
-                            "--only-binary=:all:", "--target=/deps", "-r", "/requirements.txt"]
+                            "--only-binary=:all:", "--no-compile", "--target=/deps", "-r", "/requirements.txt"]
         result = subprocess.run(install, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, env=environment, cwd=workspace)
         if result.returncode:
             raise RuntimeError("Offline wheel installation failed: " + result.stderr[-1600:])
         from tools.sandbox_runner import register_project_dependencies
         register_project_dependencies(repo, str(packages))
-        outcome = {"status": "ready", "requirements_count": len(requirements)}
+        outcome = {"status": "ready", "requirements_count": len(requirements), 'python_version': runtime['version'] if runtime else 'image'}
         _prepared[cache_key] = (outcome, temporary)
         return outcome
     except Exception as error:

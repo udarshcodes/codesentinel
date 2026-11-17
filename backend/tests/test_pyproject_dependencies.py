@@ -12,7 +12,7 @@ async def test_pep621_pins_reach_osv_and_keep_manifest_path(tmp_path):
     response = type("Response", (), {"status_code": 200,
                     "json": lambda self: {"info": {"version": "9.0.0"}}})()
     with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=response)), \
-         patch("tools.osv_client.batch_query_osv", new=AsyncMock(return_value={})) as osv, \
+         patch("tools.osv_client.batch_query_osv", new=AsyncMock(return_value={"fastapi": []})) as osv, \
          patch("tools.osv_client.fetch_vuln_details", new=AsyncMock(return_value={})):
         result = await agent_dependency_analyzer({"repo_local_path": str(tmp_path)})
     assert osv.call_args.args[0] == [{"name": "fastapi", "version": "0.111.0",

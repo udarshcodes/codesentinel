@@ -12,7 +12,7 @@ WORKER_ATTEMPT_ID = os.environ.get("WORKER_ATTEMPT_ID", "")
 COMMIT_SHA = os.environ.get("COMMIT_SHA", "")
 REPO_URL = os.environ.get("REPO_URL", "")
 
-async def authenticated_post(path: str, json_payload: dict):
+async def authenticated_post(path: str, json_payload: dict, *, timeout: float = 10.0):
     """Post to backend with HMAC replay protection signature."""
     headers = {
         "X-Worker-Attempt-Id": WORKER_ATTEMPT_ID,
@@ -34,7 +34,7 @@ async def authenticated_post(path: str, json_payload: dict):
 
     async with httpx.AsyncClient() as client:
         return await client.post(
-            f"{BACKEND_URL}{path}", content=body_bytes, headers=headers, timeout=10.0
+            f"{BACKEND_URL}{path}", content=body_bytes, headers=headers, timeout=timeout
         )
 
 async def authenticated_get(path: str):

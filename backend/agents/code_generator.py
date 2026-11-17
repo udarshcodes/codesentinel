@@ -38,6 +38,8 @@ async def agent_code_generator(state: PipelineState):
     investigated_issues = state.get("investigated_issues", [])
     patches = state.get("patches", [])
     retry_count = state.get("retry_count", 0)
+    from tools.dependency_transaction import capture_manifest, rollback_dependencies
+    originals = dict(state.get("manifest_originals", {}))
 
     validation_results = state.get("validation_results", [])
     security_retry_context = state.get("security_retry_context", [])
@@ -100,6 +102,9 @@ async def agent_code_generator(state: PipelineState):
         affected = issue.get("affected_files", [])
         if affected:
             target_file = affected[0]
+            if target_file in state.get("dependency_blocked_files", []):
+                continue
+            capture_manifest(repo_local_path, target_file, originals)
             if safe_path_exists(repo_local_path, target_file):
                 try:
                     with open_safe(repo_local_path, target_file, "r", errors="ignore") as f:
@@ -149,13 +154,19 @@ Current file content:
 ```"""
 
         try:
-            from tools.remediations import request_timeout_patch, npm_dependency_patch, deferred_effect_state_patch
+            from tools.remediations import request_timeout_patch, npm_dependency_patch, python_dependency_patch, deferred_effect_state_patch
             finding = issue.get("original_finding", {})
             fixed_content = request_timeout_patch(file_content, finding.get("line")) if finding.get("rule") == "B113" else None
             if finding.get("rule") == "react-hooks/set-state-in-effect":
                 fixed_content = deferred_effect_state_patch(file_content, finding.get("line"))
             if finding.get("ecosystem") == "npm" and finding.get("recommended_version"):
                 fixed_content = npm_dependency_patch(file_content, target_file, finding)
+            if finding.get('ecosystem') == 'PyPI' and finding.get('recommended_version'):
+                fixed_content = python_dependency_patch(file_content, target_file, finding)
+            deterministic = finding.get('rule') in {'B113', 'react-hooks/set-state-in-effect'} or (
+                finding.get('ecosystem') in {'npm', 'PyPI'} and finding.get('recommended_version'))
+            if deterministic and not fixed_content and existing_patch and existing_patch.get('applied'):
+                continue
             if not fixed_content:
                 fixed_content = await invoke_llm(
                     prompt,
@@ -262,13 +273,29 @@ Current file content:
                 if lock_patch:
                     new_patches.append(lock_patch)
             except Exception as error:
-                lock_errors.append(f"Lockfile regeneration for {manifest} failed: {error}")
+                lock_errors.append(manifest)
+    from tools.uv_lock_repair import synchronize_uv_lock
+    python_manifests = {p["file"] for p in list(patches) + new_patches
+                        if p.get("applied") and p.get("file", "").endswith("pyproject.toml")}
+    for manifest in sorted(python_manifests):
+        lock_path = os.path.join(os.path.dirname(manifest), "uv.lock").replace("\\", "/")
+        if safe_path_exists(repo_local_path, lock_path):
+            try:
+                lock_patch = synchronize_uv_lock(repo_local_path, manifest)
+                if lock_patch:
+                    new_patches.append(lock_patch)
+            except Exception as error:
+                lock_errors.append(manifest)
     result = {
         "patches": list(patches) + new_patches,
         "touched_symbols": touched_symbols,
+        "manifest_originals": originals,
     }
     if lock_errors:
-        result["pr_error"] = "\n".join(lock_errors)
+        result.update(rollback_dependencies(
+            {**state, **result}, lock_errors,
+            "The proposed dependency versions could not produce a compatible lockfile. Original dependencies were restored; review compatible upgrades manually.",
+        ))
     if repair_plan and not new_patches and not any(p.get("applied") for p in patches):
         result["pr_error"] = state.get(
             "pr_error",

@@ -27,6 +27,10 @@ RUN apt-get update && \
 COPY backend/requirements.txt .
 RUN pip install uv && uv pip install --system -r requirements.txt
 
+# Bundle Chroma's own embedding model so historical retrieval needs no model
+# download on the API request path. This runs in the remote image build.
+RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; DefaultEmbeddingFunction()(['CodeSentinel verified repository fix'])"
+
 # Copy application code
 COPY backend/ .
 COPY --from=admin-web /web/dist /opt/codesentinel/admin-web

@@ -1,4 +1,5 @@
 import os
+import asyncio
 from tools.safe_repo import safe_walk, safe_read_text, safe_path_exists, open_safe
 import json
 import re
@@ -384,9 +385,9 @@ async def agent_dependency_analyzer(state: PipelineState):
     # Hit OSV API using batch query
     from tools.osv_client import batch_query_osv, fetch_vuln_details
 
-    cves_map = await batch_query_osv([
+    cves_map = await query_dependency_versions([
         dep for dep in dependencies if dep["version"] not in ("unknown", "latest", "*", "")
-    ])
+    ], batch_query_osv)
     osv_failed = False
 
     if cves_map is None:
@@ -394,14 +395,14 @@ async def agent_dependency_analyzer(state: PipelineState):
         cves_map = {}
         osv_failed = True
 
-    # Ground npm repairs in current registry data, never the model's release memory.
+    # Ground supported registry repairs in live data, never model release memory.
     # Restrict automatic candidates to a newer release within the installed major.
-    candidates = [{**dep, "version": latest} for dep, latest in zip(dependencies, outdated_results, strict=True)
-                  if dep["ecosystem"] == "npm" and cves_map.get(dep["name"])
+    candidates = [{**dep, "version": latest, "original_key": dependency_key(dep)} for dep, latest in zip(dependencies, outdated_results, strict=True)
+                  if dep["ecosystem"] in {"npm", "PyPI"} and cves_map.get(dependency_key(dep))
                   and compatible_registry_update(dep["version"], latest)]
-    candidate_cves = await batch_query_osv(candidates) if candidates else {}
-    safe_releases = {dep["name"]: dep["version"] for dep in candidates
-                     if candidate_cves is not None and dep["name"] in candidate_cves and not candidate_cves[dep["name"]]}
+    candidate_cves = await query_dependency_versions(candidates, batch_query_osv) if candidates else {}
+    safe_releases = {dep["original_key"]: dep["version"] for dep in candidates
+                     if candidate_cves is not None and dependency_key(dep) in candidate_cves and not candidate_cves[dependency_key(dep)]}
         
     # Collect all unique vuln IDs to fetch details
     all_vuln_ids = set()
@@ -414,7 +415,7 @@ async def agent_dependency_analyzer(state: PipelineState):
     import subprocess
 
     for dep in dependencies:
-        cves = cves_map.get(dep["name"], [])
+        cves = cves_map.get(dependency_key(dep), [])
         if not cves:
             continue
             
@@ -479,14 +480,16 @@ async def agent_dependency_analyzer(state: PipelineState):
         findings.append(
             {
                 "file": file_name,
-                "issue": f"Vulnerable dependency: {dep['name']} {dep['version']}. CVEs: {', '.join(cve_ids)}. Update to a secure version.",
+                "issue": f"Vulnerable dependency: {dep['name']} {dep['version']}. CVEs: {', '.join(cve_ids)}. " +
+                         (f"Verified compatible update: {safe_releases[dependency_key(dep)]}." if dependency_key(dep) in safe_releases else
+                          "No compatible clean update was verified; manual review is required."),
                 "cve": ", ".join(cve_ids),
                 "package": dep["name"],
                 "severity": highest_severity,
                 "ecosystem": dep["ecosystem"],
                 "current_version": dep["version"],
-                **({"recommended_version": safe_releases[dep["name"]]} if dep["name"] in safe_releases else
-                   {"remediation_mode": "manual_review"} if dep["ecosystem"] == "npm" else {}),
+                **({"recommended_version": safe_releases[dependency_key(dep)]} if dependency_key(dep) in safe_releases else
+                   {"remediation_mode": "manual_review"}),
             }
         )
 
@@ -526,3 +529,27 @@ def compatible_registry_update(current, latest):
         return False
     before, after = tuple(map(int, current.split("."))), tuple(map(int, latest.split(".")))
     return before[0] == after[0] and after > before
+
+
+def dependency_key(dependency):
+    return dependency['ecosystem'], dependency['name'], dependency['version']
+
+
+async def query_dependency_versions(packages, query):
+    # The OSV adapter keys responses by name. Keep ecosystems and concurrently
+    # installed versions in separate batches so one result cannot overwrite another.
+    buckets = []
+    for package in packages:
+        for bucket in buckets:
+            if bucket[0]['ecosystem'] == package['ecosystem'] and all(item['name'] != package['name'] for item in bucket):
+                bucket.append(package)
+                break
+        else:
+            buckets.append([package])
+    responses = await asyncio.gather(*(query(bucket) for bucket in buckets))
+    result = {}
+    for bucket, response in zip(buckets, responses, strict=True):
+        if response is None or any(package['name'] not in response for package in bucket):
+            return None
+        result.update({dependency_key(package): response[package['name']] for package in bucket})
+    return result

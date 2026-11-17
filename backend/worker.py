@@ -479,20 +479,6 @@ async def run_worker():
                     final_pr_error = safe_update["pr_error"]
                 if "confidence_score" in safe_update:
                     final_confidence = safe_update["confidence_score"]
-                if "validation_results" in safe_update:
-                    # Collect passed fixes to send to the backend's ChromaDB
-                    _conf = safe_update.get("confidence_score", final_confidence)
-                    for val in safe_update["validation_results"]:
-                        if val.get("passed"):
-                            validated_fixes.append(
-                                {
-                                    "issue": val.get("issue_description", ""),
-                                    "patch": val.get("patch", ""),
-                                    "confidence": _conf,
-                                }
-                            )
-
-
                 current_stage = "RUNNING_SCANNERS"
                 if node_name == "bug_investigator":
                     current_stage = "AI_ANALYSIS"
@@ -619,9 +605,13 @@ async def run_worker():
             cancel_event.set()
             heartbeat_task.cancel()
             
+            from tools.pipeline_outcome import pipeline_outcome
+            from tools.fix_memory import verified_fix_records
+            validated_fixes = verified_fix_records(state)
+            outcome = pipeline_outcome(state)
             await post_event(
-                "COMPLETED",
-                "pipeline_complete",
+                outcome,
+                "pipeline_complete" if outcome == "COMPLETED" else "pipeline_review_required",
                 {
                     "pr_url": final_pr_url,
                     "pr_error": final_pr_error,

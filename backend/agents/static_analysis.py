@@ -944,6 +944,29 @@ async def agent_static_analysis(state: PipelineState):
                 except Exception:
                     pass
 
+    # A function imported by another module, accessed as module.function, or
+    # registered as a callback is not dead merely because its own file never
+    # calls it. Be conservative when static references cannot prove non-use.
+    python_references = set()
+    python_wildcard_import = False
+    for source_path, source_text in all_repo_sources.items():
+        if not source_path.endswith(".py"):
+            continue
+        try:
+            for node in ast.walk(ast.parse(source_text)):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                    python_references.add(node.id)
+                elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+                    python_references.add(node.attr)
+                elif isinstance(node, ast.ImportFrom):
+                    python_references.update(alias.name for alias in node.names)
+                    python_wildcard_import |= any(alias.name == "*" for alias in node.names)
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.isidentifier():
+                    # __all__, getattr, and string-based callback registries.
+                    python_references.add(node.value)
+        except (SyntaxError, ValueError):
+            continue
+
     for rel_path, source in all_repo_sources.items():
         fname = os.path.basename(rel_path)
 
@@ -951,24 +974,17 @@ async def agent_static_analysis(state: PipelineState):
             try:
                 tree = ast.parse(source, filename=rel_path)
                 defined_funcs: dict[str, int] = {}
-                for node in ast.walk(tree):
+                for node in tree.body:
                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         if not node.name.startswith(("_", "test_")) and not node.decorator_list:
                             defined_funcs[node.name] = node.lineno
 
                 for func_name, lineno in defined_funcs.items():
-                    ref_count = sum(
-                        1
-                        for node in ast.walk(tree)
-                        if isinstance(node, ast.Name)
-                        and node.id == func_name
-                        and node.lineno != lineno
-                    )
-                    if ref_count == 0:
+                    if not python_wildcard_import and func_name not in python_references:
                         findings.append(
                             {
                                 "file": rel_path,
-                                "issue": f"Function '{func_name}' appears to be unused (dead code). Consider removing it.",
+                                "issue": f"Function '{func_name}' has no static references in the analyzed repository. External or dynamic uses may exist; review before removal.",
                                 "tool": "dead_code_detector",
                                 "severity": "LOW",
                                 "line": lineno,

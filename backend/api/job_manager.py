@@ -438,7 +438,7 @@ class JobManager:
         "WAITING_FOR_DISPATCH": {"DISPATCHING", "FAILED", "NEEDS_REVIEW"},
         "DISPATCHING": {"STARTING", "RUNNING", "FAILED", "WAITING_FOR_DISPATCH", "COMPLETED"},
         "STARTING": {"RUNNING", "FAILED", "COMPLETED"},
-        "RUNNING": {"WAITING_FOR_APPROVAL", "WAITING_FOR_LLM_CAPACITY", "COMPLETED", "FAILED"},
+        "RUNNING": {"WAITING_FOR_APPROVAL", "WAITING_FOR_LLM_CAPACITY", "COMPLETED", "FAILED", "NEEDS_REVIEW"},
         "WAITING_FOR_LLM_CAPACITY": {"DISPATCHING", "FAILED", "NEEDS_REVIEW"},
         "WAITING_FOR_APPROVAL": {"NEEDS_REVIEW", "WAITING_FOR_DISPATCH", "FAILED"},
         "RETRYING": {"DISPATCHING", "WAITING_FOR_DISPATCH", "FAILED"},
@@ -592,6 +592,7 @@ class JobManager:
         "waiting_for_llm_capacity",
         "pipeline_started",
         "pipeline_complete",
+        "pipeline_review_required",
         "pipeline_error"
     }
 
@@ -771,6 +772,10 @@ class JobManager:
         elif event_name == "pipeline_complete":
             if event_status != "COMPLETED":
                 raise ValueError("pipeline_complete requires event status COMPLETED")
+
+        elif event_name == "pipeline_review_required":
+            if event_status != "NEEDS_REVIEW":
+                raise ValueError("pipeline_review_required requires event status NEEDS_REVIEW")
                 
         elif event_name == "pipeline_error":
             if event_status != "FAILED":
@@ -792,6 +797,26 @@ class JobManager:
                     q.put_nowait(event_payload)
                 except asyncio.QueueFull:
                     pass
+
+    @classmethod
+    def get_repository_fix_states(cls, repo_url: str) -> list:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT pipeline_state FROM jobs WHERE repo_url = ? AND status IN ('COMPLETED', 'NEEDS_REVIEW') "
+                "ORDER BY updated_at DESC LIMIT 20", (repo_url,))
+            states = []
+            for row in cursor.fetchall():
+                try:
+                    state = json.loads(row[0]) if row[0] else {}
+                    if isinstance(state, dict):
+                        states.append(state)
+                except (ValueError, TypeError):
+                    continue
+            return states
+        finally:
+            conn.close()
 
     @classmethod
     def get_job(cls, task_id: str) -> Optional[dict]:

@@ -72,6 +72,43 @@ async def test_npm_candidates_require_registry_same_major_and_clean_osv(tmp_path
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('candidate_vulns,expected', [([], '1.2.0'), ([{'id': 'unpatched'}], None)])
+async def test_python_upgrade_must_also_have_a_clean_candidate_scan(tmp_path, candidate_vulns, expected):
+    (tmp_path / 'requirements.txt').write_text('example==1.0.0\n')
+    response = SimpleNamespace(status_code=200, json=lambda: {'info': {'version': '1.2.0'}})
+    async def osv(packages):
+        return {'example': candidate_vulns if packages[0]['version'] == '1.2.0' else [{'id': 'old-cve'}]}
+    with patch('httpx.AsyncClient.get', AsyncMock(return_value=response)), patch('tools.osv_client.batch_query_osv', side_effect=osv), patch('tools.osv_client.fetch_vuln_details', AsyncMock(return_value={})):
+        result = await agent_dependency_analyzer({'repo_local_path': str(tmp_path)})
+    finding = next(item for item in result['dependency_findings'] if item['cve'] != 'N/A')
+    assert finding.get('recommended_version') == expected
+    if not expected:
+        assert finding['remediation_mode'] == 'manual_review'
+
+
+@pytest.mark.asyncio
+async def test_osv_results_do_not_cross_ecosystems_or_installed_versions():
+    from agents.dependency_analyzer import query_dependency_versions
+    packages = [{'ecosystem': eco, 'name': 'shared', 'version': version}
+                for eco, version in [('PyPI', '1.0.0'), ('npm', '1.0.0'), ('PyPI', '2.0.0')]]
+    async def query(batch):
+        assert len(batch) == 1
+        item = batch[0]
+        return {item['name']: [{'id': item['ecosystem'] + ':' + item['version']}]}
+    result = await query_dependency_versions(packages, query)
+    assert len(result) == 3
+    assert result[('PyPI', 'shared', '1.0.0')] != result[('npm', 'shared', '1.0.0')]
+    assert result[('PyPI', 'shared', '1.0.0')] != result[('PyPI', 'shared', '2.0.0')]
+
+
+@pytest.mark.asyncio
+async def test_missing_osv_package_response_is_not_interpreted_as_clean():
+    from agents.dependency_analyzer import query_dependency_versions
+    query = AsyncMock(return_value={})
+    assert await query_dependency_versions([{'ecosystem': 'PyPI', 'name': 'example', 'version': '1.0.0'}], query) is None
+
+
+@pytest.mark.asyncio
 async def test_grounded_dependency_repair_overrides_model_downgrade(tmp_path):
     manifest = json.dumps({'devDependencies': {'vite': '^8.0.12', '@vitejs/plugin-react': '^6.0.1'}})
     (tmp_path / 'package.json').write_text(manifest)

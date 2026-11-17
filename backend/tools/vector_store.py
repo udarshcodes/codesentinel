@@ -1,5 +1,6 @@
 import os
 import hashlib
+import threading
 import chromadb
 from tools.safe_repo import safe_walk, safe_read_text
 
@@ -9,6 +10,7 @@ CHROMA_PERSIST_PATH = os.getenv(
 )
 client = None
 fixes_collection = None
+_client_lock = threading.RLock()
 
 
 def close_vector_store():
@@ -24,32 +26,42 @@ def close_vector_store():
 
 def _get_collections():
     global client, fixes_collection
-    if client is None:
-        client = chromadb.PersistentClient(path=CHROMA_PERSIST_PATH)
-        fixes_collection = client.get_or_create_collection("validated_fixes")
+    with _client_lock:
+        if client is None or fixes_collection is None:
+            new_client = chromadb.PersistentClient(path=CHROMA_PERSIST_PATH)
+            new_fixes = new_client.get_or_create_collection("validated_fixes")
+            client, fixes_collection = new_client, new_fixes
     return client, fixes_collection
 
 
-def store_validated_fix(repo_url: str, issue_description: str, patch: str, confidence: float):
+def store_validated_fix(repo_url: str, issue_description: str, patch: str, confidence: float, *, strict=False):
     # RAG FLOW (Ingest & Store): Fixes are embedded globally but scoped strictly by repo_url metadata
     # This prevents cross-tenant data leakage while allowing the system to learn from successful fixes within the same repository.
     try:
+        if not repo_url or not issue_description.strip() or not patch.strip():
+            raise ValueError("Repository, issue and nonempty patch are required")
         _, fixes = _get_collections()
         doc_id = f"fix_{hashlib.sha256((repo_url + issue_description + patch).encode()).hexdigest()[:16]}"
+        if fixes.get(ids=[doc_id])["ids"]:
+            return
         fixes.upsert(
             documents=[issue_description],
             metadatas=[{"repo_url": repo_url, "patch": patch, "confidence": confidence}],
             ids=[doc_id],
         )
     except Exception as e:
+        if strict:
+            raise
         print(f"Error storing validated fix: {e}")
 
 
-def query_similar_fixes(repo_url: str, issue_description: str, n_results: int = 3) -> list:
+def query_similar_fixes(repo_url: str, issue_description: str, n_results: int = 3, *, strict=False) -> list:
     # RAG FLOW (Retrieve): Only fetch similar fixes for this exact repository.
     # The where={"repo_url": repo_url} filter enforces the security boundary to prevent cross-contamination.
     try:
         _, fixes = _get_collections()
+        if not fixes.count():
+            return []
         results = fixes.query(
             query_texts=[issue_description], 
             n_results=n_results,
@@ -66,6 +78,8 @@ def query_similar_fixes(repo_url: str, issue_description: str, n_results: int = 
             )
         return found_fixes
     except Exception as e:
+        if strict:
+            raise
         print(f"Error querying similar fixes: {e}")
         return []
 
@@ -83,10 +97,10 @@ def index_codebase(repo_url: str, repo_local_path: str):
         ids = []
         
         for root, _, files, _ in safe_walk(repo_local_path):
-            if "node_modules" in root or "venv" in root:
+            if set(os.path.relpath(root, repo_local_path).split(os.sep)) & {"node_modules", "venv", ".venv", ".git"}:
                 continue
             for file in files:
-                if not file.endswith((".py", ".js", ".ts", ".go", ".java", ".rs")):
+                if not file.endswith((".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".rs", ".html", ".css")):
                     continue
                 file_path = os.path.join(root, file)
                 rel_path = os.path.relpath(file_path, repo_local_path).replace("\\", "/")
@@ -101,7 +115,7 @@ def index_codebase(repo_url: str, repo_local_path: str):
                     # Simple chunking: 100 lines per chunk
                     lines = content.splitlines()
                     for i in range(0, len(lines), 100):
-                        chunk = "\\n".join(lines[i:i+100])
+                        chunk = "\n".join(lines[i:i+100])
                         if not chunk.strip():
                             continue
                         docs.append(chunk)
@@ -119,6 +133,10 @@ def index_codebase(repo_url: str, repo_local_path: str):
                     metadatas=metadatas[i:i+batch_size],
                     ids=ids[i:i+batch_size]
                 )
+        # Re-indexing a shorter/deleted file must not retain stale source chunks.
+        stale_ids = sorted(set(collection.get(include=[])["ids"]) - set(ids))
+        for i in range(0, len(stale_ids), 100):
+            collection.delete(ids=stale_ids[i:i+100])
         return {"status": "success", "documents_indexed": len(docs)}
     except Exception as e:
         print(f"Error indexing codebase: {e}")

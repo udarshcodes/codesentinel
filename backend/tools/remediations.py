@@ -38,14 +38,67 @@ def npm_dependency_patch(source, path, finding):
         raise ValueError("A registry-confirmed newer same-major release is required.")
     data = json.loads(source)
     changed = False
+    found = False
     for group in ("dependencies", "devDependencies", "optionalDependencies"):
         if finding["package"] in data.get(group, {}):
+            found = True
+            if data[group][finding['package']] == version:
+                continue
             data[group][finding["package"]] = version
             changed = True
-    if not changed:
+    if not found:
         raise ValueError("The dependency declaration is missing from the selected manifest.")
+    if not changed:
+        return None
     updated = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     return "<<<SEARCH>>>\n" + source.strip("\n") + "\n<<<REPLACE>>>\n" + updated
+
+
+def python_dependency_patch(source, path, finding):
+    from agents.dependency_analyzer import compatible_registry_update
+    from packaging.requirements import Requirement
+    from packaging.specifiers import SpecifierSet
+    from packaging.utils import canonicalize_name
+    version = finding.get('recommended_version')
+    if not compatible_registry_update(finding.get('current_version'), version):
+        raise ValueError('A registry-confirmed newer same-major release is required.')
+    if os.path.basename(path) == 'pyproject.toml':
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib
+        values = tomllib.loads(source).get('project', {}).get('dependencies', [])
+    elif os.path.basename(path) == 'requirements.txt':
+        values = [line.split(' #', 1)[0].strip() for line in source.splitlines()
+                  if line.strip() and not line.lstrip().startswith('#')]
+    else:
+        raise ValueError('Automatic Python remediation requires a static dependency manifest.')
+    matches = [(value, Requirement(value)) for value in values
+               if canonicalize_name(Requirement(value).name) == canonicalize_name(finding['package'])]
+    if len(matches) != 1:
+        raise ValueError('The selected dependency must have one unambiguous declaration.')
+    original, requirement = matches[0]
+    pins = [specifier.version for specifier in requirement.specifier if specifier.operator == '==']
+    if pins == [version]:
+        return None
+    if requirement.url or pins != [finding['current_version']]:
+        raise ValueError('The selected manifest does not contain the expected pinned version.')
+    remaining = [str(specifier) for specifier in requirement.specifier if specifier.operator != '==']
+    if not SpecifierSet(','.join(remaining)).contains(version):
+        raise ValueError('The verified update violates another declared constraint.')
+    requirement.specifier = SpecifierSet(','.join(remaining + ['==' + version]))
+    updated = str(requirement)
+    if os.path.basename(path) == 'pyproject.toml':
+        tokens = [json.dumps(original, ensure_ascii=False)]
+        if "'" not in original:
+            tokens.append("'" + original + "'")
+        token = next((value for value in tokens if source.count(value) == 1), None)
+        if not token:
+            raise ValueError('Cannot safely locate the quoted dependency declaration.')
+        original, updated = token, json.dumps(updated, ensure_ascii=False)
+    elif source.count(original) != 1:
+        raise ValueError('Cannot safely locate the requirement declaration.')
+    return '<<<SEARCH>>>\n' + original + '\n<<<REPLACE>>>\n' + updated + '\n'
 
 
 def deferred_effect_state_patch(source, line):

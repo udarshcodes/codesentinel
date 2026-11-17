@@ -4,6 +4,7 @@ from config import GROQ_API_KEYS
 from tools.llm_router import invoke_llm
 from tools.confidence_calc import calculate_pipeline_confidence
 from tools.subprocess_runner import run_isolated_subprocess
+from tools.pipeline_outcome import has_unresolved_advisories
 
 
 async def agent_pr_author(state: PipelineState):
@@ -46,7 +47,7 @@ async def agent_pr_author(state: PipelineState):
     if failed_ids and len(failed_ids) >= len(patches):
         validation_failed = True
 
-    if validation_failed or not security_verified or state.get("scanners_failed"):
+    if validation_failed or not security_verified or state.get("scanners_failed") or has_unresolved_advisories(state):
         # State machine dictates we NEVER create a successful PR here.
         # It goes to NEEDS_REVIEW / DRAFT
         needs_review = True
@@ -170,6 +171,12 @@ async def agent_pr_author(state: PipelineState):
                 desc += "\n\n### Validation diagnostics\n```text\n" + str(latest["logs"])[-6000:].replace("```", "~~~") + "\n```"
             if state.get("scanner_notes"):
                 desc += "\n\n### Scan coverage\n" + "\n".join(f"- {note}" for note in state["scanner_notes"])
+            manual = [issue for issue in state.get("investigated_issues", []) if issue.get("remediation_mode") == "manual_review"]
+            if manual:
+                desc += "\n\n### Findings requiring manual review\n"
+                for issue in manual[:20]:
+                    desc += "- " + str(issue.get("description", issue.get("id", "Finding")))[:400].replace("\n", " ")
+                    desc += ": " + str(issue.get("remediation_reason", "No verified compatible automatic repair available."))[:250].replace("\n", " ") + "\n"
 
             if needs_review:
                 title = f"[NEEDS REVIEW] {title}"

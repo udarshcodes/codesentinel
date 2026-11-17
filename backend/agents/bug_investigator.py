@@ -11,6 +11,7 @@ from tools.llm_router import invoke_llm, LLMExhaustionError
 from tools import context_cache
 from tools.prompt_cache import BUG_INVESTIGATOR_SYSTEM
 from tools.vector_store import query_similar_fixes, query_codebase
+from tools.fix_memory import retrieve_worker_memory
 
 
 async def agent_bug_investigator(state: PipelineState):
@@ -118,7 +119,7 @@ If no bugs, return: {{"found": false}}"""
         # Newer does not mean vulnerable. Keep update notices visible without
         # spending an LLM call or treating every major upgrade as a repair.
         update_notice = issue_desc.startswith("Outdated dependency:") and finding.get("cve") == "N/A"
-        heuristic_advisory = finding.get("tool") in {"dead_code_detector", "dead_file_checker", "css_quality_checker"}
+        heuristic_advisory = finding.get("tool") in {"dead_code_detector", "dead_file_checker", "css_quality_checker", "long_method_detector"}
         if update_notice or heuristic_advisory or finding.get("remediation_mode") == "manual_review":
             investigated_issues.append({"id": idx, "description": issue_desc,
                                          "severity": finding.get("severity", "low"),
@@ -147,7 +148,15 @@ If no bugs, return: {{"found": false}}"""
         localized_graph = context_cache.get_localized_graph(repo_url, file_path)
         
         # RAG Authenticity: Fetch strictly isolated past fixes for this repository
-        similar_fixes = query_similar_fixes(repo_url, issue_desc)
+        try:
+            memory = await retrieve_worker_memory(repo_url, issue_desc, task_id=state.get("task_id"))
+            similar_fixes = memory.get("fixes", [])
+            rag_status["fix_memory"] = {key: value for key, value in memory.items() if key != "fixes"}
+            print(f"[BugInvestigator] Historical Chroma memory: {rag_status['fix_memory']}, retrieved={len(similar_fixes)}")
+        except Exception:
+            similar_fixes = []
+            rag_status["fix_memory"] = {"status": "unavailable"}
+            print("[BugInvestigator] Historical Chroma memory unavailable; continuing without historical context.")
         if similar_fixes:
             similar_fixes_context = (
                 "\\nSimilar Past Fixes from Knowledge Base:\\n"

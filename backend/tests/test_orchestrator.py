@@ -47,7 +47,7 @@ class TestRouteAfterValidator(unittest.TestCase):
             "retry_count": 1,
         }
         result = route_after_validator(state)
-        self.assertEqual(result, "security_verifier")
+        self.assertEqual(result, "pr_author")
 
     def test_some_patches_fail_max_retries(self):
         state = {
@@ -57,7 +57,7 @@ class TestRouteAfterValidator(unittest.TestCase):
             "retry_count": 3,
         }
         result = route_after_validator(state)
-        self.assertEqual(result, "security_verifier")
+        self.assertEqual(result, "pr_author")
 
     def test_empty_validation_results(self):
         state = {
@@ -65,7 +65,13 @@ class TestRouteAfterValidator(unittest.TestCase):
             "retry_count": 0,
         }
         result = route_after_validator(state)
-        self.assertEqual(result, "security_verifier")
+        self.assertEqual(result, "pr_author")
+
+    def test_validation_exhaustion_is_terminal_after_an_earlier_security_retry(self):
+        state = {"validation_results": [{"passed": False, "unresolvable": True}],
+                 "patches": [{"file": "app.py", "applied": True}],
+                 "retry_count": 3, "security_retry_count": 1}
+        self.assertEqual(route_after_validator(state), "pr_author")
 
 
 class TestRouteAfterSecurity(unittest.TestCase):

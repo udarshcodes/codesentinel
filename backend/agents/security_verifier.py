@@ -64,6 +64,10 @@ async def agent_security_verifier(state: PipelineState):
                     "security_retry_context": [{"issue": f"Dependency verification unavailable: {error}"}]}
 
     for finding in new_findings:
+        # A surviving style/maintainability notice is not a security regression.
+        # Unknown categories still fail closed; scanner failures are handled above.
+        if str(finding.get("category", "")).lower() in {"quality", "code quality"}:
+            continue
         f_path = finding.get("file", "")
         abs_path = os.path.normpath(os.path.join(repo_local_path, f_path))
 
