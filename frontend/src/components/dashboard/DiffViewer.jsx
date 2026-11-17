@@ -53,9 +53,9 @@ export default function DiffViewer({ state }) {
           <div className="text-sm font-medium text-muted-foreground bg-card border border-border px-3 py-1.5 rounded-lg flex items-center gap-2">
             <span>Application Rate: <strong className="text-foreground">{acceptanceRate}%</strong></span>
             <span className="opacity-50">|</span>
-            <span className="text-[#22C55E]">{totalApplied} applied</span>
+            <span className="text-status-success">{totalApplied} applied</span>
             <span className="opacity-50">|</span>
-            <span className="text-[#EF4444]">{totalRejected} rejected</span>
+            <span className="text-status-error">{totalRejected} rejected</span>
           </div>
         )}
       </div>
@@ -86,9 +86,9 @@ function FilePatchGroup({ group, state }) {
         <div className="flex items-center gap-3 text-xs sm:text-sm whitespace-nowrap">
           <span className="text-muted-foreground"><strong className="text-foreground">{group.generated}</strong> attempts</span>
           <div className="w-1 h-1 rounded-full bg-border"></div>
-          <span className="text-[#22C55E]"><strong className="text-[#22C55E]">{group.applied}</strong> applied</span>
+          <span className="text-status-success"><strong className="text-status-success">{group.applied}</strong> applied</span>
           <div className="w-1 h-1 rounded-full bg-border"></div>
-          <span className="text-[#EF4444]"><strong className="text-[#EF4444]">{group.rejected}</strong> rejected</span>
+          <span className="text-status-error"><strong className="text-status-error">{group.rejected}</strong> rejected</span>
         </div>
       </button>
       
@@ -215,18 +215,18 @@ function PatchItem({ patch, state }) {
       if (validation.passed && state.security_verified === true) {
         if (state.security_verification && !state.security_verified) {
           patchStatus = 'Security Review Required'
-          patchStatusColor = 'text-[#F59E0B]'
+          patchStatusColor = 'text-status-warning'
           patchStatusBg = 'bg-[#F59E0B]/10'
           PatchIcon = AlertCircle
         } else {
           patchStatus = 'Validated'
-          patchStatusColor = 'text-[#22C55E]'
+          patchStatusColor = 'text-status-success'
           patchStatusBg = 'bg-[#22C55E]/10'
           PatchIcon = CheckCircle2
         }
       } else {
         patchStatus = 'Validation Failed'
-        patchStatusColor = 'text-[#EF4444]'
+        patchStatusColor = 'text-status-error'
         patchStatusBg = 'bg-[#EF4444]/10'
         PatchIcon = XCircle
       }
@@ -237,7 +237,7 @@ function PatchItem({ patch, state }) {
     }
   } else if (patch.applied === false) {
     patchStatus = 'Rejected'
-    patchStatusColor = 'text-[#EF4444]'
+    patchStatusColor = 'text-status-error'
     patchStatusBg = 'bg-[#EF4444]/10'
     PatchIcon = XCircle
   }
@@ -278,7 +278,7 @@ function PatchItem({ patch, state }) {
         <div className="text-left overflow-x-auto bg-[#080808] w-full max-w-full">
           {rejectionReason && (
             <div className="p-4 bg-[#EF4444]/10 border-b border-[#242428] text-sm">
-              <div className="flex items-center gap-2 text-[#EF4444] font-semibold mb-1">
+              <div className="flex items-center gap-2 text-status-error font-semibold mb-1">
                 <AlertCircle className="w-4 h-4" /> Rejection Reason
               </div>
               <p className="font-mono text-muted-foreground whitespace-pre-wrap text-xs break-all">{rejectionReason}</p>

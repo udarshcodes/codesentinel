@@ -59,7 +59,7 @@ export default function FindingsPanel({ state }) {
         }
 
         // Improve category mapping
-        let category = normalizeCategory(issue.category || issue.original_finding?.category);
+        let category = normalizeCategory(issue.original_finding?.package ? 'Dependency' : issue.category || issue.original_finding?.category);
         if (title.toLowerCase().includes('css') || title.toLowerCase().includes('selector')) category = 'Code Quality';
         else if (title.toLowerCase().includes('security') || issue.severity?.toLowerCase() === 'critical') category = 'Security';
         else if (title.toLowerCase().includes('dependency') || title.toLowerCase().includes('outdated')) category = 'Dependency';
@@ -72,9 +72,9 @@ export default function FindingsPanel({ state }) {
           description: issue.description || issue.root_cause || issue.original_finding?.issue || 'No description provided.',
           file: issue.affected_files?.[0] || issue.file || issue.original_finding?.file || 'unknown',
           line: issue.line || issue.location || issue.original_finding?.line || null,
-          status: issue.remediation_mode === 'manual_review' ? 'Advisory' : resolveStatus(id, 'Confirmed'),
+          status: issue.remediation_mode === 'manual_review' ? (['high', 'critical'].includes(issue.severity?.toLowerCase()) ? 'Needs Review' : 'Advisory') : resolveStatus(id, 'Confirmed'),
           evidence: issue.evidence || issue.original_finding?.evidence || '',
-          remediation: issue.remediation || issue.suggested_fix || (issue.remediation_mode === 'manual_review' ? 'A newer version alone is not evidence of a vulnerability. Review compatibility before upgrading.' : '')
+          remediation: issue.remediation_reason || issue.original_finding?.remediation_reason || issue.remediation || issue.suggested_fix || (issue.remediation_mode === 'manual_review' ? 'This finding requires manual review; no verified automatic repair was applied.' : '')
         })
       })
     } else {
@@ -96,9 +96,9 @@ export default function FindingsPanel({ state }) {
           description: f.description || f.issue || 'No description provided.',
           file: f.file || 'unknown',
           line: f.line || null,
-          status: resolveStatus(id, 'Identified'),
+          status: f.remediation_mode === 'manual_review' ? (['high', 'critical'].includes(f.severity?.toLowerCase()) ? 'Needs Review' : 'Advisory') : resolveStatus(id, 'Identified'),
           evidence: f.evidence || '',
-          remediation: f.remediation || f.suggested_fix || ''
+          remediation: f.remediation_reason || f.remediation || f.suggested_fix || ''
         })
       })
     }
@@ -145,9 +145,9 @@ export default function FindingsPanel({ state }) {
     switch (s) {
       case 'critical':
       case 'high':
-        return <span className="bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">{s === 'critical' ? 'Critical' : 'High'}</span>
+        return <span className="bg-[#EF4444]/10 text-status-error border border-[#EF4444]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">{s === 'critical' ? 'Critical' : 'High'}</span>
       case 'medium':
-        return <span className="bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">Medium</span>
+        return <span className="bg-[#F59E0B]/10 text-status-warning border border-[#F59E0B]/30 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">Medium</span>
       default:
         return <span className="bg-muted text-muted-foreground border border-border px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider">Low</span>
     }
@@ -155,9 +155,9 @@ export default function FindingsPanel({ state }) {
   
   const getStatusBadge = (status) => {
     const s = status.toLowerCase()
-    if (s === 'fixed') return <span className="flex items-center gap-1.5 text-sm font-medium text-[#22C55E]"><CheckCircle2 className="w-4 h-4"/> Fixed</span>
-    if (s === 'needs review') return <span className="flex items-center gap-1.5 text-sm font-medium text-[#F59E0B]"><AlertCircle className="w-4 h-4"/> Needs Review</span>
-    if (s === 'rejected' || s === 'unresolved') return <span className="flex items-center gap-1.5 text-sm font-medium text-[#EF4444]"><div className="w-1.5 h-1.5 rounded-full bg-[#EF4444]"></div> {status}</span>
+    if (s === 'fixed') return <span className="flex items-center gap-1.5 text-sm font-medium text-status-success"><CheckCircle2 className="w-4 h-4"/> Fixed</span>
+    if (s === 'needs review') return <span className="flex items-center gap-1.5 text-sm font-medium text-status-warning"><AlertCircle className="w-4 h-4"/> Needs Review</span>
+    if (s === 'rejected' || s === 'unresolved') return <span className="flex items-center gap-1.5 text-sm font-medium text-status-error"><div className="w-1.5 h-1.5 rounded-full bg-[#EF4444]"></div> {status}</span>
     return <span className="flex items-center gap-1.5 text-sm font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-primary/50"></div> {status}</span>
   }
 
@@ -179,12 +179,12 @@ export default function FindingsPanel({ state }) {
         <div className="flex flex-wrap gap-4 text-sm mb-6 bg-background p-4 rounded-xl border border-border">
           <div className="flex flex-col">
             <span className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">High/Critical</span>
-            <span className="font-medium text-[#EF4444]">{counts.high}</span>
+            <span className="font-medium text-status-error">{counts.high}</span>
           </div>
           <div className="w-px h-8 bg-border"></div>
           <div className="flex flex-col">
             <span className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Medium</span>
-            <span className="font-medium text-[#F59E0B]">{counts.medium}</span>
+            <span className="font-medium text-status-warning">{counts.medium}</span>
           </div>
           <div className="w-px h-8 bg-border"></div>
           <div className="flex flex-col">
@@ -194,12 +194,12 @@ export default function FindingsPanel({ state }) {
           <div className="w-px h-8 bg-border"></div>
           <div className="flex flex-col">
             <span className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Resolved</span>
-            <span className="font-medium text-[#22C55E]">{counts.resolved}</span>
+            <span className="font-medium text-status-success">{counts.resolved}</span>
           </div>
           <div className="w-px h-8 bg-border"></div>
           <div className="flex flex-col">
             <span className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">Needs Review</span>
-            <span className="font-medium text-[#F59E0B]">{counts.review}</span>
+            <span className="font-medium text-status-warning">{counts.review}</span>
           </div>
         </div>
 

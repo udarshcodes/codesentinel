@@ -57,9 +57,9 @@ export default function PipelineView({ state }) {
         </h2>
         <div className="flex flex-wrap gap-3 text-xs">
           <span className="px-2 py-1 bg-muted text-muted-foreground rounded-md font-medium">{executedCount} Executed</span>
-          {verifiedCount > 0 && <span className="px-2 py-1 bg-[#22C55E]/10 text-[#22C55E] rounded-md font-medium">{verifiedCount} Verified</span>}
-          {reviewCount > 0 && <span className="px-2 py-1 bg-[#F59E0B]/10 text-[#F59E0B] rounded-md font-medium">{reviewCount} Review Req</span>}
-          {failedCount > 0 && <span className="px-2 py-1 bg-[#EF4444]/10 text-[#EF4444] rounded-md font-medium">{failedCount} Failed</span>}
+          {verifiedCount > 0 && <span className="px-2 py-1 bg-[#22C55E]/10 text-status-success rounded-md font-medium">{verifiedCount} Verified</span>}
+          {reviewCount > 0 && <span className="px-2 py-1 bg-[#F59E0B]/10 text-status-warning rounded-md font-medium">{reviewCount} Review Req</span>}
+          {failedCount > 0 && <span className="px-2 py-1 bg-[#EF4444]/10 text-status-error rounded-md font-medium">{failedCount} Failed</span>}
         </div>
       </div>
       
@@ -77,13 +77,13 @@ export default function PipelineView({ state }) {
           const { displayStatus, statusType } = getAgentStatus(agentKey, state, { isCompleted, isActive, isSkipped, isAgentPaused, isAgentError });
 
           if (statusType === 'success') {
-            cardStyle = 'bg-[#22C55E]/10 border-[#22C55E]/20 text-[#22C55E]'
+            cardStyle = 'bg-[#22C55E]/10 border-[#22C55E]/20 text-status-success'
             icon = <CheckCircle2 className="w-5 h-5" />
           } else if (statusType === 'warning') {
-            cardStyle = 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B]'
+            cardStyle = 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-status-warning'
             icon = <AlertCircle className="w-5 h-5" />
           } else if (statusType === 'error') {
-            cardStyle = 'bg-[#EF4444]/10 border-[#EF4444]/30 text-[#EF4444]'
+            cardStyle = 'bg-[#EF4444]/10 border-[#EF4444]/30 text-status-error'
             icon = <ShieldAlert className="w-5 h-5" />
           } else if (isActive) {
             cardStyle = 'bg-primary/10 border-primary text-primary shadow-[0_0_15px_rgba(139,92,246,0.15)]'
@@ -111,7 +111,7 @@ export default function PipelineView({ state }) {
       </div>
 
       {isError && (
-        <div className="mt-8 p-6 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-xl flex items-start gap-4 text-[#EF4444]">
+        <div className="mt-8 p-6 bg-[#EF4444]/10 border border-[#EF4444]/20 rounded-xl flex items-start gap-4 text-status-error">
           <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-lg mb-1">Pipeline Execution Failed</h3>
@@ -123,19 +123,19 @@ export default function PipelineView({ state }) {
       )}
 
       {state.status === 'NEEDS_REVIEW' && (
-        <div className="mt-8 p-6 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-xl flex items-start gap-4 text-[#F59E0B]">
+        <div className="mt-8 p-6 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-xl flex items-start gap-4 text-status-warning">
           <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-lg mb-1">Pipeline Review Required</h3>
             <p className="opacity-90 whitespace-pre-wrap font-mono text-sm">
-              {state.pr_error || 'The pipeline requires manual review to proceed or abort.'}
+              {state.pr_error || 'Review unresolved findings, validation evidence, and any draft pull request before merging changes.'}
             </p>
           </div>
         </div>
       )}
 
       {isWaitingLLM && (
-        <div className="mt-8 p-6 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-xl flex items-start gap-4 text-[#F59E0B]">
+        <div className="mt-8 p-6 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-xl flex items-start gap-4 text-status-warning">
           <AlertCircle className="w-6 h-6 shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-lg mb-1">LLM Capacity Exhausted</h3>

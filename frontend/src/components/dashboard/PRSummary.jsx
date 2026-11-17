@@ -29,7 +29,7 @@ export default function PRSummary({ state }) {
   const allTestsPassed = validationRan && validationResults.at(-1).passed === true && validationResults.at(-1).tests_executed !== false;
   
   const securityVerified = state.security_verified === true;
-  const needsReview = !allTestsPassed || !securityVerified || state.scanners_failed === true;
+  const needsReview = status === 'NEEDS_REVIEW' || !allTestsPassed || !securityVerified || state.scanners_failed === true;
   const noAutomaticChanges = patchesGenerated === 0 && /^No (automatic repairs|bugs were found|valid code changes)/i.test(pr_error || '');
 
   let title = "Analysis Complete";
@@ -55,13 +55,13 @@ export default function PRSummary({ state }) {
     Icon = XCircle;
   } else if (status === 'NEEDS_REVIEW' || needsReview) {
     title = "Completed with Review Required";
-    description = "The pipeline finished, but manual review is required for unverified patches.";
+    description = "The pipeline finished, but unresolved findings or unverified changes require manual review.";
     isWarning = true;
     Icon = AlertTriangle;
   }
 
   const bgColorClass = isError ? 'bg-[#EF4444]/10' : (isWarning ? 'bg-[#F59E0B]/10' : 'bg-[#22C55E]/10');
-  const iconColorClass = isError ? 'text-[#EF4444]' : (isWarning ? 'text-[#F59E0B]' : 'text-[#22C55E]');
+  const iconColorClass = isError ? 'text-status-error' : (isWarning ? 'text-status-warning' : 'text-status-success');
   const borderClass = isError ? 'border-[#EF4444]/30' : (isWarning ? 'border-[#F59E0B]/30' : 'border-[#22C55E]/30');
 
   const validationStatus = validationResults.at(-1)?.infrastructure_error ? "Environment Unavailable" : validationRan ? (allTestsPassed ? "Verified" : "Review Required") : "Not Run";
@@ -150,14 +150,14 @@ export default function PRSummary({ state }) {
       <div className="bg-background rounded-xl p-6 border border-border mb-6">
         <h3 className="text-sm font-medium text-foreground mb-4">Verification Status</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className={`p-4 rounded-lg border flex items-start gap-3 ${validationStatus === 'Verified' ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-[#22C55E]' : validationStatus === 'Review Required' ? 'bg-[#F59E0B]/5 border-[#F59E0B]/20 text-[#F59E0B]' : 'bg-muted border-border text-muted-foreground'}`}>
+          <div className={`p-4 rounded-lg border flex items-start gap-3 ${validationStatus === 'Verified' ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-status-success' : validationStatus === 'Review Required' ? 'bg-[#F59E0B]/5 border-[#F59E0B]/20 text-status-warning' : 'bg-muted border-border text-muted-foreground'}`}>
             <Beaker className="w-5 h-5 shrink-0 mt-0.5" />
             <div>
               <div className="font-semibold text-sm">Testing & Validation</div>
               <div className="text-xs opacity-80 mt-1">{validationStatus}</div>
             </div>
           </div>
-          <div className={`p-4 rounded-lg border flex items-start gap-3 ${securityStatus === 'Verified' ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-[#22C55E]' : 'bg-[#F59E0B]/5 border-[#F59E0B]/20 text-[#F59E0B]'}`}>
+          <div className={`p-4 rounded-lg border flex items-start gap-3 ${securityStatus === 'Verified' ? 'bg-[#22C55E]/5 border-[#22C55E]/20 text-status-success' : 'bg-[#F59E0B]/5 border-[#F59E0B]/20 text-status-warning'}`}>
             <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
             <div>
               <div className="font-semibold text-sm">Security Verification</div>
@@ -171,12 +171,12 @@ export default function PRSummary({ state }) {
         {pr_url ? (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <h3 className={`text-lg font-semibold mb-1 ${needsReview ? 'text-[#F59E0B]' : 'text-foreground'}`}>
+              <h3 className={`text-lg font-semibold mb-1 ${needsReview ? 'text-status-warning' : 'text-foreground'}`}>
                 {needsReview ? 'Draft Pull Request Created' : 'Pull Request Ready'}
               </h3>
               <p className="text-sm text-muted-foreground">
                 {needsReview 
-                  ? 'CodeSentinel has created a Draft Pull Request. Manual review is required before merging due to unverified patches.' 
+                  ? 'CodeSentinel has created a Draft Pull Request. Review unresolved findings and validation evidence before merging.' 
                   : 'CodeSentinel has successfully pushed the verified patches and opened a Pull Request.'}
               </p>
             </div>
@@ -201,7 +201,7 @@ export default function PRSummary({ state }) {
             </p>
             {pr_error && !noAutomaticChanges && (
               <div className="bg-[#EF4444]/5 rounded-lg p-4 mb-4 border border-[#EF4444]/20">
-                <p className="font-mono text-sm text-[#EF4444] whitespace-pre-wrap">{pr_error}</p>
+                <p className="font-mono text-sm text-status-error whitespace-pre-wrap">{pr_error}</p>
               </div>
             )}
             {pipeline_error && !pr_error && (
@@ -221,7 +221,7 @@ export default function PRSummary({ state }) {
                   <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
                   {isRetrying ? 'Retrying...' : 'Retry Pull Request Creation'}
                 </button>
-                {retryError && <p className="text-sm text-[#EF4444] mt-1">{retryError}</p>}
+                {retryError && <p className="text-sm text-status-error mt-1">{retryError}</p>}
               </div>
             )}
           </div>

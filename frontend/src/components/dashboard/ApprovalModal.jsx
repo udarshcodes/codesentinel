@@ -22,7 +22,7 @@ export default function ApprovalModal({ isOpen, agentData, onApprove, onReject, 
         )}
 
         {tokenRecoveryRequired && (
-          <div className="bg-[#F59E0B]/10 border-b border-[#F59E0B]/20 p-4 text-sm text-[#F59E0B] font-medium flex items-center gap-2">
+          <div className="bg-[#F59E0B]/10 border-b border-[#F59E0B]/20 p-4 text-sm text-status-warning font-medium flex items-center gap-2">
             <AlertTriangle className="w-5 h-5" />
             Active credentials already exist but were lost from this session. You must recover them before proceeding.
           </div>
@@ -30,11 +30,11 @@ export default function ApprovalModal({ isOpen, agentData, onApprove, onReject, 
 
         <div className="p-6 border-b border-border bg-[#F59E0B]/10 flex items-center gap-4">
           <div className="p-3 bg-[#F59E0B]/20 rounded-full">
-            <AlertTriangle className="w-6 h-6 text-[#F59E0B]" />
+            <AlertTriangle className="w-6 h-6 text-status-warning" />
           </div>
           <div>
             <h2 className="text-xl font-bold text-foreground">Human Approval Required</h2>
-            <p className="text-sm text-[#F59E0B] font-medium mt-0.5">CodeSentinel identified High risk changes and paused execution.</p>
+            <p className="text-sm text-status-warning font-medium mt-0.5">CodeSentinel identified High risk changes and paused execution.</p>
           </div>
         </div>
 
@@ -89,7 +89,7 @@ export default function ApprovalModal({ isOpen, agentData, onApprove, onReject, 
               </span>
             )}
             {!tokenLoading && tokenRecoveryRequired && (
-              <span className="text-[#F59E0B] flex items-center gap-1">
+              <span className="text-status-warning flex items-center gap-1">
                 <AlertTriangle className="w-4 h-4" /> Recovery Required
               </span>
             )}

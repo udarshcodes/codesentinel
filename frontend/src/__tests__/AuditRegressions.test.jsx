@@ -98,3 +98,21 @@ it('keeps update advisories filterable without calling them unresolved repairs',
   expect(screen.getByRole('button',{name:/Outdated dependency: example.*Advisory/})).toBeTruthy();
   expect(screen.queryByRole('button',{name:/Outdated dependency: example.*Unresolved/})).toBeNull();
 });
+
+it('labels a review-required PR as draft even when retained source fixes pass checks', () => {
+  render(<PRSummary state={{status:'NEEDS_REVIEW',pr_url:'https://github.com/example/project/pull/1',
+    validation_results:[{passed:true,tests_executed:true}],security_verified:true}} />);
+  expect(screen.getByText('Draft Pull Request Created')).toBeTruthy();
+  expect(screen.queryByText('Pull Request Ready')).toBeNull();
+});
+
+it('keeps unpatched critical dependencies in the review filter and shows the actual reason', () => {
+  render(<FindingsPanel state={{status:'NEEDS_REVIEW',investigated_issues:[{
+    id:0,description:'Vulnerable package',severity:'critical',category:'quality',affected_files:['pyproject.toml'],
+    original_finding:{package:'example'},remediation_mode:'manual_review',remediation_reason:'No compatible clean release exists.'
+  }],patches:[]}} />);
+  fireEvent.change(screen.getByRole('combobox',{name:'Filter status'}),{target:{value:'needs review'}});
+  fireEvent.click(screen.getByRole('button',{name:/Vulnerable package.*Needs Review/}));
+  expect(screen.getByText('No compatible clean release exists.')).toBeTruthy();
+  expect(screen.queryByText(/A newer version alone/)).toBeNull();
+});

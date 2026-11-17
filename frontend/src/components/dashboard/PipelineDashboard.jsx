@@ -14,7 +14,6 @@ function DashboardInner({ taskId, onComplete }) {
   const pipelineState = usePipeline(taskId)
   const approval = useApproval(taskId)
 
-  const isComplete = pipelineState.status === 'COMPLETED'
   const isTerminal = ['COMPLETED', 'FAILED', 'NEEDS_REVIEW'].includes(pipelineState.status)
 
   const [isPRVisible, setIsPRVisible] = useState(false)
@@ -27,7 +26,7 @@ function DashboardInner({ taskId, onComplete }) {
   }, [isTerminal, onComplete, pipelineState.status])
 
   useEffect(() => {
-    if (isComplete && (pipelineState.pr_url || pipelineState.pr_error)) {
+    if (isTerminal && (pipelineState.pr_url || pipelineState.pr_error)) {
       const prElement = document.getElementById('pr-summary')
       if (!prElement) return
 
@@ -43,7 +42,7 @@ function DashboardInner({ taskId, onComplete }) {
       observer.observe(prElement)
       return () => observer.disconnect()
     }
-  }, [isComplete, pipelineState.pr_url, pipelineState.pr_error])
+  }, [isTerminal, pipelineState.pr_url, pipelineState.pr_error])
 
   const handleApprove = async () => {
     setApprovalError(null)
@@ -89,7 +88,7 @@ function DashboardInner({ taskId, onComplete }) {
 
       {pipelineState.status === 'CONNECTION_ERROR' && (
         <div className="mt-8 p-6 bg-[#F59E0B]/10 border border-[#F59E0B]/20 rounded-xl text-center">
-          <h3 className="font-semibold text-lg text-[#F59E0B] mb-2">Connection Error</h3>
+          <h3 className="font-semibold text-lg text-status-warning mb-2">Connection Error</h3>
           <p className="text-muted-foreground">Unable to connect to the backend. Please check your network and refresh the page.</p>
         </div>
       )}
@@ -106,7 +105,7 @@ function DashboardInner({ taskId, onComplete }) {
         </>
       )}
 
-      {(isComplete || pipelineState.status === 'FAILED') && (
+      {isTerminal && (
         <>
           <PRSummary state={pipelineState} />
           {isPRVisible ? (

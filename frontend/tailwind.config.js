@@ -48,6 +48,9 @@ export default {
         },
         "nav-button": "hsl(var(--nav-button))",
         "hero-bg": "hsl(var(--hero-bg))",
+        "status-success": "hsl(var(--status-success) / <alpha-value>)",
+        "status-warning": "hsl(var(--status-warning) / <alpha-value>)",
+        "status-error": "hsl(var(--status-error) / <alpha-value>)",
       },
       borderRadius: {
         lg: "var(--radius)",

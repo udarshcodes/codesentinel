@@ -10,7 +10,7 @@ export default function Navbar() {
   ]
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 lg:px-16 py-5">
+    <nav aria-label="Main navigation" className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-4 px-8 lg:px-16 py-5">
       
       {/* Left: Logo */}
       <a href="#" className="flex items-center gap-3 shrink-0">
@@ -19,7 +19,7 @@ export default function Navbar() {
       </a>
 
       {/* Center: Nav links */}
-      <div className="hidden md:flex items-center gap-8">
+      <div className="hidden 2xl:flex items-center gap-8">
         {navLinks.map((link) => (
           <a 
             key={link.label}
@@ -34,7 +34,7 @@ export default function Navbar() {
       </div>
 
       {/* Right: CTA */}
-      <div className="hidden md:flex items-center gap-4">
+      <div className="hidden 2xl:flex items-center gap-4">
         <a 
           href={adminUrl()}
           target="_blank" 
@@ -50,6 +50,20 @@ export default function Navbar() {
           Analyze Repository
         </button>
       </div>
+
+      <details className="relative 2xl:hidden text-[#FAFAFA]">
+        <summary className="cursor-pointer px-3 py-2 rounded-lg border border-[#52525B]">Menu</summary>
+        <div className="absolute right-0 top-full mt-3 w-56 max-h-[70dvh] overflow-y-auto rounded-xl border border-[#242428] bg-[#0A0A0A] p-3 shadow-xl">
+          {navLinks.map(link => (
+            <a key={link.label} href={link.href} target={link.external ? '_blank' : undefined} rel={link.external ? 'noreferrer' : undefined}
+              onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}
+              className="block px-3 py-3 text-sm hover:bg-white/10 rounded-md">{link.label}</a>
+          ))}
+          <a href={adminUrl()} className="block px-3 py-3 text-sm hover:bg-white/10 rounded-md">Admin Dashboard</a>
+          <a href="#repo-analyzer" onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}
+            className="block px-3 py-3 text-sm text-primary rounded-md">Analyze Repository</a>
+        </div>
+      </details>
 
     </nav>
   )

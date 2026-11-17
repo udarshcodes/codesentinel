@@ -22,7 +22,7 @@ export default function LandingPage({
   errorMsg
 }) {
   return (
-    <div className="min-h-screen bg-[#050505] text-[#FAFAFA] selection:bg-[#8B5CF6]/30">
+    <div className="dark min-h-screen bg-[#050505] text-[#FAFAFA] selection:bg-[#8B5CF6]/30">
       <Navbar />
       <main className="flex flex-col items-center w-full overflow-hidden">
         <Hero />

@@ -156,6 +156,24 @@ describe('App Startup State', () => {
       expect(screen.getByTestId('landing-page')).toBeInTheDocument();
     });
   });
+  it('rejects non-GitHub URLs before creating an analysis request', () => {
+    render(<App />);
+    fireEvent.change(screen.getByTestId('repo-input'), {target: {value: 'https://example.com/owner/repo'}});
+    fireEvent.click(screen.getByTestId('start-btn'));
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(screen.getByText(/Enter a public GitHub repository URL/)).toBeInTheDocument();
+    expect(screen.getByTestId('landing-page')).toBeInTheDocument();
+  });
+
+  it('recovers when a successful response contains no task', async () => {
+    globalThis.fetch.mockResolvedValue({ok: true, json: async () => ({})});
+    render(<App />);
+    fireEvent.change(screen.getByTestId('repo-input'), {target: {value: 'https://github.com/owner/repo'}});
+    fireEvent.click(screen.getByTestId('start-btn'));
+    await waitFor(() => expect(screen.getByText(/did not create an analysis task/)).toBeInTheDocument());
+    expect(screen.getByTestId('landing-page')).toBeInTheDocument();
+    expect(screen.queryByText('Creating analysis task')).not.toBeInTheDocument();
+  });
   it('restores a selected result after a page remount without starting a new analysis', async () => {
     globalThis.fetch.mockResolvedValue({ok: true, json: async () => ({task_id: 'task-restore', view_token: 'private-token'})});
     const view = render(<App />);

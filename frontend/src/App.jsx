@@ -45,7 +45,13 @@ function App() {
 
   const startAnalysis = async (e) => {
     if (e) e.preventDefault()
-    if (!repoUrlInput) return
+    if (isSubmitting) return
+    const repoUrl = repoUrlInput.trim().replace(/\/$/, '')
+    if (!/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/(?:[a-zA-Z0-9_.-]+|\*)$/.test(repoUrl)) {
+      setErrorMsg('Enter a public GitHub repository URL (https://github.com/owner/repository) or organization wildcard (https://github.com/owner/*).')
+      return
+    }
+    setRepoUrlInput(repoUrl)
     
     setErrorMsg(null)
     setIsSubmitting(true)
@@ -59,7 +65,7 @@ function App() {
       const res = await fetch(`${apiUrl}/api/v1/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repoUrlInput }),
+        body: JSON.stringify({ repo_url: repoUrl }),
         signal: controller.signal
       })
       
@@ -81,6 +87,9 @@ function App() {
       }
       
       const data = await res.json()
+      if (!data.task_id && !data.tasks?.length) {
+        throw new Error('The server did not create an analysis task. Please try again.')
+      }
       
       if (data.tasks && data.tasks.length > 0) {
         setBatchTasks(data.tasks)

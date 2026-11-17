@@ -4,15 +4,15 @@ export default function ConfidenceScore({ score }) {
   const scoreValue = score ?? 0
 
   return (
-    <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex items-center justify-between">
-      <div>
+    <div className="bg-card border border-border p-6 rounded-2xl shadow-sm flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-2">Aggregate Fix Confidence</h3>
         <p className="text-xs text-muted-foreground opacity-80 max-w-[200px] sm:max-w-[250px]">
           Weighted score from validation results, static findings, applied patches, and retrieved fix context. It is not a probability of correctness.
         </p>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-4">
         <div className="text-right">
           <span className="text-3xl font-bold text-foreground">
             {scoreValue.toFixed(1)}<span className="text-primary">%</span>

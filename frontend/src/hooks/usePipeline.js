@@ -358,6 +358,19 @@ export function usePipeline(taskId) {
         }
       });
 
+      es.addEventListener('pipeline_review_required', (e) => {
+        handleEvent(e, (evt) => {
+          if (evt.status !== 'NEEDS_REVIEW') return;
+          dispatch({ type: 'SET_PR', payload: {
+            confidence: evt.data.confidence_score, pr_url: evt.data.pr_url, pr_error: evt.data.pr_error
+          } });
+          dispatch({ type: 'SET_STATUS', payload: { status: 'NEEDS_REVIEW' } });
+          const token = credentialStore.getViewToken(taskId);
+          fetchState(import.meta.env.VITE_API_URL || '', token ? { Authorization: `Bearer ${token}` } : {});
+          es.close();
+        });
+      });
+
       es.onerror = (err) => {
         console.error('SSE connection error:', err);
         es.close();
